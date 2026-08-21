@@ -65,6 +65,7 @@ gridLines = split(gridText, "\n");
 folders = getFileList(inputRoot);
 
 processedImages = 0;
+notListedImages = 0;
 skippedImages = 0;
 
 for (folderIndex = 0; folderIndex < folders.length; folderIndex++) {
@@ -151,16 +152,16 @@ for (folderIndex = 0; folderIndex < folders.length; folderIndex++) {
         }
 
 
-        // If absent from table, skip before opening instead of paying the
-        // image load/close cost. This is especially useful for resumed batches.
+        // In controller use, absence normally means this source is already
+        // complete and therefore not in the pending-only metadata file.
         if (experiment == "") {
 
             print(
-                "SKIPPED - not found in images.csv: " +
+                "NOT LISTED / NOT PENDING: " +
                 fileName
             );
 
-            skippedImages++;
+            notListedImages++;
 
             continue;
         }
@@ -499,7 +500,8 @@ for (folderIndex = 0; folderIndex < folders.length; folderIndex++) {
 showMessage(
     "ALL DONE",
     "Processed images: " + processedImages + "\n" +
-    "Skipped images: " + skippedImages + "\n\n" +
+    "Not listed / not pending: " + notListedImages + "\n" +
+    "Skipped after metadata match: " + skippedImages + "\n\n" +
     "Outputs saved under:\n" +
     outputRoot
 );
