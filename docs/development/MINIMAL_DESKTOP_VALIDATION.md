@@ -23,7 +23,8 @@ Then:
 3. Move the same rectangle to the last column; use the same native fine adjustment if useful, then press Z/OK.
 4. Inspect the complete proposed grid overlay.
 5. If the overlay is sensible, accept once. If it is clearly wrong, retry once with a better whole-column placement.
-6. Confirm the expected Top/Low crops are written and source pixels remain unchanged.
+6. Visually confirm the source image itself was not altered. Do **not** manually inspect every expected crop one by one.
+7. After Fiji finishes that plate, run **Batch preflight** once. The authoritative preflight should now classify that source as complete/not pending; if it does not, use the saved report to identify the exact missing/stale/incompatible crop rather than doing a manual file audit.
 
 The native arrow-key behavior is only an operating convenience; it is not a separate validation requirement and the AHK helper does not forward or reinterpret those keys.
 
