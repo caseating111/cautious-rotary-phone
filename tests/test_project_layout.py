@@ -68,6 +68,21 @@ class ProjectLayoutTests(unittest.TestCase):
             self.assertTrue((project / "Matrices").is_dir())
             self.assertTrue((project / "Metadata").is_dir())
 
+    def test_renamed_project_root_is_still_recognized_by_structure(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            project = Path(temp) / "renamed-project"
+            image_root = project / "Raw" / "MyImages"
+            image_root.mkdir(parents=True)
+            (project / "Crops").mkdir()
+            (project / "Matrices").mkdir()
+
+            layout = initialize_project(image_root, "IGNORED")
+
+            self.assertEqual(layout.project_root, project)
+            self.assertEqual(layout.image_root, image_root)
+            self.assertTrue((project / "Metadata").is_dir())
+            self.assertFalse((project / "Raw" / "IGNORED_MyImages").exists())
+
     def test_existing_target_project_is_never_merged_automatically(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             parent = Path(temp)
