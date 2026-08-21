@@ -13,7 +13,10 @@ Checks include:
 - every image `Type` exists in `condition_order.csv`;
 - comma-bearing `Experiment`, `Set`, `Type` and `Strain` values that the reused ImageJ macros cannot safely parse with simple comma splitting;
 - embedded line breaks in those ImageJ line-parsed metadata fields;
-- semicolons in `Experiment`, `Set` or `Type`, because the composed Fiji helpers use semicolon-delimited `runMacro` arguments.
+- semicolons in `Experiment`, `Set` or `Type`, because the composed Fiji helpers use semicolon-delimited `runMacro` arguments;
+- Windows filename-unsafe characters (`/ \\ : * ? " < > |`) in `Experiment`, `Set` or `Type`, because those values are inserted directly into crop filenames without sanitizing.
+
+`Strain` is different: the established Fiji crop exporter already sanitizes filename-unsafe strain characters through `safeName()`, so the validator does not unnecessarily prohibit them there.
 
 Comma-containing source filenames remain supported. The existing production ImageJ macro already has explicit handling for quoted filenames containing commas, so the validator deliberately does not reject that case.
 
