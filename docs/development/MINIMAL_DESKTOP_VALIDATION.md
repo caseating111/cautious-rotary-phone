@@ -27,7 +27,13 @@ Use one ordinary representative plate first, not a deliberately difficult edge c
 - AHK Z/X convenience behavior if the helper is used.
 
 ## Second image only if the first succeeds
-Use one same-sized next plate to check that the previous first-column rectangle is offered only as a movable starting suggestion. Reposition it manually and keep normal QC. Do not test automatic acceptance because none exists.
+Use one same-sized next plate for both previous-geometry conveniences at once:
+
+1. Confirm the previous accepted first-column rectangle appears only as a movable starting suggestion. Reposition/resize it manually for the current first column and confirm it normally.
+2. After first-column confirmation, confirm the **same current rectangle** is moved near the last column using the previous accepted first-to-last horizontal span. Fine-tune it manually and confirm it normally.
+3. Keep the usual full-grid QC and explicit Accept/Retry step.
+
+Neither suggestion is accepted automatically; the second-image check should not add any separate validation pass beyond the normal alignment interaction.
 
 ## Stop-loss / immediate fallback
 - If the representative plate works, do not spend time stress-testing many plates before using the workflow normally.
