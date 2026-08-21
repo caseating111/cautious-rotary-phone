@@ -58,18 +58,24 @@ PROCESSING_SETTINGS = [
 ]
 
 
-def load_config() -> dict[str, str]:
+def load_config_state(path: Path) -> tuple[dict[str, str], str | None]:
     data = DEFAULTS.copy()
-    if CONFIG_FILE.exists():
-        try:
-            loaded = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
-            if isinstance(loaded, dict):
-                for key in data:
-                    if key in loaded:
-                        data[key] = str(loaded[key])
-        except (OSError, json.JSONDecodeError):
-            pass
-    return data
+    if not path.exists():
+        return data, None
+    try:
+        loaded = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return data, f"Existing config could not be read and has not been overwritten: {exc}"
+    if not isinstance(loaded, dict):
+        return data, "Existing config is not a JSON object and has not been overwritten."
+    for key in data:
+        if key in loaded:
+            data[key] = str(loaded[key])
+    return data, None
+
+
+def load_config() -> dict[str, str]:
+    return load_config_state(CONFIG_FILE)[0]
 
 
 def save_config(data: dict[str, str]) -> None:
@@ -120,17 +126,30 @@ class Controller(tk.Tk):
         super().__init__()
         self.title("Image workflow controller")
         self.resizable(False, False)
-        self.vars = {key: tk.StringVar(value=value) for key, value in load_config().items()}
+        loaded, self.config_load_error = load_config_state(CONFIG_FILE)
+        self.vars = {key: tk.StringVar(value=value) for key, value in loaded.items()}
         self.pillow_job = tk.StringVar(value="Matrices")
         self.ahk_process: subprocess.Popen | None = None
-        self.status = tk.StringVar(value=self.environment_text())
+        self.status = tk.StringVar(value=self.config_load_error or self.environment_text())
         self.build_ui()
+        if self.config_load_error:
+            self.after_idle(self.warn_config_load_error)
 
     def environment_text(self) -> str:
         conda = os.environ.get("CONDA_DEFAULT_ENV")
         if conda:
             return f"Python: {sys.executable} | conda: {conda}"
         return f"Python: {sys.executable}"
+
+    def warn_config_load_error(self) -> None:
+        if not self.config_load_error:
+            return
+        messagebox.showerror(
+            "Config preserved",
+            self.config_load_error
+            + "\n\nThe controller is showing defaults, but automatic actions will not overwrite the existing file. "
+            "Repair it manually, or use Save config and explicitly confirm replacement.",
+        )
 
     def build_ui(self) -> None:
         pad = {"padx": 5, "pady": 3}
@@ -151,7 +170,7 @@ class Controller(tk.Tk):
             ttk.Button(self, text="…", width=3, command=lambda k=key, t=kind: self.browse(k, t)).grid(row=row, column=2, **pad)
 
         r = len(rows)
-        ttk.Button(self, text="Save config", command=self.save).grid(row=r, column=0, sticky="ew", **pad)
+        ttk.Button(self, text="Save config", command=lambda: self.save(explicit=True)).grid(row=r, column=0, sticky="ew", **pad)
         ttk.Button(self, text="Validate CSVs", command=self.validate_csvs).grid(row=r, column=1, sticky="w", **pad)
         ttk.Button(self, text="ROI presets", command=lambda: self.launch_python("tools/roi_preset_gui.py")).grid(row=r, column=2, sticky="ew", **pad)
 
@@ -212,9 +231,29 @@ class Controller(tk.Tk):
             if filled:
                 self.status.set(f"Found {filled} sibling project CSV path(s) in the same folder.")
 
-    def save(self) -> None:
+    def save(self, explicit: bool = False) -> bool:
+        if self.config_load_error:
+            if not explicit:
+                messagebox.showerror(
+                    "Config preserved",
+                    self.config_load_error
+                    + "\n\nThis action was not started because saving its current controller values would overwrite the unreadable config. "
+                    "Repair the file or explicitly choose Save config first.",
+                )
+                self.status.set("Action blocked: unreadable existing config preserved.")
+                return False
+            if not messagebox.askyesno(
+                "Replace unreadable config?",
+                self.config_load_error
+                + "\n\nReplace the existing config.json with the values currently shown in the controller?",
+            ):
+                self.status.set("Unreadable existing config preserved; replacement cancelled.")
+                return False
+
         save_config({key: var.get().strip() for key, var in self.vars.items()})
+        self.config_load_error = None
         self.status.set(f"Saved: {CONFIG_FILE}")
+        return True
 
     def open_processing_settings(self) -> None:
         dialog = tk.Toplevel(self)
@@ -257,8 +296,8 @@ class Controller(tk.Tk):
             except ValueError as exc:
                 messagebox.showerror("Processing settings", str(exc), parent=dialog)
                 return
-            self.save()
-            dialog.destroy()
+            if self.save(explicit=bool(self.config_load_error)):
+                dialog.destroy()
 
         ttk.Button(dialog, text="Save", command=save_and_close).grid(row=len(PROCESSING_SETTINGS), column=0, columnspan=2, sticky="ew", **pad)
 
@@ -283,7 +322,8 @@ class Controller(tk.Tk):
             self.status.set("CSV validation found issues.")
 
     def batch_preflight_result(self) -> tuple[int, str, int]:
-        self.save()
+        if not self.save():
+            return 2, self.config_load_error or "Config save blocked.", 0
         script = REPO_ROOT / "tools" / "preflight_batch.py"
         result = subprocess.run([sys.executable, str(script)], capture_output=True, text=True, check=False)
         output = (result.stdout + result.stderr).strip() or "No preflight output."
@@ -299,7 +339,7 @@ class Controller(tk.Tk):
         if returncode == 0:
             messagebox.showinfo("Batch preflight", dialog)
             self.status.set(f"Batch preflight ready: {pending} image(s) pending.")
-        else:
+        elif returncode != 2:
             messagebox.showerror("Batch preflight", dialog)
             self.status.set("Batch preflight found items to resolve. Open the saved report for easier review.")
 
@@ -319,7 +359,8 @@ class Controller(tk.Tk):
         if not macro.is_file():
             messagebox.showerror("Fiji", f"Macro not found:\n{macro}")
             return
-        self.save()
+        if not self.save():
+            return
         try:
             subprocess.Popen([str(exe), "-macro", str(macro)])
         except OSError as exc:
@@ -332,7 +373,8 @@ class Controller(tk.Tk):
         if not script.is_file():
             messagebox.showerror("Python helper", f"Script not found:\n{script}")
             return
-        self.save()
+        if not self.save():
+            return
         try:
             subprocess.Popen([sys.executable, str(script), *args])
         except OSError as exc:
@@ -345,7 +387,8 @@ class Controller(tk.Tk):
         if not script.is_file():
             messagebox.showerror("Fiji launch", f"Configured Fiji helper not found:\n{script}")
             return
-        self.save()
+        if not self.save():
+            return
         result = subprocess.run(
             [sys.executable, str(script), macro_alias],
             capture_output=True,
@@ -360,7 +403,8 @@ class Controller(tk.Tk):
         self.status.set(f"Launched configured Fiji macro: {macro_alias}")
 
     def run_prepared_batch(self, legacy: bool) -> None:
-        self.save()
+        if not self.save():
+            return
         script = REPO_ROOT / "tools" / "run_full_column_batch_from_config.py"
         if not script.is_file():
             messagebox.showerror("Batch preparation", f"Batch helper not found:\n{script}")
@@ -433,7 +477,8 @@ class Controller(tk.Tk):
             self.status.set("Pillow output not started: helper missing.")
             return
 
-        self.save()
+        if not self.save():
+            return
         self.status.set(f"Running Pillow output: {self.pillow_job.get()}…")
         self.update_idletasks()
         result = subprocess.run(
