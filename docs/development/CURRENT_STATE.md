@@ -29,6 +29,15 @@
 - CSV semantic validation runs before Fiji starts.
 - Saved crop width/height and alignment tolerance are consumed only where metadata already supplies the grid column count.
 
+### Batch preflight / resume
+- `tools/preflight_batch.py` mirrors production immediate-subfolder, basename metadata and exact output-name semantics.
+- It reports discovered/mapped/unmapped images, duplicate source basenames, stale metadata rows, missing grid definitions and expected/existing/missing crop counts.
+- It writes `~/.cautious-rotary-phone/last_preflight.txt` and pending-only `pending_images.csv`.
+- The composed batch uses pending-only metadata, so the unchanged production macro naturally skips fully completed plates on rerun.
+- Partially complete plates remain pending as a whole plate; no fragile per-crop resume path is introduced.
+- Controller checks preflight before AHK/Fiji and launches nothing when the batch is already complete.
+- `tests/test_preflight_batch.py` provides stdlib synthetic coverage for missing, complete and duplicate-basename cases.
+
 ### Existing Pillow output reuse
 - `tools/run_existing_pillow_from_config.py` exposes the existing matrix/all-strain/individual-label scripts through saved controller paths without rewriting their image logic.
 - Existing scripts remain authoritative; configured temporary copies only replace their shared explicit path block.
@@ -42,19 +51,20 @@
 - `tools/run_fiji_macro_from_config.py` is a thin visibility launcher using ImageJ's macro argument mechanism and supports dry-run command inspection.
 - `environment.yml` remains minimal (`python`, `pillow`).
 
-## Active branch: batch-preflight-report
-Purpose: prevent wasted manual alignment and make interrupted/repeated batches resume around already-complete plates using the existing production macro rather than new batch logic.
+## Active branch: metadata-reconciliation
+Purpose: reduce repeated `images.csv` setup while preserving original filenames and existing metadata as authoritative.
 
 Current changes:
-- `tools/preflight_batch.py` mirrors the production macro's actual immediate-subfolder, basename-metadata and output-naming semantics;
-- reports discovered/mapped/unmapped images, duplicate source basenames, missing source rows, expected/existing/missing crop counts and missing grid definitions;
-- persists `~/.cautious-rotary-phone/last_preflight.txt`;
-- writes `~/.cautious-rotary-phone/pending_images.csv` containing only mapped images whose full expected Top/Low output set is not already present;
-- the composed batch uses that pending-only metadata file, so the unchanged production macro naturally skips fully completed images on rerun;
-- partially complete images remain pending and are re-aligned/re-exported as one plate, avoiding risky per-crop resume logic;
-- controller exposes Batch preflight and runs it before starting AHK/Fiji;
-- if everything is already complete, the controller starts no AHK/Fiji process;
-- `tests/test_preflight_batch.py` covers missing outputs, exact complete outputs and duplicate source basenames using only synthetic temporary files and stdlib unittest.
+- `tools/reconcile_images_csv.py` scans the same immediate source folders as production and reconciles them against the configured `images.csv`;
+- existing authoritative metadata is copied unchanged for known source basenames;
+- new source images are listed with blank Experiment/Set/Type fields rather than guessed from filenames;
+- duplicate source basenames, duplicate metadata rows and stale metadata rows are explicitly flagged;
+- `~/.cautious-rotary-phone/images_reconciliation.csv` is non-destructive and preserves manually entered draft metadata across rescans;
+- `tools/finalize_images_reconciliation.py` converts current-source review rows into a separate `images_candidate.csv` only when all metadata is complete, basenames are unique and the existing cross-file validator accepts the candidate;
+- authoritative `images.csv` is never overwritten automatically;
+- `tools/metadata_review_gui.py` provides a small reconcile/edit/finalize/open window rather than expanding processing inside the main GUI;
+- the main controller has one Metadata review launcher button;
+- `tests/test_metadata_reconciliation.py` covers preservation of existing metadata, draft persistence, stale-row exclusion from candidates and incomplete metadata rejection.
 
 ## Pending manual validation (not a stop condition)
 - Desktop Fiji interaction for ROI preset patch and whole-column placement/QC.
@@ -63,7 +73,7 @@ Current changes:
 - Confirm the installed Fiji desktop launcher accepts a fourth command-line macro argument for the config-driven visibility shortcut; direct dialog launch remains fallback.
 
 ## Highest-value next routes
-1. Safely reduce metadata setup effort: generate a reconciliation/template from discovered source images plus existing `images.csv`, preserving original filenames and existing metadata rather than guessing or overwriting authoritative data.
-2. Continue auditing existing output/annotation scripts for shared path/settings blocks suitable for the same thin adapters.
+1. Audit remaining existing Pillow/output scripts for reusable entry points/settings rather than adding new image-processing implementations.
+2. Add output-folder/open-result convenience only where it reduces actual navigation burden.
 3. Research/reuse Fiji/BAR profile/peak alternatives only if native `Array.findMaxima()` proves weak on real plates; do not build a custom colony detector first.
-4. Keep batch resume plate-level unless real use demonstrates that per-crop resume would materially save time; current plate-level re-export is simpler and safer.
+4. Keep metadata inference conservative: use filename/folder heuristics only if a future real-data sample demonstrates a stable, user-verifiable pattern worth exploiting.
