@@ -17,6 +17,7 @@ class ControllerExtensionContractTests(unittest.TestCase):
         self.assertIn('tools/custom_matrix_gui_recorded.py', text)
         self.assertIn('text="Preferred WT source"', text)
         self.assertIn('tools/dedup_control_gui.py', text)
+        self.assertIn('text="Open Processing Logs"', text)
         self.assertNotIn("Image.open", text)
         self.assertNotIn("subprocess.run", text)
 
@@ -26,7 +27,7 @@ class ControllerExtensionContractTests(unittest.TestCase):
         self.assertIn("Preview first when a standard Pillow job will create multiple images", text)
         self.assertIn("standard_pillow_preview.build_preview(alias)", text)
         self.assertIn("if count <= 1:", text)
-        self.assertIn("super().run_pillow_job()", text)
+        self.assertIn("self.run_standard_output(alias)", text)
         self.assertIn("Preview rejected. Full Pillow output was not generated.", text)
 
     def test_deduplicated_dropdown_never_silently_uses_legacy_control_default(self) -> None:
@@ -42,11 +43,30 @@ class ControllerExtensionContractTests(unittest.TestCase):
     def test_label_individual_count_uses_validated_current_crops(self) -> None:
         text = EXTENDED.read_text(encoding="utf-8")
         start = text.index("def standard_output_count")
-        end = text.index("def run_pillow_job", start)
+        end = text.index("def last_output_text", start)
         block = text[start:end]
         self.assertIn('if alias == "label-individual":', block)
         self.assertIn("validate_unique_crop_matches", block)
         self.assertIn("allow_missing=False", block)
+
+    def test_successful_standard_outputs_get_human_and_machine_records(self) -> None:
+        text = EXTENDED.read_text(encoding="utf-8")
+        start = text.index("def record_standard_output")
+        end = text.index("def run_standard_output", start)
+        block = text[start:end]
+        self.assertIn("write_output_records(", block)
+        self.assertIn("selection=selection", block)
+        self.assertIn("required_crops=required", block)
+        self.assertIn("display_mode=\"raw\"", block)
+        self.assertIn("Processing Log", block)
+
+    def test_processing_logs_button_uses_human_facing_folder_name(self) -> None:
+        text = EXTENDED.read_text(encoding="utf-8")
+        start = text.index("def open_processing_logs")
+        end = text.index("def standard_output_count", start)
+        block = text[start:end]
+        self.assertIn('Path(raw) / "Processing Logs"', block)
+        self.assertNotIn("_workflow", block)
 
     def test_windows_starter_uses_extended_controller(self) -> None:
         text = STARTER.read_text(encoding="utf-8")
