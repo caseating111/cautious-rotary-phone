@@ -82,14 +82,12 @@ class Controller(tk.Tk):
         for row, (label, key, kind) in enumerate(rows):
             ttk.Label(self, text=label).grid(row=row, column=0, sticky="w", **pad)
             ttk.Entry(self, textvariable=self.vars[key], width=60).grid(row=row, column=1, **pad)
-            ttk.Button(self, text="…", width=3, command=lambda k=key, t=kind: self.browse(k, t)).grid(
-                row=row, column=2, **pad
-            )
+            ttk.Button(self, text="…", width=3, command=lambda k=key, t=kind: self.browse(k, t)).grid(row=row, column=2, **pad)
 
         r = len(rows)
         ttk.Button(self, text="Save config", command=self.save).grid(row=r, column=0, sticky="ew", **pad)
         ttk.Button(self, text="Validate CSVs", command=self.validate_csvs).grid(row=r, column=1, sticky="w", **pad)
-        ttk.Button(self, text="ROI presets", command=self.launch_roi_presets).grid(row=r, column=2, sticky="ew", **pad)
+        ttk.Button(self, text="ROI presets", command=lambda: self.launch_python("tools/roi_preset_gui.py")).grid(row=r, column=2, sticky="ew", **pad)
 
         r += 1
         ttk.Separator(self).grid(row=r, column=0, columnspan=3, sticky="ew", padx=5, pady=6)
@@ -101,17 +99,16 @@ class Controller(tk.Tk):
             ("Global visibility", "fiji/apply_global_visibility.ijm"),
         ]
         for col, (label, macro) in enumerate(buttons):
-            ttk.Button(self, text=label, command=lambda m=macro: self.launch_fiji_macro(m)).grid(
-                row=r, column=col, sticky="ew", **pad
-            )
+            ttk.Button(self, text=label, command=lambda m=macro: self.launch_fiji_macro(m)).grid(row=r, column=col, sticky="ew", **pad)
 
         r += 1
-        ttk.Button(self, text="Start alignment hotkeys", command=self.start_ahk).grid(row=r, column=0, sticky="ew", **pad)
-        ttk.Button(self, text="Stop alignment hotkeys", command=self.stop_ahk).grid(row=r, column=1, sticky="ew", **pad)
-        ttk.Button(self, text="Open config folder", command=self.open_config_folder).grid(row=r, column=2, sticky="ew", **pad)
+        ttk.Button(self, text="Build matrices", command=lambda: self.launch_python("tools/run_matrices_from_config.py")).grid(row=r, column=0, sticky="ew", **pad)
+        ttk.Button(self, text="Start alignment hotkeys", command=self.start_ahk).grid(row=r, column=1, sticky="ew", **pad)
+        ttk.Button(self, text="Stop alignment hotkeys", command=self.stop_ahk).grid(row=r, column=2, sticky="ew", **pad)
 
         r += 1
-        ttk.Label(self, textvariable=self.status, wraplength=720).grid(row=r, column=0, columnspan=3, sticky="w", **pad)
+        ttk.Button(self, text="Open config folder", command=self.open_config_folder).grid(row=r, column=0, sticky="ew", **pad)
+        ttk.Label(self, textvariable=self.status, wraplength=600).grid(row=r, column=1, columnspan=2, sticky="w", **pad)
 
     def browse(self, key: str, kind: str) -> None:
         current = self.vars[key].get().strip()
@@ -139,8 +136,7 @@ class Controller(tk.Tk):
                 continue
             try:
                 with path.open("r", encoding="utf-8-sig", newline="") as handle:
-                    reader = csv.reader(handle)
-                    header = next(reader, [])
+                    header = next(csv.reader(handle), [])
             except OSError as exc:
                 problems.append(f"{key}: {exc}")
                 continue
@@ -179,14 +175,18 @@ class Controller(tk.Tk):
             return
         self.status.set(f"Launched Fiji macro: {macro.name}")
 
-    def launch_roi_presets(self) -> None:
-        script = REPO_ROOT / "tools" / "roi_preset_gui.py"
+    def launch_python(self, relative_script: str) -> None:
+        script = REPO_ROOT / relative_script
+        if not script.is_file():
+            messagebox.showerror("Python helper", f"Script not found:\n{script}")
+            return
+        self.save()
         try:
             subprocess.Popen([sys.executable, str(script)])
         except OSError as exc:
-            messagebox.showerror("ROI presets", str(exc))
+            messagebox.showerror("Python helper", str(exc))
             return
-        self.status.set("Opened ROI preset manager.")
+        self.status.set(f"Launched: {script.name}")
 
     def start_ahk(self) -> None:
         if self.ahk_process and self.ahk_process.poll() is None:
