@@ -58,6 +58,32 @@ class CsvValidationTests(unittest.TestCase):
             temp.cleanup()
         self.assertTrue(any("Type contains a comma" in problem for problem in problems))
 
+    def test_semicolon_in_macro_argument_metadata_is_rejected(self) -> None:
+        paths = self.write_project(
+            'Experiment,Set,GridCols,Column,Strain\nE1,A,1,1,WT\n',
+            'Filename,Experiment,Set,Type\nplate1.jpg,E1,A,"YPDA;plus"\n',
+            'Order,Type\n1,"YPDA;plus"\n',
+        )
+        grid, images, conditions, temp = paths
+        try:
+            problems = validate(grid, images, conditions)
+        finally:
+            temp.cleanup()
+        self.assertTrue(any("Type contains a semicolon" in problem for problem in problems))
+
+    def test_line_break_in_imagej_line_metadata_is_rejected(self) -> None:
+        paths = self.write_project(
+            'Experiment,Set,GridCols,Column,Strain\nE1,A,1,1,"strain\nalpha"\n',
+            'Filename,Experiment,Set,Type\nplate1.jpg,E1,A,YPDA\n',
+            'Order,Type\n1,YPDA\n',
+        )
+        grid, images, conditions, temp = paths
+        try:
+            problems = validate(grid, images, conditions)
+        finally:
+            temp.cleanup()
+        self.assertTrue(any("Strain contains a line break" in problem for problem in problems))
+
 
 if __name__ == "__main__":
     unittest.main()
