@@ -108,7 +108,8 @@ class Controller(tk.Tk):
         ttk.Button(self, text="ROI presets", command=lambda: self.launch_python("tools/roi_preset_gui.py")).grid(row=r, column=2, sticky="ew", **pad)
 
         r += 1
-        ttk.Button(self, text="Processing settings", command=self.open_processing_settings).grid(row=r, column=0, columnspan=3, sticky="ew", **pad)
+        ttk.Button(self, text="Metadata review", command=lambda: self.launch_python("tools/metadata_review_gui.py")).grid(row=r, column=0, columnspan=2, sticky="ew", **pad)
+        ttk.Button(self, text="Processing settings", command=self.open_processing_settings).grid(row=r, column=2, sticky="ew", **pad)
         r += 1
         ttk.Separator(self).grid(row=r, column=0, columnspan=3, sticky="ew", padx=5, pady=6)
         r += 1
