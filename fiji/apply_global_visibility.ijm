@@ -2,6 +2,8 @@
 // Source pixels remain untouched. RGB inputs use a disposable 8-bit QC duplicate
 // because ImageJ setMinAndMax() modifies RGB pixel data.
 
+requires("1.53g");
+
 if (nImages() == 0)
     exit("Open an aligned plate image first.");
 
@@ -37,19 +39,19 @@ if (sourceDepth == 24) {
 imgW = getWidth();
 imgH = getHeight();
 
-rows = parseInt(readAlignmentValue("grid_rows", "-1"));
-roiW = parseFloat(readAlignmentValue("roi_width", "-1"));
-roiH = parseFloat(readAlignmentValue("roi_height", "-1"));
-leftX = parseFloat(readAlignmentValue("left_x", "-1"));
-rightX = parseFloat(readAlignmentValue("right_x", "-1"));
+rows = parseInt(readAlignmentValue(alignmentFile, "grid_rows", "-1"));
+roiW = parseFloat(readAlignmentValue(alignmentFile, "roi_width", "-1"));
+roiH = parseFloat(readAlignmentValue(alignmentFile, "roi_height", "-1"));
+leftX = parseFloat(readAlignmentValue(alignmentFile, "left_x", "-1"));
+rightX = parseFloat(readAlignmentValue(alignmentFile, "right_x", "-1"));
 
 if (rows < 2 || roiW <= 0 || roiH <= 0 || leftX < 0 || rightX < 0)
     exit("Accepted alignment file is incomplete.");
 
-topLeftY = parseFloat(readAlignmentValue("row_1_left_y", "-1"));
-topRightY = parseFloat(readAlignmentValue("row_1_right_y", "-1"));
-bottomLeftY = parseFloat(readAlignmentValue("row_" + rows + "_left_y", "-1"));
-bottomRightY = parseFloat(readAlignmentValue("row_" + rows + "_right_y", "-1"));
+topLeftY = parseFloat(readAlignmentValue(alignmentFile, "row_1_left_y", "-1"));
+topRightY = parseFloat(readAlignmentValue(alignmentFile, "row_1_right_y", "-1"));
+bottomLeftY = parseFloat(readAlignmentValue(alignmentFile, "row_" + rows + "_left_y", "-1"));
+bottomRightY = parseFloat(readAlignmentValue(alignmentFile, "row_" + rows + "_right_y", "-1"));
 
 if (topLeftY < 0 || topRightY < 0 || bottomLeftY < 0 || bottomRightY < 0)
     exit("Accepted alignment row geometry is incomplete.");
@@ -62,42 +64,15 @@ gridBottom = minOf(imgH, maxOf(bottomLeftY, bottomRightY) + roiH / 2);
 if (gridRight - gridLeft < 2 || gridBottom - gridTop < 2)
     exit("Calculated total-grid bounds are invalid.");
 
-// Four outside strips. Median-of-medians makes one contaminated side inexpensive.
-topMedian = sampleRectPercentile(
-    gridLeft,
-    maxOf(0, gridTop - band),
-    gridRight - gridLeft,
-    minOf(band, gridTop),
-    0.5
-);
+// Four outside strips. Invalid edge strips are ignored; median resists one odd side.
+topMedian = sampleRectPercentile(gridLeft, maxOf(0, gridTop - band), gridRight - gridLeft, minOf(band, gridTop), 0.5);
+bottomMedian = sampleRectPercentile(gridLeft, gridBottom, gridRight - gridLeft, minOf(band, imgH - gridBottom), 0.5);
+leftMedian = sampleRectPercentile(maxOf(0, gridLeft - band), gridTop, minOf(band, gridLeft), gridBottom - gridTop, 0.5);
+rightMedian = sampleRectPercentile(gridRight, gridTop, minOf(band, imgW - gridRight), gridBottom - gridTop, 0.5);
 
-bottomMedian = sampleRectPercentile(
-    gridLeft,
-    gridBottom,
-    gridRight - gridLeft,
-    minOf(band, imgH - gridBottom),
-    0.5
-);
-
-leftMedian = sampleRectPercentile(
-    maxOf(0, gridLeft - band),
-    gridTop,
-    minOf(band, gridLeft),
-    gridBottom - gridTop,
-    0.5
-);
-
-rightMedian = sampleRectPercentile(
-    gridRight,
-    gridTop,
-    minOf(band, imgW - gridRight),
-    gridBottom - gridTop,
-    0.5
-);
-
-sideMedians = newArray(topMedian, bottomMedian, leftMedian, rightMedian);
-Array.sort(sideMedians);
-background = (sideMedians[1] + sideMedians[2]) / 2;
+background = robustSideMedian(topMedian, bottomMedian, leftMedian, rightMedian);
+if (isNaN(background))
+    exit("No usable outside-grid background strips were available.");
 
 // High point from the tilted total-grid quadrilateral, not the whole image.
 xs = newArray(leftX - roiW / 2, rightX + roiW / 2, rightX + roiW / 2, leftX - roiW / 2);
@@ -119,7 +94,7 @@ showStatus("Global display range: " + d2s(blackPoint, 1) + " to " + d2s(highPoin
 
 function sampleRectPercentile(x, y, w, h, percentile) {
     if (w < 1 || h < 1)
-        return 0 / 0;
+        return NaN;
     makeRectangle(x, y, w, h);
     return selectionPercentile(percentile);
 }
@@ -129,9 +104,8 @@ function selectionPercentile(percentile) {
     total = 0;
     for (i = 0; i < counts.length; i++)
         total = total + counts[i];
-
     if (total <= 0)
-        return 0 / 0;
+        return NaN;
 
     target = total * percentile;
     running = 0;
@@ -143,8 +117,21 @@ function selectionPercentile(percentile) {
     return values[values.length - 1];
 }
 
-function readAlignmentValue(key, fallback) {
-    text = File.openAsString(alignmentFile);
+function robustSideMedian(a, b, c, d) {
+    vals = newArray(0);
+    if (!isNaN(a)) vals = Array.concat(vals, a);
+    if (!isNaN(b)) vals = Array.concat(vals, b);
+    if (!isNaN(c)) vals = Array.concat(vals, c);
+    if (!isNaN(d)) vals = Array.concat(vals, d);
+    if (vals.length == 0) return NaN;
+    Array.sort(vals);
+    n = vals.length;
+    if (n % 2 == 1) return vals[floor(n / 2)];
+    return (vals[n / 2 - 1] + vals[n / 2]) / 2;
+}
+
+function readAlignmentValue(path, key, fallback) {
+    text = File.openAsString(path);
     lines = split(text, "\n");
     prefix = key + "=";
     for (i = 0; i < lines.length; i++) {
