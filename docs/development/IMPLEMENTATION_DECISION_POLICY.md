@@ -37,6 +37,16 @@ Total cost includes:
 
 A route that looks elegant in code but creates repeated test/debug cycles for the user is a bad route.
 
+## Concision is part of practicality
+
+Use the shortest reliable route in both implementation and communication.
+
+Do not produce large amounts of code, architecture, documentation, explanation, scaffolding, abstraction or configuration when a smaller existing-tool composition will do the job. Do not confuse comprehensiveness with usefulness.
+
+Default to concise status updates, concise instructions and small diffs. Put durable detail in repository documentation rather than repeatedly sending the user walls of text. Expand only when the complexity genuinely requires it or the user asks.
+
+A solution that needs 20 lines of glue around mature tools is normally preferable to hundreds of lines of original machinery providing the same practical result.
+
 ## Evidence ranking
 
 When choosing an implementation, give strong preference to solutions with real-world evidence and maturity:
