@@ -5,6 +5,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import tkinter as tk
 from pathlib import Path
 from tkinter import messagebox, ttk
@@ -44,12 +45,31 @@ def unique_backup_path(destination: Path) -> Path:
 def adopt_candidate(candidate: Path, destination: Path) -> Path | None:
     if not candidate.is_file():
         raise ValueError(f"Validated candidate not found: {candidate}")
+    if candidate.resolve() == destination.resolve():
+        raise ValueError("Candidate and configured images.csv resolve to the same file; no adoption is needed.")
+
     destination.parent.mkdir(parents=True, exist_ok=True)
     backup: Path | None = None
     if destination.is_file():
         backup = unique_backup_path(destination)
         shutil.copy2(destination, backup)
-    shutil.copy2(candidate, destination)
+
+    staged_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            prefix=destination.name + ".candidate-",
+            suffix=".tmp",
+            dir=destination.parent,
+            delete=False,
+        ) as handle:
+            staged_path = Path(handle.name)
+        shutil.copy2(candidate, staged_path)
+        os.replace(staged_path, destination)
+        staged_path = None
+    finally:
+        if staged_path is not None:
+            staged_path.unlink(missing_ok=True)
+
     return backup
 
 
