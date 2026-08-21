@@ -44,6 +44,18 @@ class AlignmentMacroContractTests(unittest.TestCase):
         self.assertIn("Fine-tune it for this plate; it is NOT accepted automatically.", text)
         self.assertIn("Press OK (or Z) when positioned.", text[last_wait_at:right_bounds_at])
 
+    def test_last_stage_retries_restore_current_first_roi(self) -> None:
+        text = ALIGNMENT_MACRO.read_text(encoding="utf-8")
+        restore = "makeRectangle(lx, ly, lw, lh);"
+
+        last_invalid_at = text.index('showMessage("Last-column ROI"')
+        last_profile_at = text.index('showMessage("Last-column profile"')
+        qc_retry_at = text.index("} else {", text.index('if (action == "Accept")'))
+
+        self.assertIn(restore, text[last_invalid_at : text.index("continue;", last_invalid_at)])
+        self.assertIn(restore, text[last_profile_at : text.index("continue;", last_profile_at)])
+        self.assertIn(restore, text[qc_retry_at : text.index("}\n}", qc_retry_at)])
+
     def test_alignment_is_persisted_only_after_explicit_qc_accept(self) -> None:
         text = ALIGNMENT_MACRO.read_text(encoding="utf-8")
         qc_at = text.index('Dialog.create("Alignment QC")')
@@ -56,6 +68,7 @@ class AlignmentMacroContractTests(unittest.TestCase):
         self.assertLess(accept_at, save_at)
         self.assertIn("accepted = 1;", text[accept_at:save_at])
         self.assertIn("Overlay.remove;", retry_block)
+        self.assertIn("makeRectangle(lx, ly, lw, lh);", retry_block)
         self.assertNotIn("saveLastAlignment(", retry_block)
 
 
