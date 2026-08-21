@@ -1,10 +1,18 @@
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
 
-from tools.run_dedup_with_control import canonical_control, control_groups, patch_preferred_control, validate_control_source
+from tools.run_dedup_with_control import (
+    canonical_control,
+    control_groups,
+    load_preferred_source,
+    patch_preferred_control,
+    save_preferred_source,
+    validate_control_source,
+)
 
 
 class DeduplicatedControlSourceTests(unittest.TestCase):
@@ -49,6 +57,23 @@ class DeduplicatedControlSourceTests(unittest.TestCase):
             self.assertIn('row["experiment"] == \'E1\'', text)
             self.assertIn('row["set"] == \'S0\'', text)
             self.assertNotIn('row["experiment"] == "E2"', text)
+
+    def test_preferred_source_round_trip_and_malformed_file_is_ignored(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "preferred.json"
+            self.assertIsNone(load_preferred_source(path))
+
+            save_preferred_source(" E1 ", " S0 ", path)
+            self.assertEqual(load_preferred_source(path), ("E1", "S0"))
+            self.assertEqual(
+                json.loads(path.read_text(encoding="utf-8")),
+                {"experiment": "E1", "set": "S0"},
+            )
+
+            path.write_text("[]\n", encoding="utf-8")
+            self.assertIsNone(load_preferred_source(path))
+            path.write_text("{not-json", encoding="utf-8")
+            self.assertIsNone(load_preferred_source(path))
 
 
 if __name__ == "__main__":
