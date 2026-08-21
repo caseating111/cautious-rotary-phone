@@ -64,7 +64,7 @@ while (accepted == 0) {
         "Move/resize it as needed, then press OK (or Z with the helper)."
     );
 
-    if (!isTallRectangle()) {
+    if (isTallRectangle() == 0) {
         showMessage("First-column ROI", "Use one tall axis-aligned rectangle containing the full first column, then retry.");
         continue;
     }
@@ -101,7 +101,7 @@ while (accepted == 0) {
         "Press OK (or Z) when positioned."
     );
 
-    if (!isTallRectangle()) {
+    if (isTallRectangle() == 0) {
         showMessage("Last-column ROI", "Use one tall axis-aligned rectangle containing the full last column, then retry.");
         makeRectangle(lx, ly, lw, lh);
         continue;
@@ -142,12 +142,15 @@ while (accepted == 0) {
 }
 
 showStatus("Full-column alignment accepted and saved.");
+return "accepted";
 
 function isTallRectangle() {
     if (selectionType() != 0)
         return 0;
     getSelectionBounds(x, y, w, h);
-    return w > 0 && h > w;
+    if (w > 0 && h > w)
+        return 1;
+    return 0;
 }
 
 function previousAlignmentPath() {
