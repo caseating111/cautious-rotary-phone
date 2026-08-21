@@ -29,6 +29,12 @@ class RoiPresetDiscoveryTests(unittest.TestCase):
             config.write_text(json.dumps({"fiji_executable": str(executable)}), encoding="utf-8")
             self.assertEqual(configured_fiji_root(config), fiji)
 
+    def test_configured_fiji_root_ignores_non_object_config(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            config = Path(temp) / "config.json"
+            config.write_text("[]\n", encoding="utf-8")
+            self.assertIsNone(configured_fiji_root(config))
+
     def test_find_roi_tool_prefers_normal_toolsets_location(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
