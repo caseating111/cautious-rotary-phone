@@ -1,20 +1,32 @@
-// Full-column alignment prototype using native ImageJ profile + peak tools.
+// Full-column alignment using native ImageJ profile + peak tools.
 // Manual first/last column placement remains authoritative.
+// Optional macro argument: cols=10;rows=8;tolerance=0.08
 
 requires("1.53f");
 
 if (nImages() == 0)
     exit("Open a plate image first.");
 
-Dialog.create("Full-column alignment");
-Dialog.addNumber("Grid columns", 10);
-Dialog.addNumber("Grid rows", 8);
-Dialog.addNumber("Peak tolerance fraction", 0.08, 3);
-Dialog.show();
+sourceTitle = getTitle();
+sourceWidth = getWidth();
+sourceHeight = getHeight();
 
-gridCols = Dialog.getNumber();
-gridRows = Dialog.getNumber();
-toleranceFraction = Dialog.getNumber();
+arg = getArgument();
+if (lengthOf(arg) > 0) {
+    gridCols = parseInt(argValue(arg, "cols", "10"));
+    gridRows = parseInt(argValue(arg, "rows", "8"));
+    toleranceFraction = parseFloat(argValue(arg, "tolerance", "0.08"));
+} else {
+    Dialog.create("Full-column alignment");
+    Dialog.addNumber("Grid columns", 10);
+    Dialog.addNumber("Grid rows", 8);
+    Dialog.addNumber("Peak tolerance fraction", 0.08, 3);
+    Dialog.show();
+
+    gridCols = Dialog.getNumber();
+    gridRows = Dialog.getNumber();
+    toleranceFraction = Dialog.getNumber();
+}
 
 if (gridCols < 2 || gridRows < 2)
     exit("Grid dimensions must be at least 2 x 2.");
@@ -35,7 +47,11 @@ while (accepted == 0) {
         "Move/resize it as needed, then press OK (or Z with the helper)."
     );
 
-    requireTallRectangle("first column");
+    if (!isTallRectangle()) {
+        showMessage("First-column ROI", "Use one tall axis-aligned rectangle containing the full first column, then retry.");
+        continue;
+    }
+
     getSelectionBounds(lx, ly, lw, lh);
     leftProfile = getProfile();
     leftPeaks = findExpectedPeaks(leftProfile, gridRows, toleranceFraction);
@@ -56,7 +72,11 @@ while (accepted == 0) {
         "Press OK (or Z) when positioned."
     );
 
-    requireTallRectangle("last column");
+    if (!isTallRectangle()) {
+        showMessage("Last-column ROI", "Use one tall axis-aligned rectangle containing the full last column, then retry.");
+        continue;
+    }
+
     getSelectionBounds(rx, ry, rw, rh);
     rightProfile = getProfile();
     rightPeaks = findExpectedPeaks(rightProfile, gridRows, toleranceFraction);
@@ -83,7 +103,7 @@ while (accepted == 0) {
 
     if (action == "Accept") {
         accepted = 1;
-        saveLastAlignment(leftX, rightX, leftRows, rightRows, gridCols, gridRows, roiW, roiH);
+        saveLastAlignment(sourceTitle, sourceWidth, sourceHeight, leftX, rightX, leftRows, rightRows, gridCols, gridRows, roiW, roiH);
     } else {
         Overlay.remove;
     }
@@ -91,14 +111,11 @@ while (accepted == 0) {
 
 showStatus("Full-column alignment accepted and saved.");
 
-function requireTallRectangle(label) {
+function isTallRectangle() {
     if (selectionType() != 0)
-        exit("Use an axis-aligned rectangular ROI for the " + label + ".");
+        return 0;
     getSelectionBounds(x, y, w, h);
-    if (w <= 0 || h <= 0)
-        exit("No rectangle ROI found for the " + label + ".");
-    if (h <= w)
-        exit("The whole-column ROI should be taller than it is wide.");
+    return w > 0 && h > w;
 }
 
 function findExpectedPeaks(profile, expected, fraction) {
@@ -164,12 +181,15 @@ function readPresetValue(key, fallback) {
     return fallback;
 }
 
-function saveLastAlignment(leftX, rightX, leftRows, rightRows, cols, rows, boxW, boxH) {
+function saveLastAlignment(sourceTitle, sourceWidth, sourceHeight, leftX, rightX, leftRows, rightRows, cols, rows, boxW, boxH) {
     dir = getDirectory("home") + ".cautious-rotary-phone" + File.separator;
     if (!File.exists(dir))
         File.makeDirectory(dir);
 
-    text = "grid_cols=" + cols + "\n" +
+    text = "source_title=" + sourceTitle + "\n" +
+           "source_width=" + sourceWidth + "\n" +
+           "source_height=" + sourceHeight + "\n" +
+           "grid_cols=" + cols + "\n" +
            "grid_rows=" + rows + "\n" +
            "roi_width=" + boxW + "\n" +
            "roi_height=" + boxH + "\n" +
@@ -181,4 +201,15 @@ function saveLastAlignment(leftX, rightX, leftRows, rightRows, cols, rows, boxW,
                       "row_" + (r + 1) + "_right_y=" + rightRows[r] + "\n";
 
     File.saveString(text, dir + "last_alignment.txt");
+}
+
+function argValue(arg, key, fallback) {
+    parts = split(arg, ";");
+    prefix = key + "=";
+    for (i = 0; i < parts.length; i++) {
+        part = String.trim(parts[i]);
+        if (startsWith(part, prefix))
+            return substring(part, lengthOf(prefix));
+    }
+    return fallback;
 }
