@@ -151,6 +151,7 @@ def build_report(config: dict) -> tuple[list[str], bool, list[dict[str, str]]]:
     complete_images = 0
     pending_rows: list[dict[str, str]] = []
     partial_images: list[str] = []
+    stale_expected_crops: list[str] = []
     grid_missing: list[str] = []
     output_claims: dict[Path, list[Path]] = defaultdict(list)
     logical_name_claims: dict[str, list[Path]] = defaultdict(list)
@@ -172,14 +173,19 @@ def build_report(config: dict) -> tuple[list[str], bool, list[dict[str, str]]]:
         output_dir = crop_root / source.parent.name
         image_missing = 0
         image_existing = 0
+        source_mtime = source.stat().st_mtime_ns
         for name in names:
             output_path = output_dir / name
             output_claims[output_path].append(source)
             logical_name_claims[name.lower()].append(source)
-            if output_path.is_file():
+            if output_path.is_file() and output_path.stat().st_mtime_ns >= source_mtime:
                 existing_crops += 1
                 image_existing += 1
             else:
+                if output_path.is_file():
+                    stale_expected_crops.append(
+                        f"{output_path.relative_to(crop_root)} <- source newer: {source.relative_to(image_root)}"
+                    )
                 missing_crops += 1
                 image_missing += 1
 
@@ -187,7 +193,7 @@ def build_report(config: dict) -> tuple[list[str], bool, list[dict[str, str]]]:
             pending_rows.append({field: meta.get(field, "") for field in IMAGE_FIELDS})
             if image_existing:
                 partial_images.append(
-                    f"{source.relative_to(image_root)}: {image_existing} existing, {image_missing} missing"
+                    f"{source.relative_to(image_root)}: {image_existing} current, {image_missing} missing/stale"
                 )
         else:
             complete_images += 1
@@ -224,8 +230,8 @@ def build_report(config: dict) -> tuple[list[str], bool, list[dict[str, str]]]:
         f"Already complete images: {complete_images}",
         f"Images still requiring batch work: {len(pending_rows)}",
         f"Expected crops for ready images: {expected_crops}",
-        f"Existing expected crops: {existing_crops}",
-        f"Crops still to produce: {missing_crops}",
+        f"Current expected crops: {existing_crops}",
+        f"Crops still to produce/rebuild: {missing_crops}",
     ]
 
     sections = [
@@ -246,6 +252,13 @@ def build_report(config: dict) -> tuple[list[str], bool, list[dict[str, str]]]:
         problems = True
         lines.extend(["", f"{title} ({len(items)})"])
         lines.extend(f"- {item}" for item in items)
+
+    if stale_expected_crops:
+        lines.extend(["", f"STALE EXPECTED CROPS — WILL REBUILD ({len(stale_expected_crops)})"])
+        lines.append(
+            "These derived crops are older than their source image. They are treated as pending and will be regenerated on the plate-level rerun."
+        )
+        lines.extend(f"- {item}" for item in stale_expected_crops)
 
     if partial_images:
         lines.extend(["", f"PARTIALLY COMPLETE PLATES — NON-BLOCKING ({len(partial_images)})"])
