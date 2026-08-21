@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -42,6 +43,28 @@ class SourceAdapterTests(unittest.TestCase):
             self.assertIn("runMacro(", text)
             self.assertNotIn("1 / 4 — R1C1", text)
             self.assertNotIn("4 / 4 — R5C", text)
+
+    def test_prepare_only_config_does_not_require_fiji_path(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            config_path = Path(temp) / "config.json"
+            config_path.write_text(
+                json.dumps(
+                    {
+                        "image_root": "C:/project/images",
+                        "crop_output": "C:/project/crops",
+                        "grid_csv": "C:/project/grid.csv",
+                        "images_csv": "C:/project/images.csv",
+                        "condition_order_csv": "C:/project/condition_order.csv",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with patch.object(batch_adapter, "CONFIG_FILE", config_path):
+                prepared = batch_adapter.load_config(require_fiji=False)
+                self.assertNotIn("fiji_executable", prepared)
+                with self.assertRaises(SystemExit) as caught:
+                    batch_adapter.load_config(require_fiji=True)
+            self.assertIn("fiji_executable", str(caught.exception))
 
     def test_batch_runtime_precheck_keeps_prepare_only_independent_of_fiji(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
