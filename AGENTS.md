@@ -123,15 +123,13 @@ Before requesting manual testing:
 
 If repeated user testing is required, treat that as evidence that the route itself may be poor. Apply the stop-loss policy rather than automatically generating another patched version.
 
-## Manual validation is a checkpoint, not a stop condition
+## Autonomous continuation and deferred questions
 
-Do **not** stop development merely because one completed slice now needs desktop/manual validation.
+Make routine implementation, dependency, refactor, UI/default and Git decisions autonomously. Record non-blocking user/manual questions in the deferred/current-state docs and continue. A task, test, commit, checkpoint, manual-validation point, pre-release or milestone is a transition point, not an automatic stopping condition.
 
-Unless the user explicitly asks for a pause, continue autonomously with other safe, useful work that does not depend on that validation. Record the pending manual check in `docs/development/CURRENT_STATE.md`, preserve a known-good fallback, and move to the next independent or low-risk task.
+Unless the user explicitly asks for a pause, continue autonomously with other safe, useful work that does not depend on pending manual validation. Preserve a known-good fallback and record exactly what still needs checking.
 
-Only stop for manual validation when further progress is genuinely blocked by information that cannot be inferred, simulated, tested, researched, or isolated safely.
-
-A completed milestone or pre-release is a checkpoint, not a reason to end the work session.
+Only stop when further progress is genuinely blocked by information that cannot be inferred, simulated, tested, researched, or isolated safely.
 
 ## GUI role
 
@@ -221,9 +219,7 @@ Generated crop names may encode useful metadata for human readability, but scrip
 - Keep geometry/math explicit and auditable rather than hidden behind unexplained constants.
 - Validate CSV/config inputs and fail/skip clearly rather than corrupting a batch.
 - Avoid destructive in-place processing by default.
-- Make routine implementation/refactor/dependency choices autonomously when evidence is clear.
 - Autonomously propose useful new workflow improvements when they plausibly reduce user effort or improve validation, but run every proposal through the same practical reuse-first policy before implementing it.
-- A completed subtask is a transition point, not a reason to redesign unrelated parts.
 - If a composed route needs a few manual steps but achieves a major time-cost reduction, implement it rather than continuing to chase total automation.
 - If a mature plugin/package is close but not exact, prefer adapting or patching it over replacing it unless there is concrete evidence that adaptation is less reliable or more costly.
 - Do not expand a speculative architecture until a small representative end-to-end route has actually worked.
