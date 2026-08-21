@@ -13,6 +13,7 @@ from tools.roi_preset_gui import (
     configured_fiji_root,
     find_roi_click_tools,
     patch_roi_click_tools,
+    validated_preset,
 )
 
 
@@ -62,6 +63,22 @@ class RoiPresetDiscoveryTests(unittest.TestCase):
             second = patch_roi_click_tools(toolset)
             self.assertIsNone(second)
             self.assertEqual(toolset.read_text(encoding="utf-8"), text)
+
+    def test_preset_values_must_be_finite_and_positive(self) -> None:
+        self.assertEqual(
+            validated_preset({"width": "108", "height": 120, "angle": "0"}),
+            {"width": 108.0, "height": 120.0, "angle": 0.0},
+        )
+        for preset in (
+            {"width": "NaN", "height": 120, "angle": 0},
+            {"width": 108, "height": "inf", "angle": 0},
+            {"width": 108, "height": 120, "angle": "NaN"},
+            {"width": 0, "height": 120, "angle": 0},
+            {"width": 108, "height": -1, "angle": 0},
+        ):
+            with self.subTest(preset=preset):
+                with self.assertRaises(ValueError):
+                    validated_preset(preset)
 
 
 if __name__ == "__main__":
