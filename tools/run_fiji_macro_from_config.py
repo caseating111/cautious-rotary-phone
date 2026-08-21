@@ -8,11 +8,7 @@ from pathlib import Path
 APP_DIR = Path.home() / ".cautious-rotary-phone"
 DEFAULT_CONFIG = APP_DIR / "config.json"
 REPO_ROOT = Path(__file__).resolve().parents[1]
-
-MACROS = {
-    "alignment": REPO_ROOT / "fiji" / "full_column_alignment.ijm",
-    "visibility": REPO_ROOT / "fiji" / "apply_global_visibility.ijm",
-}
+VISIBILITY_MACRO = REPO_ROOT / "fiji" / "apply_global_visibility.ijm"
 
 
 def load_config(path: Path) -> dict:
@@ -25,13 +21,7 @@ def load_config(path: Path) -> dict:
     return data
 
 
-def macro_argument(alias: str, config: dict) -> str:
-    if alias == "alignment":
-        tolerance = float(config.get("alignment_tolerance", 0.08))
-        if tolerance <= 0:
-            raise SystemExit("alignment_tolerance must be positive.")
-        return f"cols=10;rows=8;tolerance={tolerance:g}"
-
+def visibility_argument(config: dict) -> str:
     band = float(config.get("visibility_band", 50))
     black_offset = float(config.get("visibility_black_offset", 3))
     high_percentile = float(config.get("visibility_high_percentile", 99.5))
@@ -42,24 +32,24 @@ def macro_argument(alias: str, config: dict) -> str:
     return f"band={band:g};black_offset={black_offset:g};high_percentile={high_percentile:g}"
 
 
-def build_command(alias: str, config: dict) -> list[str]:
+def build_command(config: dict) -> list[str]:
     return [
         str(Path(config["fiji_executable"])),
         "-macro",
-        str(MACROS[alias]),
-        macro_argument(alias, config),
+        str(VISIBILITY_MACRO),
+        visibility_argument(config),
     ]
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("macro", choices=sorted(MACROS))
+    parser.add_argument("macro", choices=["visibility"])
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
     config = load_config(args.config)
-    command = build_command(args.macro, config)
+    command = build_command(config)
 
     if args.dry_run:
         print("COMMAND")
@@ -68,11 +58,10 @@ def main() -> None:
         return
 
     fiji = Path(config["fiji_executable"])
-    macro = MACROS[args.macro]
     if not fiji.is_file():
         raise SystemExit(f"Fiji executable not found: {fiji}")
-    if not macro.is_file():
-        raise SystemExit(f"Macro not found: {macro}")
+    if not VISIBILITY_MACRO.is_file():
+        raise SystemExit(f"Macro not found: {VISIBILITY_MACRO}")
 
     subprocess.Popen(command)
 
