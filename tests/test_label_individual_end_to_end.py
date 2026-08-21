@@ -16,7 +16,7 @@ WRAPPER = REPO_ROOT / "tools" / "run_existing_pillow_from_config.py"
 
 
 class LabelIndividualEndToEndTests(unittest.TestCase):
-    def test_label_individual_job_creates_one_nonempty_top_level_output(self) -> None:
+    def test_label_individual_job_uses_metadata_for_underscore_names_and_one_output_tree(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             home = root / "home"
@@ -35,21 +35,28 @@ class LabelIndividualEndToEndTests(unittest.TestCase):
             Image.new("L", (200, 200), 12).save(source)
             source_mtime = source.stat().st_mtime_ns
 
+            exp = "E_1"
+            set_name = "A_B"
+            type_name = "YPDA_day_1"
+
             grid_csv = root / "grid.csv"
             images_csv = root / "images.csv"
             conditions_csv = root / "condition_order.csv"
             grid_csv.write_text(
                 "Experiment,Set,GridCols,Column,Strain\n"
-                "E1,A,2,1,WT\n"
-                "E1,A,2,2,mut1\n",
+                f"{exp},{set_name},2,1,WT\n"
+                f"{exp},{set_name},2,2,mut1\n",
                 encoding="utf-8",
             )
             images_csv.write_text(
                 "Filename,Experiment,Set,Type\n"
-                "plate1.jpg,E1,A,YPDA\n",
+                f"plate1.jpg,{exp},{set_name},{type_name}\n",
                 encoding="utf-8",
             )
-            conditions_csv.write_text("Order,Type\n1,YPDA\n", encoding="utf-8")
+            conditions_csv.write_text(
+                f"Order,Type\n1,{type_name}\n",
+                encoding="utf-8",
+            )
 
             for index, (column, strain, state) in enumerate(
                 (
@@ -60,7 +67,9 @@ class LabelIndividualEndToEndTests(unittest.TestCase):
                 ),
                 1,
             ):
-                path = crop_folder / f"E1_A_YPDA_{column:02d}_{state}_{strain}.png"
+                path = crop_folder / (
+                    f"{exp}_{set_name}_{type_name}_{column:02d}_{state}_{strain}.png"
+                )
                 Image.new("L", (20, 48), 30 + column).save(path)
                 os.utime(path, ns=(source_mtime + index, source_mtime + index))
 
@@ -91,6 +100,8 @@ class LabelIndividualEndToEndTests(unittest.TestCase):
             )
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertIn("Crop orientation: rotated 4, already ready 0", result.stdout)
+            self.assertIn("Labelled: 4", result.stdout)
+            self.assertIn("Skipped: 0", result.stdout)
 
             outputs = sorted(path for path in matrix_root.iterdir() if path.is_dir())
             self.assertEqual(len(outputs), 1)
