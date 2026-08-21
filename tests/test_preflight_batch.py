@@ -84,6 +84,23 @@ class PreflightBatchTests(unittest.TestCase):
         self.assertIn("Already complete images: 1", lines)
         self.assertIn("Crops still to produce: 0", lines)
 
+    def test_partially_complete_plate_warns_about_whole_plate_rerun_without_blocking(self) -> None:
+        output_dir = self.crop_root / "setA"
+        output_dir.mkdir()
+        meta = {"Experiment": "E1", "Set": "A", "Type": "YPDA"}
+        grid_rows = [
+            {"Column": "1", "Strain": "WT"},
+            {"Column": "2", "Strain": "mut1"},
+        ]
+        names = expected_output_names(meta, grid_rows)
+        (output_dir / names[0]).write_bytes(b"derived placeholder")
+
+        lines, problems, pending = build_report(self.config)
+        self.assertFalse(problems)
+        self.assertEqual([row["Filename"] for row in pending], ["plate1.jpg"])
+        self.assertIn("PARTIALLY COMPLETE PLATES — NON-BLOCKING (1)", lines)
+        self.assertIn("- setA/plate1.jpg: 1 existing, 3 missing", lines)
+
     def test_unexpected_crop_png_is_reported_but_not_blocking(self) -> None:
         output_dir = self.crop_root / "setA"
         output_dir.mkdir()
