@@ -91,25 +91,9 @@ class ExtendedController(Controller):
             self.status.set(f"Recognised existing project layout: {existing.project_root}")
             return
 
-        try:
-            planned = project_layout.planned_layout(source, self.project_prefix.get())
-        except SystemExit as exc:
-            messagebox.showerror("Project layout", str(exc))
-            return
-
-        if messagebox.askyesno(
-            "Create project layout?",
-            "Create the automatic project folders now?\n\n"
-            f"Project: {planned.project_root}\n"
-            f"Raw image root: {planned.image_root}\n"
-            f"Crops: {planned.crop_output}\n"
-            f"Matrices: {planned.matrix_output}\n\n"
-            "The selected image-root folder itself will be moved intact into Raw. "
-            "Image files are not modified or copied. Any external shortcut that points to the old folder path will need updating.",
-        ):
-            self.initialize_project_layout()
-        else:
-            self.status.set("Image root selected. Automatic project layout was not created.")
+        # Keep folder selection convenient, but route all actual moves through the
+        # same confirmation path as the explicit project-layout button.
+        self.initialize_project_layout()
 
     def apply_project_layout(
         self,
@@ -158,6 +142,29 @@ class ExtendedController(Controller):
             return
         source = Path(raw).resolve()
         original_parent = source.parent
+
+        existing = project_layout.existing_layout_for_raw(source) if source.is_dir() else None
+        if existing is None:
+            try:
+                planned = project_layout.planned_layout(source, self.project_prefix.get())
+            except SystemExit as exc:
+                messagebox.showerror("Project layout", str(exc))
+                return
+
+            if not messagebox.askyesno(
+                "Create project layout?",
+                "Create the automatic project folders now?\n\n"
+                f"Project: {planned.project_root}\n"
+                f"Raw image root: {planned.image_root}\n"
+                f"Crops: {planned.crop_output}\n"
+                f"Matrices: {planned.matrix_output}\n"
+                f"Metadata: {planned.metadata_dir}\n\n"
+                "The selected image-root folder itself will be moved intact into Raw. "
+                "Image files are not modified or copied. Any external shortcut that points to the old folder path will need updating.",
+            ):
+                self.status.set("Image root selected. Automatic project layout was not created.")
+                return
+
         try:
             layout = project_layout.initialize_project(source, self.project_prefix.get())
         except SystemExit as exc:
