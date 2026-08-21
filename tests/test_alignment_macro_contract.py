@@ -27,6 +27,20 @@ class AlignmentMacroContractTests(unittest.TestCase):
         self.assertIn("Array.findMaxima", text)
         self.assertIn("getProfile()", text)
 
+    def test_alignment_is_persisted_only_after_explicit_qc_accept(self) -> None:
+        text = ALIGNMENT_MACRO.read_text(encoding="utf-8")
+        qc_at = text.index('Dialog.create("Alignment QC")')
+        accept_at = text.index('if (action == "Accept")', qc_at)
+        save_at = text.index("saveLastAlignment(", accept_at)
+        retry_at = text.index("} else {", save_at)
+        retry_block = text[retry_at : text.index("}\n}", retry_at) + 2]
+
+        self.assertLess(qc_at, accept_at)
+        self.assertLess(accept_at, save_at)
+        self.assertIn("accepted = 1;", text[accept_at:save_at])
+        self.assertIn("Overlay.remove;", retry_block)
+        self.assertNotIn("saveLastAlignment(", retry_block)
+
 
 if __name__ == "__main__":
     unittest.main()
