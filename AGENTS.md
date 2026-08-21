@@ -8,26 +8,89 @@ Repository state, executable checks, actual script behaviour and accepted data c
 
 Preserve the useful existing workflow and improve it incrementally. Reliability, source-image safety, transparent geometry and low-friction human QC matter more than architectural novelty.
 
+The optimization target is **major reduction in user time and cognitive load**, not theoretical perfection, maximal automation, or a single elegant architecture. A workflow that reduces a multi-hour manual process to roughly ten minutes of guided/manual work can be an excellent outcome even if it still contains deliberate human steps.
+
+Manual oversight is not automatically technical debt. In this project it can be a valuable validation layer, especially when the user would otherwise need to review outputs later anyway. Do not remove reliable human checkpoints merely to claim higher automation.
+
 Fiji is the interactive scientific-image environment. Python/Pillow handles repeatable file/data/image composition work where appropriate. AutoHotkey is a thin global-hotkey/UI convenience layer only. A later Python controller may coordinate these pieces, but it must not absorb mature functionality merely to centralise it.
 
 For every substantial capability, use this decision order:
 
-`END FUNCTION -> EXISTING FIJI/IMAGEJ FEATURE OR TRUSTED PLUGIN -> MATURE DOMAIN TOOL/PACKAGE -> COMPOSE MULTIPLE EXISTING TOOLS -> THIN ADAPTER/BRIDGE -> SMALL CUSTOM IMPLEMENTATION FOR THE TRUE GAP -> BESPOKE REPLACEMENT ONLY AS LAST RESORT`
+`END FUNCTION -> EXISTING FIJI/IMAGEJ FEATURE OR TRUSTED PLUGIN -> MATURE DOMAIN TOOL/PACKAGE -> COMPOSE MULTIPLE EXISTING TOOLS -> PATCH/CONFIGURE/WRAP EXISTING TOOL -> THIN ADAPTER/BRIDGE -> SMALL CUSTOM IMPLEMENTATION FOR THE TRUE GAP -> BESPOKE REPLACEMENT ONLY AS LAST RESORT`
 
-A candidate tool does **not** need to satisfy 100% of the desired workflow by itself. If it solves a major part reliably, first investigate whether its limitation can be covered by a small adapter, preprocessing/postprocessing step, companion plugin/package, saved ROI/state, scripting wrapper or manual QC step.
+## Mandatory composition-first rule
 
-Do not reject a mature solution merely because one desired behaviour is missing. Do not use the missing 10-20% as justification to reimplement the other 80-90% from scratch.
+This is a hard project rule, not a preference.
 
-Before writing non-trivial original image-processing, segmentation, registration, ROI-management, interpolation, statistics, annotation, file-format or GUI machinery:
+A workable existing route does **not** need to be elegant, direct, fully automatic, or provided by one tool. It does not need to satisfy 100% of the desired workflow by itself.
 
-1. Identify the exact end function and constraints.
-2. Check Fiji/ImageJ built-ins and established Fiji/ImageJ plugins or update sites.
-3. Check mature Python packages where Python is the appropriate layer.
-4. Check whether a reliable composition of existing tools solves the end-to-end task.
-5. Document why the remaining gap genuinely requires custom code.
-6. Keep that custom code as narrow and replaceable as practical.
+Prefer combinations of mature tools even when the route is somewhat cobbled together. For example:
 
-Prefer boring, maintained, testable dependencies over clever custom algorithms. Existing custom code has no sunk-cost privilege, but working behaviour should not be discarded without a concrete improvement and compatibility plan.
+`Tool/plugin A solves ~60% + Tool/plugin B solves ~30% + manual step/glue/adapter solves ~10% = preferred route`
+
+Likewise, if an established plugin approximately performs the required function but needs manual point clicks, ROI repositioning, intermediate files, coordinate translation, CSV conversion, AHK assistance, Pillow post-processing, a macro wrapper, a patch, or another apparently hacky bridge, that is **not** a reason to reject it.
+
+Do not interpret multiple programs, intermediate files, manual references, wrappers, macros, patched plugins, or thin glue as architectural failure. "Messy internally but simple for the user" is acceptable when it is reliable and maintainable enough.
+
+A mature tool that solves 60-90% of the problem has a strong presumption in its favour. The missing portion should first be addressed by configuration, composition, patching, scripting, glue, manual interaction, preprocessing/postprocessing, or another mature tool.
+
+Do **not** respond to "this exact feature is not implemented in this exact way" by escalating directly into a large original implementation.
+
+Before writing substantial bespoke functionality, the agent must perform a second-pass reuse check using alternate terminology and decomposed subproblems. Specifically ask:
+
+1. Can an existing Fiji/ImageJ feature or plugin do any substantial portion?
+2. Can two or more existing tools together cover most of it?
+3. Can an approximate plugin be configured, patched, wrapped or complemented rather than replaced?
+4. Can a small manual step preserve validation while removing most of the time cost?
+5. Can a thin adapter, macro, file exchange, coordinate translation, CSV translation or GUI wrapper close the remaining gap?
+6. Can the GUI hide the multi-tool complexity so the user still has one simple control surface?
+7. If the answer still appears to be no, search/check once more before authorizing substantial custom code.
+
+Only after those checks may bespoke implementation be considered, and then it must be limited to the smallest genuinely uncovered gap.
+
+The burden of proof is on bespoke implementation, not on reuse.
+
+## Anti-perfection / anti-escalation rule
+
+Do not optimize for "100% automated" when that increases development risk, testing burden, or user time.
+
+Do not create a chain of increasingly complex original scripts merely because earlier custom attempts failed to achieve an idealized solution. Repeated custom-code patching that creates more manual testing, regressions, or unreliable behaviour is specifically contrary to this repository's goals.
+
+When a custom route becomes fragile or keeps requiring new patches, stop escalating it. Reassess existing plugins/packages/tools and prefer a simpler composed route even if it leaves some manual interaction.
+
+Prefer a reliable 80-95% reduction in effort over a brittle attempt at 100% automation.
+
+Success should be measured by outcomes such as:
+- hours of repetitive alignment/adjustment reduced to minutes;
+- fewer precision clicks;
+- fewer repeated settings changes;
+- fewer manual file/CSV translations;
+- clearer QC and easier retry;
+- preserved source data and validation;
+- fewer fragile scripts the user must repeatedly test.
+
+The "best" technical solution is not necessarily the most elegant or most automated one. A good-enough, robust, partially manual composition is often the intended solution.
+
+## GUI role
+
+The GUI should simplify controls and hide orchestration complexity, not replace mature processing tools.
+
+Prefer the GUI to provide a coherent control surface for:
+- file and folder locations;
+- persistent config;
+- macro/plugin toggles;
+- Fiji launch/control;
+- AHK launch/stop;
+- Pillow script settings;
+- CSV validation and translation;
+- presets;
+- processing-stage enable/disable choices;
+- status/errors;
+- lightweight handoff between existing tools.
+
+It is acceptable for the GUI to launch or coordinate several programs/scripts behind one button or workflow step.
+
+Do not move Fiji-native interactive work into Python merely to make the application appear self-contained.
 
 ## Workflow invariants
 
@@ -38,6 +101,8 @@ Do **not** remove the manual first/last-column alignment step unless the user ex
 The intended direction is to make those manual references more informative and less tedious: use whole-column references where practical, calculate the regular grid from them, tolerate weak/missing/smeared colonies, and show a full-grid QC overlay before accepting geometry.
 
 Automatic/refined detection may assist the selected columns, but the user's first/last-column placement is authoritative. Provide retry/re-align rather than silently overriding it.
+
+Manual reference clicks are acceptable if they substantially reduce total time while preserving useful oversight.
 
 ### Source and quantitative data safety
 
@@ -90,14 +155,16 @@ Generated crop names may encode useful metadata for human readability, but scrip
 - Avoid destructive in-place processing by default.
 - Make routine implementation/refactor/dependency choices autonomously when evidence is clear.
 - A completed subtask is a transition point, not a reason to redesign unrelated parts.
+- If a composed route needs a few manual steps but achieves a major time-cost reduction, implement it rather than continuing to chase total automation.
+- If a mature plugin/package is close but not exact, prefer adapting or patching it over replacing it unless there is concrete evidence that adaptation is less reliable or more costly.
 
 ## Research/reuse requirement
 
 When considering a new capability, explicitly search the mature ecosystem before implementing it from first principles. Examples include Fiji/ImageJ update sites/plugins, Bio-Formats/ImageJ facilities, ROI Manager tooling, registration/grid/segmentation plugins, established Python imaging/scientific libraries and Pillow facilities.
 
-Research should be driven by the desired function, not by exact wording. For example, if a requested "one-click ROI" tool nearly fits the need, investigate wrappers, ROI resizing, saved selections, macros or companion tools before deciding that a custom replacement is preferable.
+Research should be driven by the desired function and decomposed subfunctions, not by exact wording. For example, if a requested "one-click ROI" tool nearly fits the need, investigate wrappers, ROI resizing, saved selections, macros, plugin patching, companion tools or follow-on transformations before deciding that a custom replacement is preferable.
 
-The burden of proof is on bespoke implementation, not on reuse.
+If the first search suggests no exact match, run a second search with alternative terminology and component tasks before concluding that custom code is needed.
 
 ## Repository hygiene
 
