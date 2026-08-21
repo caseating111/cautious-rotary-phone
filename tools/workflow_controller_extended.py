@@ -56,13 +56,20 @@ class ExtendedController(Controller):
         return standard_pillow_preview.estimated_output_count(alias, config, crop_count=crop_count)
 
     def run_pillow_job(self) -> None:
+        alias = PILLOW_JOBS[self.pillow_job.get()]
+        if alias == "all-strains-dedup":
+            # This route has experiment-dependent biology/user intent. Never let the
+            # base controller silently use the legacy script's inherited E2/A choice.
+            self.launch_python("tools/dedup_control_gui.py")
+            self.status.set("Choose the preferred WT source; that dialog previews before Top + Low output by default.")
+            return
+
         if not self.preview_standard_outputs.get():
             super().run_pillow_job()
             return
 
         if not self.save():
             return
-        alias = PILLOW_JOBS[self.pillow_job.get()]
         preview = None
         try:
             config = pillow_adapter.load_config()
