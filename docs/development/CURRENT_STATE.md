@@ -63,7 +63,7 @@ Detailed CSV contract: `docs/development/CSV_VALIDATION.md`.
 
 Before an established Pillow child runs it validates project/source readiness, resolves exact current crop filenames, rejects missing/duplicate/case-colliding logical inputs, creates/probes `matrix_output`, stages only exact crops, normalizes orientation on staged copies, disables legacy in-place rotation, requires one new non-empty output folder and removes staging.
 
-Real `crop_output` files are never rotated/rewritten. All four standard controller choices have representative synthetic end-to-end tests.
+Real `crop_output` files are never rotated/rewritten. All four standard controller choices have representative synthetic end-to-end tests. `tools/standard_pillow_preview.py` also builds one disposable representative output for multi-image standard jobs without creating the configured real output folder or modifying real crops.
 
 Detailed route: `docs/development/EXISTING_PILLOW_ADAPTERS.md`. Deferred legacy semantics: `docs/development/DEFERRED_LEGACY_OUTPUT_QUESTIONS.md`.
 
@@ -76,15 +76,19 @@ Focused composition is an opt-in **thin adapter over the established matrix gene
 - resolves/stages only exact selected current crops;
 - normalizes orientation only on staged copies;
 - patches only `STATES_TO_BUILD` in a generated copy of the established `make_matrices.py` route;
-- remembers the last selection as convenience, not metadata authority.
+- remembers the **last successful** selection as convenience, not metadata authority; failed/rejected builds do not replace it.
 
-`tools/custom_matrix_gui_recorded.py` is the user-facing focused-composition GUI. It supports Experiment/Set-specific strain-column selection, condition subset, Top/Low, representative preview before multi-output generation, raw versus presentation-normalized display, detailed selected-crop availability, reopening prior JSON recipes, and readable processing logs. It does not silently launch Fiji or recrop missing selections.
+`tools/custom_matrix_gui_recorded.py` is the user-facing focused-composition GUI. It supports Experiment/Set-specific strain-column selection, per-group **All / None / Only this set** shortcuts, independent condition **All / None**, Top/Low, representative preview before multi-output generation, raw versus presentation-normalized display, detailed selected-crop availability, reopening prior JSON recipes, and readable processing logs. It does not silently launch Fiji or recrop missing selections.
+
+The availability action checks exact crop readiness. In presentation-normalized mode it also reports whether every selected source plate has a current archived Fiji display range, so missing/stale normalization inputs are visible before preview/render.
+
+Successful outputs place human-readable TXT records under `Processing Logs`; exact machine recipes remain separately under `_workflow`. The GUI exposes `Processing Logs` directly and reports the human log path after a successful build.
 
 Presentation mode remains derived-output-only. `tools/run_fiji_macro_from_config.py` launches `fiji/apply_global_visibility_and_archive.ijm`, a thin wrapper that runs the existing visibility calculation unchanged and archives the accepted source-specific range. `tools/presentation_normalize.py` applies that archived range only to disposable staged crop copies before the mature matrix generator runs.
 
 `tools/run_dedup_with_control.py` provides a similarly narrow adapter for the established `all-strains-dedup` script: the user chooses an Experiment/Set containing recognised WT X/Y rows and only the generated script's existing E2/A preference condition is patched. The old script's contradictory E2/B comment is not treated as biological authority. The selector now restores the **last successful** user-selected WT source when still valid; otherwise it starts from the available groups without an E2/A special-case default.
 
-Detailed contract: `docs/development/CUSTOM_COMPOSITION.md`. Relevant tests include `tests/test_custom_matrix_selection.py`, `tests/test_custom_matrix_preview.py`, `tests/test_custom_matrix_presentation_end_to_end.py`, `tests/test_custom_crop_inventory.py`, `tests/test_run_custom_matrix_job.py`, `tests/test_dedup_control_source.py`, `tests/test_output_processing_records.py` and `tests/test_output_recipe_loader.py`.
+Detailed contract: `docs/development/CUSTOM_COMPOSITION.md`. Relevant tests include `tests/test_custom_matrix_selection.py`, `tests/test_custom_matrix_preview.py`, `tests/test_custom_matrix_presentation_end_to_end.py`, `tests/test_custom_crop_inventory.py`, `tests/test_custom_matrix_gui_selection_controls.py`, `tests/test_custom_matrix_last_selection.py`, `tests/test_custom_matrix_processing_log_ui.py`, `tests/test_custom_presentation_range_inventory.py`, `tests/test_run_custom_matrix_job.py`, `tests/test_dedup_control_source.py`, `tests/test_output_processing_records.py` and `tests/test_output_recipe_loader.py`.
 
 Do not evolve this into a freeform figure editor. If arbitrary publication-figure rearrangement becomes necessary, evaluate mature tooling such as QuickFigures before adding custom canvas/layout machinery.
 
@@ -105,7 +109,7 @@ Important hardening:
 - standalone metadata/ROI helpers also handle non-object config cleanly;
 - launchers remain thin: named conda -> Windows `py` -> PATH Python. No installer layer.
 
-Environment: `environment.yml` = Python >=3.11 + Pillow. CI is configured for compileall + unittest discovery on Python 3.11 and 3.14. The GitHub commit-status endpoint currently exposes no direct-push check statuses here, so do not claim a whole-suite pass from this environment.
+Environment: `environment.yml` = Python >=3.11 + Pillow. CI is configured for compileall + unittest discovery on Python 3.11 and 3.14. Validation-only PR #26 ran the full current suite successfully on both versions at `workflow-dev` commit `01f066ae506d77d534a3fd9aa1cae7c50341902f`; it was closed without merge. `main` and `alpha-pre-release` were not advanced.
 
 ## Mature fallbacks / optional routes
 ### Peak fallback
@@ -137,10 +141,10 @@ Use one ordinary plate, allow one sensible retry, then stop. If it succeeds, one
 Exact checklist: `docs/development/MINIMAL_DESKTOP_VALIDATION.md`.
 
 ## Highest-value next work
-1. Run `--prepare-only` with real configured metadata when available.
-2. Perform the one-plate desktop validation.
-3. If peaks fail after one retry, test BAR before custom detection.
-4. Continue deterministic changes only when they prevent a real failure or remove repetitive work.
-5. Keep focused composition as thin glue around the existing Pillow generator; do not turn it into a custom figure editor.
+1. Perform the one-plate desktop validation when the user is available.
+2. If peaks fail after one retry, test BAR before custom detection.
+3. Continue deterministic Pillow/controller improvements that remove repetitive work without changing the mature generators.
+4. Keep focused composition as thin glue around the existing Pillow generator; do not turn it into a custom figure editor.
+5. V10.2 workbook integration remains deliberately deferred until the desired human workflow is discussed further.
 6. If quantitative measurement becomes a concrete need, use the Stowers one-plate proof before custom scoring.
 7. Keep unresolved biological semantics explicit/user-selected rather than encoding guesses.
