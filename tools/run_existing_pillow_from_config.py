@@ -83,7 +83,7 @@ def open_output(path: Path) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("script", choices=sorted(SCRIPTS))
-    parser.add_argument("--open-output", action="store_true")
+    parser.add_argument("--no-open-output", action="store_true")
     args = parser.parse_args()
 
     config = load_config()
@@ -97,7 +97,7 @@ def main() -> None:
         if output is not None:
             record_output(output)
             print(f"New output folder: {output}")
-            if args.open_output:
+            if not args.no_open_output:
                 open_output(output)
         else:
             print("No new output folder detected.")
