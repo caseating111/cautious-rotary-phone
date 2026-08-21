@@ -116,7 +116,8 @@ class Controller(tk.Tk):
         ttk.Button(self, text="Global visibility", command=lambda: self.launch_configured_fiji("visibility")).grid(row=r, column=2, sticky="ew", **pad)
 
         r += 1
-        ttk.Button(self, text="Run full-column batch", command=self.run_full_column_batch).grid(row=r, column=0, columnspan=3, sticky="ew", **pad)
+        ttk.Button(self, text="Batch preflight", command=self.run_batch_preflight).grid(row=r, column=0, sticky="ew", **pad)
+        ttk.Button(self, text="Run full-column batch", command=self.run_full_column_batch).grid(row=r, column=1, columnspan=2, sticky="ew", **pad)
 
         r += 1
         ttk.Label(self, text="Pillow output").grid(row=r, column=0, sticky="w", **pad)
@@ -194,6 +195,18 @@ class Controller(tk.Tk):
         else:
             messagebox.showerror("CSV validation", output)
             self.status.set("CSV validation found issues.")
+
+    def run_batch_preflight(self) -> None:
+        self.save()
+        script = REPO_ROOT / "tools" / "preflight_batch.py"
+        result = subprocess.run([sys.executable, str(script)], capture_output=True, text=True, check=False)
+        output = (result.stdout + result.stderr).strip() or "No preflight output."
+        if result.returncode == 0:
+            messagebox.showinfo("Batch preflight", output)
+            self.status.set("Batch preflight ready.")
+        else:
+            messagebox.showerror("Batch preflight", output)
+            self.status.set("Batch preflight found items to resolve.")
 
     def fiji_executable(self) -> Path | None:
         raw = self.vars["fiji_executable"].get().strip()
