@@ -171,6 +171,9 @@ def patch_matrix_states(configured_script: Path, states: list[str]) -> None:
 def run_selection(selection: dict, no_open_output: bool = False) -> Path:
     selection = normalize_selection(selection)
     config = pillow_adapter.load_config()
+    # Validate the authoritative complete project before deriving a sparse temporary view.
+    # The standard project validator intentionally requires contiguous 1..GridCols rows,
+    # while a focused comparison deliberately keeps only selected original column IDs.
     pillow_adapter.validate_csvs(config)
 
     APP_DIR.mkdir(parents=True, exist_ok=True)
@@ -184,7 +187,6 @@ def run_selection(selection: dict, no_open_output: bool = False) -> Path:
         filtered = filter_project_csvs(config, selection, csv_root)
         custom_config = dict(config)
         custom_config.update({key: str(path) for key, path in filtered.items()})
-        pillow_adapter.validate_csvs(custom_config)
 
         selected_crops = pillow_adapter.validate_unique_crop_matches(
             Path(config["crop_output"]),
