@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -27,6 +28,23 @@ class PresentationNormalizeTests(unittest.TestCase):
             with self.assertRaises(SystemExit) as caught:
                 load_range(root, "plate1.jpg")
             self.assertIn("identity mismatch", str(caught.exception))
+
+    def test_range_older_than_current_source_is_blocking(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / "plate1.jpg"
+            source.write_bytes(b"source")
+            archive = root / "plate1.jpg.txt"
+            archive.write_text(
+                "source_filename=plate1.jpg\nblack_point=10\nhigh_point=110\n",
+                encoding="utf-8",
+            )
+            os.utime(archive, ns=(1_000_000_000, 1_000_000_000))
+            os.utime(source, ns=(2_000_000_000, 2_000_000_000))
+
+            with self.assertRaises(SystemExit) as caught:
+                load_range(root, "plate1.jpg", source_path=source)
+            self.assertIn("older than the current source image", str(caught.exception))
 
     def test_normalization_changes_only_staged_crop_using_source_plate_archive(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
