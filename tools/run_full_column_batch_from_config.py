@@ -18,6 +18,8 @@ PREFLIGHT = REPO_ROOT / "tools" / "preflight_batch.py"
 PREFLIGHT_REPORT = APP_DIR / "last_preflight.txt"
 PENDING_IMAGES_CSV = APP_DIR / "pending_images.csv"
 CONFIGURED_MACRO = APP_DIR / "batch_full_column.configured.ijm"
+CONFIGURED_LEGACY_MACRO = APP_DIR / "batch_four_point_fallback.configured.ijm"
+LEGACY_STATE_FILE = APP_DIR / "four_point_fallback.state.txt"
 
 START_MARKER = "        // ====================================================\n        // IDENTIFY CURRENT PLATE"
 END_MARKER = "        setBatchMode(false);"
@@ -57,8 +59,10 @@ def load_config(require_fiji: bool = True) -> dict:
     return data
 
 
-def validate_runtime_files(config: dict, require_fiji: bool) -> None:
-    required_files = [SOURCE_MACRO, ALIGNMENT_MACRO, CROP_HELPER, VALIDATOR, PREFLIGHT]
+def validate_runtime_files(config: dict, require_fiji: bool, legacy: bool = False) -> None:
+    required_files = [SOURCE_MACRO, VALIDATOR, PREFLIGHT]
+    if not legacy:
+        required_files.extend([ALIGNMENT_MACRO, CROP_HELPER])
     missing = [path for path in required_files if not path.is_file()]
     if missing:
         raise SystemExit("Required workflow file(s) missing:\n" + "\n".join(str(path) for path in missing))
@@ -85,6 +89,19 @@ def validate_csvs(config: dict) -> None:
     if result.returncode != 0:
         output = (result.stdout + result.stderr).strip()
         raise SystemExit(output or "CSV validation failed.")
+
+
+def validate_legacy_grid_widths(config: dict) -> None:
+    path = Path(config["grid_csv"])
+    with path.open("r", encoding="utf-8-sig", newline="") as handle:
+        rows = list(csv.DictReader(handle))
+    widths = sorted({int((row.get("GridCols") or "0").strip()) for row in rows})
+    unsupported = [value for value in widths if value not in (10, 12)]
+    if unsupported:
+        raise SystemExit(
+            "The preserved four-point fallback only supports its original 10- or 12-column grids. "
+            "Unsupported GridCols: " + ", ".join(str(value) for value in unsupported)
+        )
 
 
 def run_preflight() -> int:
@@ -123,12 +140,11 @@ def replace_once(source: str, old: str, new: str) -> str:
     return source.replace(old, new, 1)
 
 
-def build_macro(config: dict) -> Path:
-    source = SOURCE_MACRO.read_text(encoding="utf-8")
-
+def configure_source_settings(source: str, config: dict) -> str:
     replacements = {
         'gridFile   = "path here";': f'gridFile   = "{macro_path(config["grid_csv"])}";',
         'imagesFile = "path here";': f'imagesFile = "{macro_path(PENDING_IMAGES_CSV)}";',
+        'stateFile  = "path here";': f'stateFile  = "{macro_path(LEGACY_STATE_FILE)}";',
         'inputRoot  = "path here";': f'inputRoot  = "{macro_path(config["image_root"])}";',
         'outputRoot = "path here";': f'outputRoot = "{macro_path(config["crop_output"])}";',
         "CROP_W = 130;": f'CROP_W = {config["crop_width"]};',
@@ -136,6 +152,18 @@ def build_macro(config: dict) -> Path:
     }
     for old, new in replacements.items():
         source = replace_once(source, old, new)
+    return source
+
+
+def build_legacy_macro(config: dict) -> Path:
+    source = configure_source_settings(SOURCE_MACRO.read_text(encoding="utf-8"), config)
+    APP_DIR.mkdir(parents=True, exist_ok=True)
+    CONFIGURED_LEGACY_MACRO.write_text(source, encoding="utf-8")
+    return CONFIGURED_LEGACY_MACRO
+
+
+def build_macro(config: dict) -> Path:
+    source = configure_source_settings(SOURCE_MACRO.read_text(encoding="utf-8"), config)
 
     if source.count(START_MARKER) != 1 or source.count(END_MARKER) != 1:
         raise SystemExit("Production macro calibration markers changed; refusing to guess where to patch.")
@@ -186,16 +214,24 @@ def main() -> None:
         action="store_true",
         help="validate/preflight and build the configured Fiji macro without requiring or launching Fiji",
     )
+    parser.add_argument(
+        "--legacy",
+        action="store_true",
+        help="use the preserved original four-point calibration/export block as the fallback route",
+    )
     args = parser.parse_args()
 
     config = load_config(require_fiji=not args.prepare_only)
-    validate_runtime_files(config, require_fiji=not args.prepare_only)
+    validate_runtime_files(config, require_fiji=not args.prepare_only, legacy=args.legacy)
     validate_csvs(config)
+    if args.legacy:
+        validate_legacy_grid_widths(config)
     pending = run_preflight()
-    macro = build_macro(config)
+    macro = build_legacy_macro(config) if args.legacy else build_macro(config)
 
+    route = "four-point fallback" if args.legacy else "full-column composed"
     if args.prepare_only:
-        print(f"Prepared composed batch for {pending} pending image(s): {macro}")
+        print(f"Prepared {route} batch for {pending} pending image(s): {macro}")
         return
 
     fiji = Path(config["fiji_executable"])
