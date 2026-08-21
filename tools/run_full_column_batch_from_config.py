@@ -50,6 +50,18 @@ def load_config() -> dict:
     return data
 
 
+def validate_runtime_files(config: dict, require_fiji: bool) -> None:
+    required_files = [SOURCE_MACRO, ALIGNMENT_MACRO, CROP_HELPER, VALIDATOR, PREFLIGHT]
+    missing = [path for path in required_files if not path.is_file()]
+    if missing:
+        raise SystemExit("Required workflow file(s) missing:\n" + "\n".join(str(path) for path in missing))
+
+    if require_fiji:
+        fiji = Path(config["fiji_executable"])
+        if not fiji.is_file():
+            raise SystemExit(f"Fiji executable not found: {fiji}")
+
+
 def validate_csvs(config: dict) -> None:
     result = subprocess.run(
         [
@@ -173,6 +185,7 @@ def main() -> None:
     args = parser.parse_args()
 
     config = load_config()
+    validate_runtime_files(config, require_fiji=not args.prepare_only)
     validate_csvs(config)
     pending = run_preflight()
     macro = build_macro(config)
@@ -182,8 +195,6 @@ def main() -> None:
         return
 
     fiji = Path(config["fiji_executable"])
-    if not fiji.is_file():
-        raise SystemExit(f"Fiji executable not found: {fiji}")
     subprocess.Popen([str(fiji), "-macro", str(macro)])
 
 
