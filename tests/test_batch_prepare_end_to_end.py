@@ -62,6 +62,7 @@ class BatchPrepareEndToEndTests(unittest.TestCase):
     def run_prepare(self, home: Path, *extra: str) -> subprocess.CompletedProcess[str]:
         env = os.environ.copy()
         env["HOME"] = str(home)
+        env["USERPROFILE"] = str(home)
         return subprocess.run(
             [sys.executable, str(BATCH_WRAPPER), "--prepare-only", *extra],
             capture_output=True,
