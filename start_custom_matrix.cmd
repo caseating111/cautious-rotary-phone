@@ -12,6 +12,8 @@ if not errorlevel 1 (
     rem conda is commonly a .bat/.cmd entry point on Windows, so use CALL.
     call conda run --no-capture-output -n cautious-rotary-phone python tools\custom_matrix_gui_recorded.py
     if not errorlevel 1 exit /b 0
+    call conda run --no-capture-output -n base python tools\custom_matrix_gui_recorded.py
+    if not errorlevel 1 exit /b 0
 )
 
 where py >nul 2>nul
