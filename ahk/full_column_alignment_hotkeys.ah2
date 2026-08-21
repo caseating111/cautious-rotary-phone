@@ -35,6 +35,36 @@ ShellMessage(wParam, lParam, msg, hwnd)
         try WinMove(10, 10, , , "ahk_id " lParam)
 }
 
+; Java dialogs can be created before their final title is visible to the shell
+; hook. This tiny fallback only repositions recognised workflow windows.
+SetTimer(KeepWorkflowWindowsVisible, 300)
+
+KeepWorkflowWindowsVisible()
+{
+    for title in ["1 / 2", "2 / 2", "1 / 4", "2 / 4", "3 / 4", "4 / 4"]
+    {
+        if hwnd := WinExist(title)
+            try WinMove(10, 10, , , hwnd)
+    }
+
+    ; Keep Fiji's small main toolbar window visible at the upper-right. Do not
+    ; touch image windows; only exact main-window titles are considered.
+    for title in ["Fiji", "ImageJ"]
+    {
+        if hwnd := WinExist(title)
+        {
+            try
+            {
+                WinGetPos(, , w, h, hwnd)
+                MonitorGetWorkArea(1, &left, &top, &right, &bottom)
+                x := Max(left, right - w - 10)
+                WinMove(x, top + 10, , , hwnd)
+            }
+            break
+        }
+    }
+}
+
 AlignmentDialogExists()
 {
     for title in [
