@@ -68,6 +68,7 @@ def run_job(selection: dict, no_open_output: bool = False) -> Path:
     output = pillow_adapter.newest_new_directory(before, after)
     if output is None or not pillow_adapter.directory_has_content(output):
         raise SystemExit("Presentation custom-matrix job returned success but produced no non-empty output folder.")
+    custom.validate_matrix_outputs(output, selection)
 
     custom.save_last_selection(selection)
     pillow_adapter.record_output(output)
