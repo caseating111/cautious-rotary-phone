@@ -7,35 +7,30 @@ Current repository branches are `main`, `workflow-dev` and `alpha-pre-release`. 
 
 Binding rules: root `AGENTS.md` and `docs/development/IMPLEMENTATION_DECISION_POLICY.md`. Optimize total user time-to-reliable-result, reuse mature tools first, preserve source pixels/manual alignment authority, prove small routes, and stop patch/retest escalation early.
 
+## Current alignment priority
+The current desktop test route is the established four-point mathematical alignment, not the experimental full-column detector. The four authoritative colony-centre references are R1C1, R1C(last), R5C1 and R5C(last). The complete 8 x N grid is interpolated mathematically from those four centres; there is no colony/peak detection in this route.
+
+For the one-plate proof, the installed mature ROI 1-click toolset supplies the click ROI. The proof selects `Rotated Rectangle Click Tool` automatically and does not create its own 108x108 click box. The user's saved ROI 1-click dimensions therefore remain authoritative for click convenience. The fixed crop dimensions remain configurable and currently default to 130 x 546 for consistent outputs.
+
+The proof uses a disposable boosted alignment-view duplicate, sampling the central 30% for temporary contrast so bright plate edges do not dominate. Source pixels remain unchanged. After the four clicks it shows a full mathematical grid QC with Accept/Retry before exporting crops from the original source image.
+
+The controller no longer treats a still-open Fiji application process as proof that a one-plate macro is still active. A later proof may be launched while Fiji remains open; Fiji's own single-instance behavior is allowed to handle reuse. The AHK helper keeps recognised placement dialogs in the upper-left and the small main Fiji/ImageJ toolbar window in the upper-right, and supports Z to advance/accept plus X to Retry on either QC dialog.
+
+The full-column native-profile route remains available as an experimental/alternate path, but do not invest more effort in it before the four-point route is proven on a representative real plate.
+
 ## Active workflow
-- **Fiji/ImageJ:** manual first/last whole-column alignment, native profile/peak selection, full-grid QC, crop export, display-only visibility.
-- **AHK v2:** Z/X dialog convenience and placement positioning only.
+- **Fiji/ImageJ:** current priority is four-point manual centre references -> mathematical grid -> QC -> crop export; full-column profile alignment remains optional/experimental.
+- **ROI 1-click tools:** existing `Rotated Rectangle Click Tool` supplies the one-click ROI for four-point calibration; do not duplicate this plugin behavior in project code.
+- **AHK v2:** Z/X dialog convenience and window placement only.
 - **Pillow:** established matrix/label jobs plus focused composition adapters, always behind validated disposable staging.
 - **Tkinter controller:** paths/config/orchestration only; focused output tools are launched as separate small GUIs.
-- **Original four-point Fiji macro:** preserved immediate fallback.
 
 No real experimental data belongs in the repo.
 
-## Full-column alignment
-`fiji/full_column_alignment.ijm`:
-1. user confirms one tall rectangle around the first column;
-2. ImageJ wide-line `getProfile()` averages across the rectangle width;
-3. native `Array.findMaxima()` returns peaks by descending strength; keep strongest expected count, then sort top-to-bottom;
-4. user confirms the same rectangle on the last column;
-5. interpolate complete grid;
-6. inspect overlay and explicitly Accept/Retry;
-7. only accepted geometry is saved.
-
-Official ImageJ docs confirm both thick `makeLine(..., lineWidth)` and wide-line pixel averaging. The emergency profile fallback uses ImageJ `getStatistics(area, mean)` row means, not custom pixel code.
-
-Previous accepted same-sized geometry may only **suggest** the next first ROI and first-to-last span. It never auto-accepts. Retry/failure restores the current first ROI.
-
-Detailed contract: `docs/development/FULL_COLUMN_ALIGNMENT.md`. Regression: `tests/test_alignment_macro_contract.py`.
-
 ## Crop export
-`fiji/export_crops_from_alignment.ijm` verifies `last_alignment.txt` belongs to the current image (path+filename+dimensions when available), validates the complete grid and every intended Top/Low crop before the first write, then exports without modifying source pixels.
+The preserved four-point route keeps the mature R1/R5 interpolation and fixed Top/Low crop semantics. Current default crop dimensions are 130 x 546 and remain configurable. Source pixels are not modified by crop export.
 
-Detailed contract: `docs/development/ALIGNED_CROP_HELPER.md`.
+The alternate full-column helper `fiji/export_crops_from_alignment.ijm` verifies `last_alignment.txt` belongs to the current image (path+filename+dimensions when available), validates the complete grid and every intended Top/Low crop before the first write, then exports without modifying source pixels.
 
 ## Batch + fallback
 `tools/run_full_column_batch_from_config.py` reuses the established production folder/CSV loop.
@@ -45,115 +40,73 @@ Current important behavior:
 - the reused Fiji loop looks up raw `fileName` in the active metadata **before** `open(fullPath)`, so completed/non-pending plates are not loaded during resumed batches;
 - its final summary separates `Not listed / not pending` from real post-metadata skips;
 - the composed full-column macro neutralizes only the old pre-calibration 10/12-column guard, so full-column batches accept any validated `GridCols >= 2`;
-- `--legacy` keeps the original four-point calibration/export block **and** original 10/12-only guard.
+- `--legacy` keeps the original four-point calibration/export lineage and original 10/12-only guard.
 
-Tests: `tests/test_pending_skip_before_open.py`, `tests/test_full_column_grid_width_contract.py`, `tests/test_batch_prepare_end_to_end.py`, `tests/test_batch_crop_output_root.py`.
-
-Detailed route: `docs/development/FULL_COLUMN_BATCH.md`.
+The current one-plate four-point proof further patches only the interaction layer so ROI 1-click provides the click ROI and the generated full-grid QC uses the clicked ROI's dimensions for display boxes. Do not broaden this until the desktop proof passes.
 
 ## Preflight / CSV / metadata safety
 `tools/preflight_batch.py` is the source/crop readiness authority. It covers source mapping, grid availability, duplicate basenames/rows, crop freshness/readability/dimensions, output collisions, tree separation and plate-level resume state. Output collision checks include Windows case-insensitive path semantics.
 
-`tools/validate_project_csvs.py` protects the actual Fiji/Pillow parsers rather than inventing a new format. Important rules include exact headers, raw filename whitespace rejection, quoted comma-filename support, ImageJ-unsafe metadata delimiters/line breaks, Windows filename safety, and case/underscore collision checks for the mature Pillow `Experiment_Set_Type` prefix lookup.
+`tools/validate_project_csvs.py` protects the actual Fiji/Pillow parsers rather than inventing a new format. Important rules include exact required header names, but column order is not semantically significant because parsing is header-based; surrounding header whitespace is rejected. Raw filename whitespace, ImageJ-unsafe metadata delimiters/line breaks, Windows filename safety, case collisions and legacy flattened Experiment_Set_Type prefix collisions are also blocked.
 
 Metadata reconciliation remains conservative: existing `images.csv` is authoritative, new sources get blank metadata, drafts survive rescans, malformed review schemas are refused before overwrite, review refresh is atomic, candidate adoption is explicit/validated/backed up.
 
-Detailed CSV contract: `docs/development/CSV_VALIDATION.md`.
+## Project layout / config
+The controller can discover project CSVs from one selected CSV folder using case-insensitive filename matching where `grid.csv`, `images.csv` and `condition_order.csv` may be contained within longer filenames (for example `15.01.21 grid.csv`). Ambiguous matches fail closed.
+
+Automatic project layout remains explicit/confirmed: one selected image root can be moved intact, same-filesystem only, into `<PREFIX>_<original>/Raw/<original>` with sibling `Crops`, `Matrices` and `Metadata` folders. Default prefix is dd.mm.yy but arbitrary safe text such as ATTEMPT1 is accepted. Existing organised Raw projects reconnect idempotently. No fallback giant copy is attempted, no existing destination is silently merged, and CSV paths inside a moved source tree are rebased while external CSV paths remain unchanged.
+
+Global config remains under the user application folder so projects can reopen without reconfiguring the controller every launch. A more local optional preflight/report destination remains a future convenience, not a blocker.
+
+## Launchers
+`start_controller.cmd` prefers an already-active named conda environment, then `call conda run` for the named environment, then Anaconda/base, then Windows `py`, then PATH `python`. Using `call` is required for Windows conda batch/cmd entry points so fallback execution returns to the launcher.
+
+`start_controller_no_anaconda.cmd` deliberately skips conda/Anaconda and uses Windows `py` then PATH `python`.
+
+Do not add an installer/environment manager unless concrete desktop evidence requires it.
 
 ## Established Pillow outputs
 `tools/run_existing_pillow_from_config.py` is the supported entry for `matrices`, `all-strains`, `all-strains-dedup` and `label-individual`.
 
 Before an established Pillow child runs it validates project/source readiness, resolves exact current crop filenames, rejects missing/duplicate/case-colliding logical inputs, creates/probes `matrix_output`, stages only exact crops, normalizes orientation on staged copies, disables legacy in-place rotation, requires one new non-empty output folder and removes staging.
 
-Real `crop_output` files are never rotated/rewritten. All four standard controller choices have representative synthetic end-to-end tests. `tools/standard_pillow_preview.py` builds one disposable representative output for multi-image standard jobs without creating the configured real output folder or modifying real crops. `tools/workflow_controller_extended.py` uses that preview by default when a standard job will create multiple images; single-image jobs remain direct.
-
-A broader alias-specific completeness postcondition for the large standard wrapper was considered on 2026-08-21 but deliberately not forced through a whole-file high-blast-radius edit merely to guard a rare staging-regression case. Existing exact-crop validation plus synthetic end-to-end tests remain the current standard-route protection.
-
-Detailed route: `docs/development/EXISTING_PILLOW_ADAPTERS.md`. Deferred legacy semantics: `docs/development/DEFERRED_LEGACY_OUTPUT_QUESTIONS.md`.
+Real `crop_output` files are never rotated/rewritten. Standard multi-image jobs use representative preview-first orchestration from the controller; single-image jobs remain direct.
 
 ## Focused custom composition
-Focused composition is an opt-in **thin adapter over the established matrix generator**, not a replacement image-processing subsystem. It exists to make new comparisons from already-generated current crops without rerunning Fiji or editing authoritative CSVs.
+Focused composition remains an opt-in thin adapter over the established matrix generator, not a replacement renderer. It preserves authoritative CSVs, stages only exact current crops, supports group/column/condition/state selection, preview, raw versus presentation-normalized output, recipe reopening with exact availability validation, processing logs, and explicit user-selected WT/control Experiment/Set for the mature deduplicated output.
 
-`tools/custom_matrix_selection.py`:
-- keeps authoritative `grid.csv`, `images.csv` and `condition_order.csv` unchanged;
-- creates temporary filtered CSV views using stable original grid-column IDs;
-- resolves/stages only exact selected current crops;
-- normalizes orientation only on staged copies;
-- patches only `STATES_TO_BUILD` in a generated copy of the established `make_matrices.py` route;
-- verifies every selected Experiment/Set × state matrix exists before recording/opening success;
-- remembers the **last successful** selection as convenience, not metadata authority; failed/rejected builds do not replace it.
+Presentation normalization acts only on disposable staged copies. Archived Fiji display ranges are rejected when stale relative to current source images when `image_root` is configured. Successful builds verify all expected output matrices before remembering selections or recording success.
 
-`tools/custom_matrix_gui_recorded.py` is the user-facing focused-composition GUI. It supports Experiment/Set-specific strain-column selection, per-group **All / None / Only this set** shortcuts, independent condition **All / None**, Top/Low, representative preview before multi-output generation, raw versus presentation-normalized display, detailed selected-crop availability, reopening prior JSON recipes, and readable processing logs. It does not silently launch Fiji or recrop missing selections.
-
-Saved/old selections are now exact: before checkboxes are changed, `tools/custom_matrix_gui.py` verifies every saved group, original column and condition still exists in the current project. A stale recipe/last-selection is refused rather than silently narrowing to whatever metadata remains. Automatic startup restoration reports this non-modally and leaves the full-project default intact. Regression: `tests/test_custom_matrix_selection_restore.py`.
-
-The availability action checks exact crop readiness and collapses missing/stale/incompatible selected cells into the unique source plates that actually need rerunning. Missing/ambiguous source images are distinguished instead of being misleadingly presented as rerunnable. In presentation-normalized mode availability also reports whether every selected source plate has a current archived Fiji display range.
-
-Successful outputs place human-readable TXT records under `Processing Logs`; exact machine recipes remain separately under `_workflow`. The GUI exposes `Processing Logs` directly and reports the human log path after a successful build.
-
-Presentation mode remains derived-output-only. `tools/run_fiji_macro_from_config.py` launches `fiji/apply_global_visibility_and_archive.ijm`, a thin wrapper that runs the existing visibility calculation unchanged and archives the accepted source-specific range. `tools/presentation_normalize.py` applies that archived range only to disposable staged crop copies before the mature matrix generator runs. When `image_root` is configured, an archive older than the current source image is rejected and the user is told to rerun Global visibility once or use Raw mode.
-
-Preview performance is intentionally bounded: focused raw/presentation previews validate freshness on the representative exact crops they are already scanning/staging rather than performing an additional complete-selection crop-tree scan. The accepted full build still revalidates the whole requested selection at the real output boundary.
-
-`tools/run_dedup_with_control.py` is a similarly narrow adapter for the established `all-strains-dedup` script: the user chooses an Experiment/Set containing recognised WT X/Y rows and only the generated script's existing E2/A preference condition is patched. The old script's contradictory E2/B comment is not treated as biological authority. The selector restores the **last successful** user-selected WT source when still valid; otherwise it starts from available groups without an E2/A special-case default. Top preview is shown before Top+Low by default, and the full job now verifies both established Top/Low output images exist **before** recording last output, remembering the WT source or writing success records.
-
-Detailed contract: `docs/development/CUSTOM_COMPOSITION.md`. Relevant tests include `tests/test_custom_matrix_selection.py`, `tests/test_custom_matrix_preview.py`, `tests/test_custom_matrix_presentation_end_to_end.py`, `tests/test_custom_crop_inventory.py`, `tests/test_custom_matrix_gui_selection_controls.py`, `tests/test_custom_matrix_last_selection.py`, `tests/test_custom_matrix_processing_log_ui.py`, `tests/test_custom_presentation_range_inventory.py`, `tests/test_run_custom_matrix_job.py`, `tests/test_dedup_control_source.py`, `tests/test_output_processing_records.py`, `tests/test_output_recipe_loader.py` and `tests/test_custom_matrix_selection_restore.py`.
-
-Do not evolve this into a freeform figure editor. If arbitrary publication-figure rearrangement becomes necessary, evaluate mature tooling such as QuickFigures before adding custom canvas/layout machinery.
+Do not evolve this into a freeform figure editor.
 
 ## Visibility
-`fiji/apply_global_visibility.ijm` derives one display range from outside-grid robust background plus an inside-grid high percentile. It verifies current-image alignment identity and preserves quantitative pixels; RGB uses a disposable 8-bit QC duplicate. The archive wrapper stores source identity plus the resulting range for later presentation-only reuse. Keep quantitative processing on unmodified data.
+Routine visibility changes must remain non-destructive. The current four-point proof uses only a disposable alignment duplicate for its temporary central-sample boost. The separate global visibility route remains available for presentation consistency and derives one display range from robust background/high-percentile logic while preserving source pixels.
 
-Detailed route: `docs/development/GLOBAL_VISIBILITY.md`.
+## Quantitative measurement direction
+Do not implement a large custom scoring system yet. The desired future output should preserve multiple views rather than silently choosing one:
+- raw measurement from original grayscale pixels;
+- plate-background-corrected / normalized measurement suitable for within-plate WT comparisons;
+- optionally a clearly labelled measurement from the same visual-adjusted representation used for human inspection.
 
-## Controller / setup
-`start_controller.cmd` launches `tools/workflow_controller_extended.py`. The extension subclasses the existing lightweight controller rather than duplicating it, adding only entry points for **Custom matrices** and **Preferred WT source**, processing-log navigation and preview-first standard Pillow orchestration.
+Visual transforms must be recorded explicitly. Linear display transforms after background correction can be ratio-safe; hard thresholds, clipping, gamma and other nonlinear operations are not automatically equivalent to raw measurements.
 
-The controller remains an orchestration surface: paths, CSV discovery/validation, metadata review, ROI presets, settings, preflight/report opening, both Fiji batch routes, standard Pillow jobs, focused-output launchers, AHK and output navigation.
-
-Important hardening:
-- malformed/unreadable/non-object existing `config.json` is preserved rather than silently overwritten; implicit config-driven actions are blocked until explicit replacement;
-- all config-driven workflow actions honor that save guard;
-- processing/ROI numeric settings reject non-finite or invalid values;
-- standalone metadata/ROI helpers also handle non-object config cleanly;
-- launchers remain thin: named conda -> Windows `py` -> PATH Python. No installer layer.
-
-Environment: `environment.yml` = Python >=3.11 + Pillow. CI is configured for compileall + unittest discovery on Python 3.11 and 3.14. Validation-only PR #26 ran the then-current full suite successfully on both versions at `workflow-dev` commit `01f066ae506d77d534a3fd9aa1cae7c50341902f`; it was closed without merge. Newer direct-push workflow runs are not exposed by the current connector, so do not claim the post-PR suite has run until visible evidence exists.
-
-## Mature fallbacks / optional routes
-### Peak fallback
-If native `Array.findMaxima()` is still unreliable after one sensible reposition/retry on the representative plate, test mature BAR **Find Peaks** before custom detection. Do not pre-integrate it. The four-point route is always available.
-
-See `docs/development/BAR_FIND_PEAKS_FALLBACK.md`.
-
-### Quantitative growth measurement
-Jay Unruh/Stowers `plate analysis jru v1` is the first mature measurement candidate. `fiji/stowers_measure_current_alignment.ijm` is an **optional one-plate proof adapter only**: it verifies accepted geometry belongs to the current source, creates the plugin's required UL→UR→LR→LL polygon, displays geometry-derived spot count/XY ratio, then opens the plugin's native options dialog. It does not guess radius, replicate grouping or background settings and is not exposed in the controller.
-
-The current upstream **batch** plugin must not be used unchanged: its active directory-analysis code writes both `_avg.xls` and `_sem.xls` from `stats2[0]`, while its plotting path correctly uses `stats2[1]` for errors. If the single-plate proof succeeds and batch measurement is useful, prefer a tiny verified patch/wrapper around the mature plugin rather than custom scoring code.
-
-See `docs/development/STOWERS_PLATE_MEASUREMENT_CANDIDATE.md`.
-
-### General annotation
-No separate generic annotation stage is justified yet. Existing Pillow matrix/label composition already covers current structured outputs. If a concrete additional annotation output appears, reuse Pillow/existing metadata rather than inventing another metadata contract.
+The calculated mathematical grid can provide measurement regions directly; ROI Manager population is not inherently required. Jay Unruh/Stowers `plate analysis jru v1` remains a mature candidate worth testing before custom scoring, but its upstream batch plugin contains a known avg/sem write bug and must not be adopted unchanged.
 
 ## Pending minimal desktop validation
-The main remaining interactive uncertainty is one representative real plate:
-- Fiji `waitForUser` whole-column interaction;
-- real wide-line profile;
-- native row peaks;
-- interpolation/full-grid overlay;
-- accepted crop handoff;
-- optional AHK Z/X convenience.
+Use one representative real plate for the current four-point proof:
+1. launch `Run one-plate 4-point proof (choose plate)`;
+2. confirm the Fiji toolbar remains visible upper-right and the placement dialogs appear upper-left;
+3. confirm `Rotated Rectangle Click Tool` is selected automatically;
+4. click R1C1, R1C(last), R5C1 and R5C(last), using the existing ROI 1-click interaction;
+5. inspect the full mathematical grid QC and Accept or Retry once;
+6. verify expected crops are actually written and correctly positioned.
 
-Use one ordinary plate, allow one sensible retry, then stop. If it succeeds, one same-sized next plate validates both previous-geometry suggestions during normal use. Do not broad-stress-test first.
-
-Exact checklist: `docs/development/MINIMAL_DESKTOP_VALIDATION.md`.
+If that succeeds, run one second same-sized plate. Only then propagate any remaining interaction cleanup to the full four-point batch route. Do not return to detector tuning first.
 
 ## Highest-value next work
-1. Perform the one-plate desktop validation when the user is available.
-2. If peaks fail after one retry, test BAR before custom detection.
-3. Continue deterministic Pillow/controller improvements that remove repetitive work without changing the mature generators.
-4. Keep focused composition as thin glue around the existing Pillow generator; do not turn it into a custom figure editor.
-5. V10.2 workbook integration remains deliberately deferred until the desired human workflow is discussed further.
-6. If quantitative measurement becomes a concrete need, use the Stowers one-plate proof before custom scoring.
-7. Keep unresolved biological semantics explicit/user-selected rather than encoding guesses.
+1. Complete the one-plate four-point desktop proof above.
+2. If successful, make the full four-point batch interaction match the proven one-plate ROI 1-click behavior exactly.
+3. Keep crop size fixed across a job by default; later optionally support one-time first-plate crop-size/grid-spacing calibration followed by locked dimensions and per-image position recalculation.
+4. Later patch/adapt ROI 1-click locally rather than rewriting it, especially for optional draw-once preset calibration.
+5. After alignment/cropping is reliable, test mature quantitative measurement routes and export raw + plate-normalized + clearly labelled visual-adjusted metrics.
+6. Continue deterministic Pillow/controller improvements only where they remove real repetitive work without changing mature generators.
