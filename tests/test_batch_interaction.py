@@ -9,7 +9,7 @@ from tools import run_full_column_batch_from_config as batch_adapter
 
 
 class BatchInteractionTests(unittest.TestCase):
-    def test_composed_batch_keeps_plate_identity_non_modal(self) -> None:
+    def test_composed_batch_keeps_plate_identity_without_extra_modal(self) -> None:
         config = {
             "grid_csv": "C:/project/grid.csv",
             "images_csv": "C:/project/images.csv",
@@ -30,6 +30,7 @@ class BatchInteractionTests(unittest.TestCase):
             text = built.read_text(encoding="utf-8")
             self.assertIn("showStatus(", text)
             self.assertIn('runMacro(', text)
+            self.assertIn('"context=" + experiment + "/" + setName + "/" + typeName', text)
             self.assertNotIn('"Next plate"', text)
             self.assertNotIn("showMessage(\n            \"Next plate\"", text)
 
