@@ -95,6 +95,7 @@ class LabelIndividualEndToEndTests(unittest.TestCase):
 
             env = os.environ.copy()
             env["HOME"] = str(home)
+            env["USERPROFILE"] = str(home)
             result = subprocess.run(
                 [sys.executable, str(WRAPPER), "label-individual", "--no-open-output"],
                 capture_output=True,
