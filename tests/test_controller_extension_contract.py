@@ -29,6 +29,16 @@ class ControllerExtensionContractTests(unittest.TestCase):
         self.assertIn("super().run_pillow_job()", text)
         self.assertIn("Preview rejected. Full Pillow output was not generated.", text)
 
+    def test_deduplicated_dropdown_never_silently_uses_legacy_control_default(self) -> None:
+        text = EXTENDED.read_text(encoding="utf-8")
+        start = text.index("def run_pillow_job")
+        block = text[start:]
+        dedup = block.index('if alias == "all-strains-dedup":')
+        opt_out = block.index("if not self.preview_standard_outputs.get():")
+        self.assertLess(dedup, opt_out)
+        self.assertIn('self.launch_python("tools/dedup_control_gui.py")', block[dedup:opt_out])
+        self.assertIn("Choose the preferred WT source", block[dedup:opt_out])
+
     def test_label_individual_count_uses_validated_current_crops(self) -> None:
         text = EXTENDED.read_text(encoding="utf-8")
         start = text.index("def standard_output_count")
