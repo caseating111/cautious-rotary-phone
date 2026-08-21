@@ -132,6 +132,9 @@ for (i = 1; i < gridLines.length; i++) {
 }
 setBatchMode(false);
 
+if (exported != gridCols * 2)
+    exit("Unexpected crop export count: expected " + (gridCols * 2) + " but produced " + exported + ". Inspect this plate's derived output before rerunning.");
+
 selectWindow(sourceTitle);
 run("Select None");
 showStatus("Exported " + exported + " crops from accepted alignment.");
