@@ -4,8 +4,10 @@ import argparse
 import csv
 import json
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 from collections import defaultdict
 from pathlib import Path
 
@@ -100,12 +102,13 @@ def validate_source_readiness_if_configured(config: dict) -> None:
         )
 
 
-def configured_copy(alias: str, config: dict) -> Path:
+def configured_copy(alias: str, config: dict, image_root: str | Path | None = None) -> Path:
     source_path = SCRIPT_DIR / SCRIPTS[alias]
     source = source_path.read_text(encoding="utf-8")
+    effective_image_root = Path(image_root) if image_root is not None else Path(config["crop_output"])
 
     replacements = {
-        'IMAGE_ROOT = Path(r"path here")': f"IMAGE_ROOT = Path({str(Path(config['crop_output']))!r})",
+        'IMAGE_ROOT = Path(r"path here")': f"IMAGE_ROOT = Path({str(effective_image_root)!r})",
         'GRID_CSV = Path(r"path here")': f"GRID_CSV = Path({str(Path(config['grid_csv']))!r})",
         'IMAGES_CSV = Path(r"path here")': f"IMAGES_CSV = Path({str(Path(config['images_csv']))!r})",
         'CONDITION_ORDER_CSV = Path(r"path here")': f"CONDITION_ORDER_CSV = Path({str(Path(config['condition_order_csv']))!r})",
@@ -200,47 +203,51 @@ def validate_unique_crop_matches(
         if path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS
     )
     contract = expected_crop_contract(grid_path, images_path)
-    ambiguous: list[tuple[str, list[Path]]] = []
-    stale_mismatch: list[tuple[str, str, Path]] = []
+    duplicate_exact: list[tuple[str, list[Path]]] = []
+    stale_only: list[tuple[str, str, list[Path]]] = []
+    ignored_stale: list[Path] = []
     missing: list[str] = []
     selected: list[Path] = []
 
     for prefix, exact_name in sorted(contract.items()):
         matches = [path for path in files if path.stem.lower().startswith(prefix)]
-        if len(matches) > 1:
-            ambiguous.append((prefix, matches))
-        elif len(matches) == 1:
-            match = matches[0]
-            if match.name.lower() != exact_name.lower():
-                stale_mismatch.append((prefix, exact_name, match))
-            else:
-                selected.append(match)
+        exact_matches = [path for path in matches if path.name.lower() == exact_name.lower()]
+
+        if len(exact_matches) > 1:
+            duplicate_exact.append((exact_name, exact_matches))
+            continue
+        if len(exact_matches) == 1:
+            selected.append(exact_matches[0])
+            ignored_stale.extend(path for path in matches if path != exact_matches[0])
+            continue
+        if matches:
+            stale_only.append((prefix, exact_name, matches))
         else:
             missing.append(prefix)
 
-    if ambiguous:
+    if duplicate_exact:
         lines = [
-            "Ambiguous crop inputs: the reused Pillow scripts would choose the first matching file.",
-            "Remove/archive stale duplicates or correct metadata before generating outputs.",
+            "Duplicate exact crop inputs: more than one file has the exact current exporter filename.",
+            "Resolve duplicate current crops before generating outputs.",
         ]
-        for prefix, matches in ambiguous[:20]:
-            lines.append(f"{prefix}")
+        for exact_name, matches in duplicate_exact[:20]:
+            lines.append(exact_name)
             lines.extend(f"  - {path.relative_to(root)}" for path in matches)
-        if len(ambiguous) > 20:
-            lines.append(f"... plus {len(ambiguous) - 20} more ambiguous logical cells")
+        if len(duplicate_exact) > 20:
+            lines.append(f"... plus {len(duplicate_exact) - 20} more duplicate exact crop names")
         raise SystemExit("\n".join(lines))
 
-    if stale_mismatch:
+    if stale_only:
         lines = [
-            "Stale crop filename mismatch: a legacy prefix match exists, but it is not the exact filename the current exporter/metadata require.",
-            "The reused Pillow scripts would otherwise accept the stale file by prefix, so remove/archive it or rerun crop generation.",
+            "Stale crop filename mismatch: prefix-compatible files exist, but none has the exact filename the current exporter/metadata require.",
+            "Rerun crop generation or correct metadata; stale files are never substituted for missing current crops.",
         ]
-        for prefix, expected, match in stale_mismatch[:20]:
+        for prefix, expected, matches in stale_only[:20]:
             lines.append(f"{prefix}*")
             lines.append(f"  expected: {expected}")
-            lines.append(f"  found:    {match.relative_to(root)}")
-        if len(stale_mismatch) > 20:
-            lines.append(f"... plus {len(stale_mismatch) - 20} more stale filename mismatches")
+            lines.extend(f"  stale:    {path.relative_to(root)}" for path in matches[:5])
+        if len(stale_only) > 20:
+            lines.append(f"... plus {len(stale_only) - 20} more stale filename mismatches")
         raise SystemExit("\n".join(lines))
 
     if missing and not allow_missing:
@@ -256,8 +263,31 @@ def validate_unique_crop_matches(
 
     if missing:
         print(f"Allowing intentional partial Pillow output with {len(missing)} missing logical crop(s).")
+    if ignored_stale:
+        print(
+            f"Ignoring {len(set(ignored_stale))} stale prefix-compatible crop file(s); "
+            "only exact current exporter filenames will be staged."
+        )
 
     return sorted(set(selected))
+
+
+def stage_selected_crops(paths: list[Path], destination: Path) -> list[Path]:
+    destination.mkdir(parents=True, exist_ok=True)
+    staged: list[Path] = []
+    names: set[str] = set()
+    for source in paths:
+        key = source.name.lower()
+        if key in names:
+            raise SystemExit(f"Cannot stage duplicate exact crop filename: {source.name}")
+        names.add(key)
+        target = destination / source.name
+        try:
+            shutil.copy2(source, target)
+        except OSError as exc:
+            raise SystemExit(f"Could not stage crop {source}: {exc}") from exc
+        staged.append(target)
+    return staged
 
 
 def normalize_crop_orientation(
@@ -374,7 +404,7 @@ def main() -> None:
 
     config = load_config()
     validate_csvs(config)
-    configured = configured_copy(args.script, config)
+    validate_source_readiness_if_configured(config)
 
     crop_root = Path(config["crop_output"])
     selected_crops = validate_unique_crop_matches(
@@ -383,18 +413,24 @@ def main() -> None:
         Path(config["images_csv"]),
         allow_missing=args.allow_missing,
     )
-    validate_source_readiness_if_configured(config)
-    normalize_crop_orientation(
-        crop_root,
-        config["crop_width"],
-        config["crop_height"],
-        paths=selected_crops,
-        strict=True,
-    )
 
+    APP_DIR.mkdir(parents=True, exist_ok=True)
     output_root = Path(config["matrix_output"])
     before = child_directories(output_root)
-    result = subprocess.run([sys.executable, str(configured)], check=False)
+
+    with tempfile.TemporaryDirectory(prefix="pillow-input-", dir=APP_DIR) as temp:
+        staged_root = Path(temp)
+        staged_crops = stage_selected_crops(selected_crops, staged_root)
+        normalize_crop_orientation(
+            staged_root,
+            config["crop_width"],
+            config["crop_height"],
+            paths=staged_crops,
+            strict=True,
+        )
+        configured = configured_copy(args.script, config, image_root=staged_root)
+        result = subprocess.run([sys.executable, str(configured)], check=False)
+
     after = child_directories(output_root)
 
     if result.returncode == 0:
