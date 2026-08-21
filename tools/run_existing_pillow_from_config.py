@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
 
 APP_DIR = Path.home() / ".cautious-rotary-phone"
 CONFIG_FILE = APP_DIR / "config.json"
+LAST_OUTPUT_FILE = APP_DIR / "last_pillow_output.txt"
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT_DIR = REPO_ROOT / "existing scripts clean"
 
@@ -53,13 +55,53 @@ def configured_copy(alias: str, config: dict) -> Path:
     return out
 
 
+def child_directories(root: Path) -> set[Path]:
+    if not root.is_dir():
+        return set()
+    return {path.resolve() for path in root.iterdir() if path.is_dir()}
+
+
+def newest_new_directory(before: set[Path], after: set[Path]) -> Path | None:
+    created = [path for path in after - before if path.is_dir()]
+    if not created:
+        return None
+    return max(created, key=lambda path: path.stat().st_mtime_ns)
+
+
+def record_output(path: Path) -> None:
+    APP_DIR.mkdir(parents=True, exist_ok=True)
+    LAST_OUTPUT_FILE.write_text(str(path) + "\n", encoding="utf-8")
+
+
+def open_output(path: Path) -> None:
+    try:
+        os.startfile(path)  # type: ignore[attr-defined]
+    except (AttributeError, OSError):
+        print(f"Output folder: {path}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("script", choices=sorted(SCRIPTS))
+    parser.add_argument("--open-output", action="store_true")
     args = parser.parse_args()
 
-    configured = configured_copy(args.script, load_config())
+    config = load_config()
+    output_root = Path(config["matrix_output"])
+    before = child_directories(output_root)
+    configured = configured_copy(args.script, config)
     result = subprocess.run([sys.executable, str(configured)], check=False)
+
+    if result.returncode == 0:
+        output = newest_new_directory(before, child_directories(output_root))
+        if output is not None:
+            record_output(output)
+            print(f"New output folder: {output}")
+            if args.open_output:
+                open_output(output)
+        else:
+            print("No new output folder detected.")
+
     raise SystemExit(result.returncode)
 
 
