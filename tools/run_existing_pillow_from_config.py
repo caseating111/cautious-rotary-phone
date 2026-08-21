@@ -11,6 +11,11 @@ from pathlib import Path
 
 from PIL import Image
 
+try:
+    from tools.preflight_batch import build_report as build_batch_report
+except ModuleNotFoundError:
+    from preflight_batch import build_report as build_batch_report
+
 APP_DIR = Path.home() / ".cautious-rotary-phone"
 CONFIG_FILE = APP_DIR / "config.json"
 LAST_OUTPUT_FILE = APP_DIR / "last_pillow_output.txt"
@@ -74,6 +79,21 @@ def validate_csvs(config: dict) -> None:
     if result.returncode != 0:
         output = (result.stdout + result.stderr).strip()
         raise SystemExit(output or "CSV validation failed.")
+
+
+def validate_source_readiness_if_configured(config: dict) -> None:
+    if not str(config.get("image_root", "")).strip():
+        return
+    lines, problems, pending_rows = build_batch_report(config)
+    if problems:
+        raise SystemExit(
+            "Source/crop preflight found blocking issues before Pillow output:\n" + "\n".join(lines)
+        )
+    if pending_rows:
+        raise SystemExit(
+            f"Source/crop preflight shows {len(pending_rows)} plate(s) still needing crop generation/rebuild. "
+            "Run/finish the Fiji crop batch before producing final Pillow outputs.\n\n" + "\n".join(lines)
+        )
 
 
 def configured_copy(alias: str, config: dict) -> Path:
@@ -359,6 +379,7 @@ def main() -> None:
         Path(config["images_csv"]),
         allow_missing=args.allow_missing,
     )
+    validate_source_readiness_if_configured(config)
     normalize_crop_orientation(
         crop_root,
         config["crop_width"],
