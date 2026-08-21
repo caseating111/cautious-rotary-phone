@@ -1,0 +1,64 @@
+from __future__ import annotations
+
+import tempfile
+import unittest
+from pathlib import Path
+
+from PIL import Image
+
+from tools.presentation_normalize import display_map, load_range, normalize_staged_crops
+
+
+class PresentationNormalizeTests(unittest.TestCase):
+    def test_display_map_uses_archived_black_high_range(self) -> None:
+        image = Image.new("L", (3, 1))
+        image.putdata([10, 60, 110])
+        mapped = display_map(image, 10, 110)
+        self.assertEqual(list(mapped.getdata()), [0, 128, 255])
+
+    def test_range_identity_mismatch_is_blocking(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            path = root / "plate1.jpg.txt"
+            path.write_text(
+                "source_filename=plate2.jpg\nblack_point=10\nhigh_point=110\n",
+                encoding="utf-8",
+            )
+            with self.assertRaises(SystemExit) as caught:
+                load_range(root, "plate1.jpg")
+            self.assertIn("identity mismatch", str(caught.exception))
+
+    def test_normalization_changes_only_staged_crop_using_source_plate_archive(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            staged = root / "staged"
+            ranges = root / "ranges"
+            staged.mkdir()
+            ranges.mkdir()
+            grid = root / "grid.csv"
+            images = root / "images.csv"
+            grid.write_text(
+                "Experiment,Set,GridCols,Column,Strain\nE2,A,1,1,WT\n",
+                encoding="utf-8",
+            )
+            images.write_text(
+                "Filename,Experiment,Set,Type\nplate1.jpg,E2,A,YPDA\n",
+                encoding="utf-8",
+            )
+            crop = staged / "E2_A_YPDA_01_Top_WT.png"
+            image = Image.new("L", (3, 1))
+            image.putdata([10, 60, 110])
+            image.save(crop)
+            ranges.joinpath("plate1.jpg.txt").write_text(
+                "source_filename=plate1.jpg\nblack_point=10\nhigh_point=110\n",
+                encoding="utf-8",
+            )
+
+            count = normalize_staged_crops([crop], grid, images, ranges)
+            self.assertEqual(count, 1)
+            with Image.open(crop) as normalized:
+                self.assertEqual(list(normalized.getdata()), [0, 128, 255])
+
+
+if __name__ == "__main__":
+    unittest.main()
