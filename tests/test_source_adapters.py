@@ -43,6 +43,32 @@ class SourceAdapterTests(unittest.TestCase):
             self.assertNotIn("1 / 4 — R1C1", text)
             self.assertNotIn("4 / 4 — R5C", text)
 
+    def test_batch_runtime_precheck_keeps_prepare_only_independent_of_fiji(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            required = [root / name for name in ("source.ijm", "align.ijm", "crop.ijm", "validate.py", "preflight.py")]
+            for path in required:
+                path.write_text("placeholder\n", encoding="utf-8")
+
+            config = {"fiji_executable": str(root / "missing-fiji.exe")}
+            patches = [
+                patch.object(batch_adapter, "SOURCE_MACRO", required[0]),
+                patch.object(batch_adapter, "ALIGNMENT_MACRO", required[1]),
+                patch.object(batch_adapter, "CROP_HELPER", required[2]),
+                patch.object(batch_adapter, "VALIDATOR", required[3]),
+                patch.object(batch_adapter, "PREFLIGHT", required[4]),
+            ]
+            for item in patches:
+                item.start()
+            try:
+                batch_adapter.validate_runtime_files(config, require_fiji=False)
+                with self.assertRaises(SystemExit) as caught:
+                    batch_adapter.validate_runtime_files(config, require_fiji=True)
+                self.assertIn("Fiji executable not found", str(caught.exception))
+            finally:
+                for item in reversed(patches):
+                    item.stop()
+
     def test_all_pillow_aliases_only_replace_shared_path_block(self) -> None:
         config = {
             "crop_output": "C:/project/crops",
