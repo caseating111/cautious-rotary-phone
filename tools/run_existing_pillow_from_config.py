@@ -232,6 +232,8 @@ def main() -> None:
     args = parser.parse_args()
 
     config = load_config()
+    configured = configured_copy(args.script, config)
+
     crop_root = Path(config["crop_output"])
     selected_crops = validate_unique_crop_matches(
         crop_root,
@@ -248,7 +250,6 @@ def main() -> None:
 
     output_root = Path(config["matrix_output"])
     before = child_directories(output_root)
-    configured = configured_copy(args.script, config)
     result = subprocess.run([sys.executable, str(configured)], check=False)
 
     if result.returncode == 0:
