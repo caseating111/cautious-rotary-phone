@@ -5,17 +5,19 @@ from pathlib import Path
 from tkinter import messagebox, ttk
 
 try:
+    from tools import project_layout
     from tools import run_existing_pillow_from_config as pillow_adapter
     from tools import run_one_plate_validation as one_plate_validation
     from tools import standard_pillow_preview
     from tools.output_processing_records import write_output_records
-    from tools.workflow_controller import Controller, PILLOW_JOBS
+    from tools.workflow_controller import Controller, PILLOW_JOBS, PROJECT_CSV_FILES
 except ModuleNotFoundError:
+    import project_layout
     import run_existing_pillow_from_config as pillow_adapter
     import run_one_plate_validation as one_plate_validation
     import standard_pillow_preview
     from output_processing_records import write_output_records
-    from workflow_controller import Controller, PILLOW_JOBS
+    from workflow_controller import Controller, PILLOW_JOBS, PROJECT_CSV_FILES
 
 
 STANDARD_OUTPUT_TYPES = {
@@ -29,36 +31,138 @@ class ExtendedController(Controller):
     def __init__(self) -> None:
         super().__init__()
         self.preview_standard_outputs = tk.BooleanVar(value=True)
+        self.project_prefix = tk.StringVar(value=project_layout.default_prefix())
+
+        project_frame = ttk.Frame(self)
+        project_frame.grid(row=18, column=0, columnspan=3, sticky="ew", padx=5, pady=(6, 3))
+        ttk.Label(project_frame, text="Project prefix").pack(side="left")
+        ttk.Entry(project_frame, textvariable=self.project_prefix, width=18).pack(side="left", padx=(6, 8))
+        ttk.Button(
+            project_frame,
+            text="Create project layout from Image root",
+            command=self.initialize_project_layout,
+        ).pack(side="left")
+        ttk.Label(
+            project_frame,
+            text="  default: dd.mm.yy; custom text such as ATTEMPT1 is allowed",
+        ).pack(side="left")
 
         separator = ttk.Separator(self)
-        separator.grid(row=18, column=0, columnspan=3, sticky="ew", padx=5, pady=6)
+        separator.grid(row=19, column=0, columnspan=3, sticky="ew", padx=5, pady=6)
         ttk.Button(
             self,
             text="Custom matrices",
             command=lambda: self.launch_python("tools/custom_matrix_gui_recorded.py"),
-        ).grid(row=19, column=0, sticky="ew", padx=5, pady=3)
+        ).grid(row=20, column=0, sticky="ew", padx=5, pady=3)
         ttk.Button(
             self,
             text="Preferred WT source",
             command=lambda: self.launch_python("tools/dedup_control_gui.py"),
-        ).grid(row=19, column=1, sticky="ew", padx=5, pady=3)
+        ).grid(row=20, column=1, sticky="ew", padx=5, pady=3)
         ttk.Button(
             self,
             text="Open Processing Logs",
             command=self.open_processing_logs,
-        ).grid(row=19, column=2, sticky="ew", padx=5, pady=3)
+        ).grid(row=20, column=2, sticky="ew", padx=5, pady=3)
 
         ttk.Checkbutton(
             self,
             text="Preview first when a standard Pillow job will create multiple images",
             variable=self.preview_standard_outputs,
-        ).grid(row=20, column=0, columnspan=3, sticky="w", padx=5, pady=(3, 6))
+        ).grid(row=21, column=0, columnspan=3, sticky="w", padx=5, pady=(3, 6))
 
         ttk.Button(
             self,
             text="Run one-plate full-column proof (first pending image only)",
             command=self.run_one_plate_validation,
-        ).grid(row=21, column=0, columnspan=3, sticky="ew", padx=5, pady=(0, 6))
+        ).grid(row=22, column=0, columnspan=3, sticky="ew", padx=5, pady=(0, 6))
+
+    def browse(self, key: str, kind: str) -> None:
+        before = self.vars[key].get().strip()
+        super().browse(key, kind)
+        after = self.vars[key].get().strip()
+        if key != "image_root" or not after or after == before:
+            return
+
+        source = Path(after)
+        existing = project_layout.existing_layout_for_raw(source) if source.is_dir() else None
+        if existing is not None:
+            self.apply_project_layout(existing, original_parent=source.parent.parent.parent)
+            self.status.set(f"Recognised existing project layout: {existing.project_root}")
+            return
+
+        try:
+            planned = project_layout.planned_layout(source, self.project_prefix.get())
+        except SystemExit as exc:
+            messagebox.showerror("Project layout", str(exc))
+            return
+
+        if messagebox.askyesno(
+            "Create project layout?",
+            "Create the automatic project folders now?\n\n"
+            f"Project: {planned.project_root}\n"
+            f"Raw image root: {planned.image_root}\n"
+            f"Crops: {planned.crop_output}\n"
+            f"Matrices: {planned.matrix_output}\n\n"
+            "The selected image-root folder itself will be moved intact into Raw. "
+            "Image files are not modified or copied. Any external shortcut that points to the old folder path will need updating.",
+        ):
+            self.initialize_project_layout()
+        else:
+            self.status.set("Image root selected. Automatic project layout was not created.")
+
+    def apply_project_layout(self, layout: project_layout.ProjectLayout, original_parent: Path | None = None) -> None:
+        self.vars["image_root"].set(str(layout.image_root))
+        self.vars["crop_output"].set(str(layout.crop_output))
+        self.vars["matrix_output"].set(str(layout.matrix_output))
+
+        candidate_dirs = [layout.metadata_dir, layout.project_root]
+        if original_parent is not None:
+            candidate_dirs.append(original_parent)
+        for key, filename in PROJECT_CSV_FILES.items():
+            if self.vars[key].get().strip():
+                continue
+            for folder in candidate_dirs:
+                candidate = folder / filename
+                if candidate.is_file():
+                    self.vars[key].set(str(candidate))
+                    break
+
+        if self.save():
+            self.status.set(
+                f"Project ready: {layout.project_root} | raw images preserved under Raw | output paths configured automatically."
+            )
+
+    def initialize_project_layout(self) -> None:
+        if self.config_load_error:
+            messagebox.showerror(
+                "Project layout",
+                "Repair or explicitly replace the unreadable config before moving the image-root folder. "
+                "This prevents a successful folder move from being followed by an unsaved path configuration.",
+            )
+            return
+
+        raw = self.vars["image_root"].get().strip()
+        if not raw:
+            messagebox.showerror("Project layout", "Select Image root first.")
+            return
+        source = Path(raw)
+        original_parent = source.parent
+        try:
+            layout = project_layout.initialize_project(source, self.project_prefix.get())
+        except SystemExit as exc:
+            messagebox.showerror("Project layout", str(exc))
+            return
+
+        self.apply_project_layout(layout, original_parent=original_parent)
+        messagebox.showinfo(
+            "Project layout",
+            f"Project ready:\n{layout.project_root}\n\n"
+            f"Raw images:\n{layout.image_root}\n\n"
+            f"Crops:\n{layout.crop_output}\n\n"
+            f"Matrices:\n{layout.matrix_output}\n\n"
+            f"Metadata folder:\n{layout.metadata_dir}",
+        )
 
     def open_processing_logs(self) -> None:
         raw = self.vars["matrix_output"].get().strip()
