@@ -108,6 +108,12 @@ Configured visibility/batch wrappers reject malformed config objects and non-fin
 ## Controller / setup
 Controller remains a lightweight control surface for paths, sibling CSV discovery, metadata review, ROI presets, processing settings, preflight/report opening, both Fiji batch routes, Pillow jobs, AHK and output-folder navigation.
 
+Recent setup/feedback hardening remains deliberately presentation-only:
+- **Batch preflight** shows a short readiness/pending summary instead of duplicating the full saved report into a modal;
+- **Run full-column batch** / **Run 4-point fallback** also collapse only actual preflight-generated preparation failures to the saved report, while CSV/configuration errors remain visible directly;
+- Processing Settings rejects `NaN`/infinite values at save time, matching the downstream wrappers instead of persisting bad state;
+- ROI preset values are normalized before the patched ROI 1-Click Tools handoff. Non-numeric/non-finite presets and non-positive width/height values are rejected/ignored rather than written to the active preset file. `tests/test_roi_preset_discovery.py` protects this numeric contract.
+
 Root `start_controller.cmd` remains deliberately thin: active named conda -> `conda run` -> Windows `py` -> PATH Python. No automatic environment/Fiji/AHK installation layer.
 
 ## Mature peak fallback / stop-loss
