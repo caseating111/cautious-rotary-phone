@@ -21,6 +21,8 @@ class PendingSkipBeforeOpenTests(unittest.TestCase):
         self.assertIn("continue;", text[absent:open_image])
         self.assertNotIn("close();", text[absent:open_image])
         self.assertIn('plainPrefix  = fileName + ",";', text[lookup:absent])
+        self.assertIn("notListedImages++;", text[absent:open_image])
+        self.assertNotIn("skippedImages++;", text[absent:open_image])
 
     def test_old_post_open_title_lookup_is_not_reintroduced(self) -> None:
         text = SOURCE_MACRO.read_text(encoding="utf-8")
@@ -30,6 +32,11 @@ class PendingSkipBeforeOpenTests(unittest.TestCase):
         self.assertLess(open_image, source_title)
         self.assertNotIn('quotedPrefix = "\\\"" + sourceTitle', text)
         self.assertNotIn('plainPrefix  = sourceTitle + ",";', text)
+
+    def test_final_summary_distinguishes_not_pending_from_real_skips(self) -> None:
+        text = SOURCE_MACRO.read_text(encoding="utf-8")
+        self.assertIn('"Not listed / not pending: " + notListedImages', text)
+        self.assertIn('"Skipped after metadata match: " + skippedImages', text)
 
 
 if __name__ == "__main__":
