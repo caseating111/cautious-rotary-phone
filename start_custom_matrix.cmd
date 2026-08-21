@@ -4,7 +4,9 @@ cd /d "%~dp0"
 
 if /I "%CONDA_DEFAULT_ENV%"=="cautious-rotary-phone" (
     python tools\custom_matrix_gui_recorded.py
-    exit /b %errorlevel%
+    if not errorlevel 1 exit /b 0
+    echo.
+    echo Active cautious-rotary-phone environment failed; trying other Python routes.
 )
 
 where conda >nul 2>nul
@@ -19,8 +21,14 @@ if not errorlevel 1 (
 where py >nul 2>nul
 if not errorlevel 1 (
     py -3 tools\custom_matrix_gui_recorded.py
-    exit /b %errorlevel%
+    if not errorlevel 1 exit /b 0
 )
 
 python tools\custom_matrix_gui_recorded.py
-if errorlevel 1 pause
+if errorlevel 1 (
+    echo.
+    echo Could not start Custom matrices. Create the conda environment from environment.yml or make Python 3 available on PATH.
+    pause
+    exit /b 1
+)
+exit /b 0
