@@ -66,6 +66,58 @@ def patch_prepared_macro(source: str, proof_csv: Path) -> str:
     return source.replace(old, new, 1)
 
 
+def patch_roi_click_interaction(source: str) -> str:
+    """Let installed ROI 1-click tools provide the click ROI; keep only geometry/QC here."""
+    replacements = [
+        (
+            '            "A temporary boosted alignment view will open. Centre the 108x108 box four times."',
+            '            "A temporary boosted alignment view will open. Use ROI 1-click tools to click the four requested colony centres."',
+        ),
+        (
+            '        run("Enhance Contrast", "saturated=0.35");\n\n'
+            '        CLICK_ROI = 108;\n'
+            '        accepted = 0;\n'
+            '        makeRectangle(round(viewW / 2 - CLICK_ROI / 2), round(viewH / 2 - CLICK_ROI / 2), CLICK_ROI, CLICK_ROI);',
+            '        run("Enhance Contrast", "saturated=0.35");\n'
+            '        run("Select None");\n\n'
+            '        accepted = 0;',
+        ),
+        (
+            '                sourceTitle + "\\n\\nCentre box on ROW 1, COLUMN 1.\\n\\nReposition as needed, then click OK."',
+            '                sourceTitle + "\\n\\nWith ROI 1-click selected, click the centre of ROW 1, COLUMN 1, then click OK."',
+        ),
+        (
+            '                sourceTitle + "\\n\\nCentre box on ROW 1, COLUMN " + gridCols + ".\\n\\nReposition as needed, then click OK."',
+            '                sourceTitle + "\\n\\nWith ROI 1-click selected, click the centre of ROW 1, COLUMN " + gridCols + ", then click OK."',
+        ),
+        (
+            '                sourceTitle + "\\n\\nCentre box on ROW 5, COLUMN 1.\\n\\nReposition as needed, then click OK."',
+            '                sourceTitle + "\\n\\nWith ROI 1-click selected, click the centre of ROW 5, COLUMN 1, then click OK."',
+        ),
+        (
+            '                sourceTitle + "\\n\\nCentre box on ROW 5, COLUMN " + gridCols + ".\\n\\nReposition as needed, then click OK."',
+            '                sourceTitle + "\\n\\nWith ROI 1-click selected, click the centre of ROW 5, COLUMN " + gridCols + ", then click OK."',
+        ),
+        (
+            '            R1LX = x + w / 2;\n            R1LY = y + h / 2;',
+            '            R1LX = x + w / 2;\n            R1LY = y + h / 2;\n            QC_W = w;\n            QC_H = h;',
+        ),
+        (
+            '                    Overlay.drawRect(qcX - CLICK_ROI / 2, qcY - CLICK_ROI / 2, CLICK_ROI, CLICK_ROI);',
+            '                    Overlay.drawRect(qcX - QC_W / 2, qcY - QC_H / 2, QC_W, QC_H);',
+        ),
+        (
+            '            } else {\n                Overlay.remove;\n                makeRectangle(round(R1LX - CLICK_ROI / 2), round(R1LY - CLICK_ROI / 2), CLICK_ROI, CLICK_ROI);\n            }',
+            '            } else {\n                Overlay.remove;\n                run("Select None");\n            }',
+        ),
+    ]
+    for old, new in replacements:
+        if source.count(old) != 1:
+            raise SystemExit("Prepared four-point proof no longer matches the ROI 1-click adapter contract; refusing to guess.")
+        source = source.replace(old, new, 1)
+    return source
+
+
 def prepare(filename: str | None = None, *, legacy: bool = False) -> tuple[Path, dict[str, str]]:
     args = [sys.executable, str(Path(batch.__file__).resolve()), "--prepare-only"]
     configured = batch.CONFIGURED_MACRO
@@ -87,6 +139,8 @@ def prepare(filename: str | None = None, *, legacy: bool = False) -> tuple[Path,
     if not configured.is_file():
         raise SystemExit(f"Prepared macro not found: {configured}")
     proof_text = patch_prepared_macro(configured.read_text(encoding="utf-8"), PROOF_IMAGES_CSV)
+    if legacy:
+        proof_text = patch_roi_click_interaction(proof_text)
     proof_macro.write_text(proof_text, encoding="utf-8")
     return proof_macro, selected
 
