@@ -194,6 +194,16 @@ def build_legacy_macro(config: dict) -> Path:
 def build_macro(config: dict) -> Path:
     source = configure_source_settings(SOURCE_MACRO.read_text(encoding="utf-8"), config)
 
+    # The production source macro's original four-point route only understood
+    # 10/12-column layouts. Full-column geometry is generic for any validated
+    # GridCols >= 2, so neutralize only that legacy source guard here. The
+    # preserved fallback continues to use the original guard unchanged.
+    source = replace_once(
+        source,
+        "        if (gridCols != 10 && gridCols != 12) {",
+        "        if (gridCols < 2) {",
+    )
+
     if source.count(START_MARKER) != 1 or source.count(END_MARKER) != 1:
         raise SystemExit("Production macro calibration markers changed; refusing to guess where to patch.")
 
