@@ -60,6 +60,25 @@ class OnePlateValidationTests(unittest.TestCase):
         self.assertIn("QC_H = h;", patched)
         self.assertIn("Overlay.drawRect(qcX - QC_W / 2", patched)
 
+    def test_selected_plate_window_match_is_exact_and_case_insensitive(self) -> None:
+        with patch.object(
+            proof,
+            "open_window_titles",
+            return_value=["Fiji", "other.jpg", "PLATE1.JPG", "plate1.jpg - notes"],
+        ):
+            self.assertTrue(proof.proof_plate_is_open("plate1.jpg"))
+            self.assertFalse(proof.proof_plate_is_open("plate2.jpg"))
+            self.assertFalse(proof.proof_plate_is_open("notes"))
+
+    def test_open_selected_plate_blocks_before_prepare_but_other_images_do_not(self) -> None:
+        with patch.object(proof, "proof_plate_is_open", return_value=True), patch.object(
+            proof, "prepare"
+        ) as prepare:
+            with self.assertRaises(SystemExit) as caught:
+                proof.run("plate1.jpg")
+            self.assertIn("selected proof plate is already open", str(caught.exception))
+            prepare.assert_not_called()
+
     def test_live_fiji_process_does_not_block_another_proof(self) -> None:
         class RunningProcess:
             def poll(self):
@@ -70,6 +89,8 @@ class OnePlateValidationTests(unittest.TestCase):
         launched = object()
 
         with patch.object(proof, "_ACTIVE_FIJI_PROCESS", RunningProcess()), patch.object(
+            proof, "proof_plate_is_open", return_value=False
+        ), patch.object(
             proof, "prepare", return_value=(Path("proof.ijm"), selected)
         ) as prepare, patch.object(
             proof.batch, "load_config", return_value=fake_config
