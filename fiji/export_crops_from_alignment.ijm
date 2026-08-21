@@ -58,6 +58,7 @@ if (leftTopY < 0 || rightTopY < 0 || leftLowY < 0 || rightLowY < 0)
 gridText = File.openAsString(gridFile);
 gridLines = split(gridText, "\n");
 matched = 0;
+seenCols = newArray(gridCols);
 
 // Validate every intended crop before writing the first file. This avoids a
 // late bad rectangle leaving a plausible-looking but incomplete output set.
@@ -79,6 +80,9 @@ for (i = 1; i < gridLines.length; i++) {
     col = parseInt(clean(fields[3]));
     if (declaredCols != gridCols || col < 1 || col > gridCols)
         continue;
+    if (seenCols[col - 1] != 0)
+        exit("Duplicate grid column " + col + " for experiment " + experiment + " set " + setName + ". No crops were exported.");
+    seenCols[col - 1] = 1;
 
     u = (col - 1) / (gridCols - 1);
     cx = leftX + u * (rightX - leftX);
