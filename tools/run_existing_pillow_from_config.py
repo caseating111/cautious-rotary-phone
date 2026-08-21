@@ -34,25 +34,45 @@ SCRIPTS = {
 }
 
 
-def validate_output_layout(crop_output: str | Path, matrix_output: str | Path) -> None:
+def validate_output_layout(
+    crop_output: str | Path,
+    matrix_output: str | Path,
+    image_root: str | Path | None = None,
+) -> None:
     crop_root = Path(crop_output).resolve()
     matrix_root = Path(matrix_output).resolve()
     if matrix_root == crop_root or matrix_root.is_relative_to(crop_root):
         raise SystemExit(
-            "Matrix output must be outside crop_output. The reused Pillow scripts search crop_output recursively, "
-            "so putting generated matrices inside that tree would make later runs ingest their own outputs."
+            "Matrix output must be outside crop_output. Keeping generated outputs out of the derived-crop tree prevents accidental recursive input reuse."
         )
+
+    if image_root is not None and str(image_root).strip():
+        source_root = Path(image_root).resolve()
+        if matrix_root == source_root or matrix_root.is_relative_to(source_root):
+            raise SystemExit(
+                "Matrix output must be outside image_root. Preflight scans immediate source-image subfolders, so generated matrix folders inside the source tree would be rediscovered as source images."
+            )
 
 
 def load_config() -> dict:
     if not CONFIG_FILE.is_file():
         raise SystemExit(f"Config not found: {CONFIG_FILE}")
-    data = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+    try:
+        data = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise SystemExit(f"Could not read config.json: {exc}") from exc
+    if not isinstance(data, dict):
+        raise SystemExit("config.json must contain a JSON object of named settings.")
+
     required = ["crop_output", "matrix_output", "grid_csv", "images_csv", "condition_order_csv"]
     missing = [key for key in required if not str(data.get(key, "")).strip()]
     if missing:
         raise SystemExit("Missing config values: " + ", ".join(missing))
-    validate_output_layout(data["crop_output"], data["matrix_output"])
+    validate_output_layout(
+        data["crop_output"],
+        data["matrix_output"],
+        image_root=data.get("image_root"),
+    )
     try:
         data["crop_width"] = int(data.get("crop_width", 130))
         data["crop_height"] = int(data.get("crop_height", 546))
