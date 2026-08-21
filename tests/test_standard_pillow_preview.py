@@ -24,7 +24,8 @@ class StandardPillowPreviewTests(unittest.TestCase):
         self.source_folder = self.image_root / "setA"
         self.source_folder.mkdir(parents=True)
         self.crops = self.root / "crops"
-        self.crops.mkdir()
+        self.crop_folder = self.crops / "setA"
+        self.crop_folder.mkdir(parents=True)
         self.outputs = self.root / "outputs"
         self.grid = self.root / "grid.csv"
         self.images = self.root / "images.csv"
@@ -44,7 +45,7 @@ class StandardPillowPreviewTests(unittest.TestCase):
         source_mtime = source.stat().st_mtime_ns
         for column, strain in ((1, "WT X"), (2, "mut1")):
             for state in ("Top", "Low"):
-                crop = self.crops / f"E1_A_YPDA_{column:02d}_{state}_{strain}.png"
+                crop = self.crop_folder / f"E1_A_YPDA_{column:02d}_{state}_{strain}.png"
                 Image.new("L", (130, 546), 40 + column).save(crop)
                 os.utime(crop, ns=(source_mtime + 10_000_000, source_mtime + 10_000_000))
 
