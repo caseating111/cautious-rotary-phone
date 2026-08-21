@@ -331,6 +331,10 @@ def main():
     print(f"Skipped: {skipped}")
     print("\nOutput folder:\n" f"{MATRIX_OUTPUT}")
 
+    # A partial labelled set must not look successful to the shared wrapper.
+    # The wrapper will retain a non-empty partial output folder for inspection.
+    return 1 if skipped else 0
+
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
