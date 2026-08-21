@@ -66,6 +66,17 @@ class PreflightBatchTests(unittest.TestCase):
         self.assertIn("Already complete images: 1", lines)
         self.assertIn("Crops still to produce: 0", lines)
 
+    def test_unexpected_crop_png_is_reported_but_not_blocking(self) -> None:
+        output_dir = self.crop_root / "setA"
+        output_dir.mkdir()
+        (output_dir / "old_stale_crop.png").write_bytes(b"derived placeholder")
+
+        lines, problems, pending = build_report(self.config)
+        self.assertFalse(problems)
+        self.assertEqual([row["Filename"] for row in pending], ["plate1.jpg"])
+        self.assertIn("UNEXPECTED CROP PNGS — NON-BLOCKING (1)", lines)
+        self.assertIn("- setA/old_stale_crop.png", lines)
+
     def test_duplicate_source_basename_is_blocking(self) -> None:
         second_folder = self.image_root / "setB"
         second_folder.mkdir()
