@@ -229,9 +229,11 @@ def main() -> None:
     pending = run_preflight()
     macro = build_legacy_macro(config) if args.legacy else build_macro(config)
 
-    route = "four-point fallback" if args.legacy else "full-column composed"
     if args.prepare_only:
-        print(f"Prepared {route} batch for {pending} pending image(s): {macro}")
+        if args.legacy:
+            print(f"Prepared four-point fallback batch for {pending} pending image(s): {macro}")
+        else:
+            print(f"Prepared composed batch for {pending} pending image(s): {macro}")
         return
 
     fiji = Path(config["fiji_executable"])
