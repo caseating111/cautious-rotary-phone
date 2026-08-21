@@ -263,7 +263,23 @@ class Controller(tk.Tk):
         self.status.set(f"Launched: {script.name}")
 
     def launch_configured_fiji(self, macro_alias: str) -> None:
-        self.launch_python("tools/run_fiji_macro_from_config.py", macro_alias)
+        script = REPO_ROOT / "tools" / "run_fiji_macro_from_config.py"
+        if not script.is_file():
+            messagebox.showerror("Fiji launch", f"Configured Fiji helper not found:\n{script}")
+            return
+        self.save()
+        result = subprocess.run(
+            [sys.executable, str(script), macro_alias],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        output = (result.stdout + result.stderr).strip()
+        if result.returncode != 0:
+            messagebox.showerror("Fiji launch", output or "Configured Fiji launch failed without a message.")
+            self.status.set("Configured Fiji launch failed.")
+            return
+        self.status.set(f"Launched configured Fiji macro: {macro_alias}")
 
     def run_full_column_batch(self) -> None:
         self.save()
