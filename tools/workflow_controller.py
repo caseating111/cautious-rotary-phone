@@ -298,13 +298,17 @@ class Controller(tk.Tk):
             self.status.set("Batch not started: prepared macro missing.")
             return
 
+        ahk_was_running = bool(self.ahk_process and self.ahk_process.poll() is None)
         ahk = Path(self.vars["ahk_executable"].get().strip())
-        if ahk.is_file() and (not self.ahk_process or self.ahk_process.poll() is not None):
+        if ahk.is_file() and not ahk_was_running:
             self.start_ahk()
+        started_ahk_here = not ahk_was_running and bool(self.ahk_process and self.ahk_process.poll() is None)
 
         try:
             subprocess.Popen([str(exe), "-macro", str(CONFIGURED_BATCH_MACRO)])
         except OSError as exc:
+            if started_ahk_here:
+                self.stop_ahk()
             messagebox.showerror("Fiji launch", str(exc))
             self.status.set("Batch prepared but Fiji launch failed.")
             return
@@ -312,7 +316,29 @@ class Controller(tk.Tk):
 
     def run_pillow_job(self) -> None:
         alias = PILLOW_JOBS[self.pillow_job.get()]
-        self.launch_python("tools/run_existing_pillow_from_config.py", alias)
+        script = REPO_ROOT / "tools" / "run_existing_pillow_from_config.py"
+        if not script.is_file():
+            messagebox.showerror("Pillow output", f"Pillow helper not found:\n{script}")
+            self.status.set("Pillow output not started: helper missing.")
+            return
+
+        self.save()
+        self.status.set(f"Running Pillow output: {self.pillow_job.get()}…")
+        self.update_idletasks()
+        result = subprocess.run(
+            [sys.executable, str(script), alias],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        output = (result.stdout + result.stderr).strip()
+        if result.returncode != 0:
+            messagebox.showerror("Pillow output", output or "Pillow output failed without a message.")
+            self.status.set("Pillow output failed; see the error message.")
+            return
+
+        last_line = output.splitlines()[-1] if output else "Output complete."
+        self.status.set(f"Pillow output complete: {last_line}")
 
     def start_ahk(self) -> None:
         if self.ahk_process and self.ahk_process.poll() is None:
