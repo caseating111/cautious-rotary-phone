@@ -219,7 +219,7 @@ class PreflightBatchTests(unittest.TestCase):
 
         lines, problems, _ = build_report(self.config)
         self.assertTrue(problems)
-        self.assertIn("OUTPUT FILENAME COLLISIONS (4)", lines)
+        self.assertIn("OUTPUT PATH COLLISIONS (WINDOWS CASE-INSENSITIVE) (4)", lines)
         self.assertTrue(any("plate1.jpg" in line and "plate2.jpg" in line for line in lines))
 
     def test_same_metadata_in_different_source_folders_is_downstream_ambiguous(self) -> None:
@@ -236,7 +236,7 @@ class PreflightBatchTests(unittest.TestCase):
         lines, problems, pending = build_report(self.config)
         self.assertTrue(problems)
         self.assertEqual(sorted(row["Filename"] for row in pending), ["plate1.jpg", "plate2.jpg"])
-        self.assertNotIn("OUTPUT FILENAME COLLISIONS (4)", lines)
+        self.assertNotIn("OUTPUT PATH COLLISIONS (WINDOWS CASE-INSENSITIVE) (4)", lines)
         self.assertIn("DOWNSTREAM CROP-NAME AMBIGUITIES (4)", lines)
         self.assertTrue(any("setA/plate1.jpg" in line and "setB/plate2.jpg" in line for line in lines))
 
