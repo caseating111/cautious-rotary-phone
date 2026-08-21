@@ -209,15 +209,24 @@ def expected_crop_contract(grid_path: Path, images_path: Path) -> dict[str, str]
         columns_by_grid[(row.get("Experiment", ""), row.get("Set", ""))][column] = row.get("Strain", "")
 
     contract: dict[str, str] = {}
+    contract_source: dict[str, str] = {}
     for row in images:
         exp = row.get("Experiment", "")
         set_name = row.get("Set", "")
         type_name = row.get("Type", "")
+        source_name = row.get("Filename", "")
         for column, strain in columns_by_grid.get((exp, set_name), {}).items():
             for state in ("Top", "Low"):
                 prefix = f"{exp}_{set_name}_{type_name}_{column:02d}_{state}_".lower()
                 exact_name = f"{exp}_{set_name}_{type_name}_{column:02d}_{state}_{safe_name(strain)}.png"
+                if prefix in contract:
+                    raise SystemExit(
+                        "Duplicate logical crop identity in images.csv: "
+                        f"{contract_source[prefix]!r} and {source_name!r} both claim {prefix}*. "
+                        "The staged Pillow input is filename-based and cannot distinguish those outputs safely."
+                    )
                 contract[prefix] = exact_name
+                contract_source[prefix] = source_name
     return contract
 
 
