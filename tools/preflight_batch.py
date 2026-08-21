@@ -8,6 +8,8 @@ import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 
+from PIL import Image
+
 APP_DIR = Path.home() / ".cautious-rotary-phone"
 DEFAULT_CONFIG = APP_DIR / "config.json"
 DEFAULT_REPORT = APP_DIR / "last_preflight.txt"
@@ -41,6 +43,13 @@ def load_config(path: Path) -> dict:
             raise SystemExit(
                 f"Configured {key} contains a semicolon, which conflicts with the composed Fiji macro-argument delimiter: {data[key]}"
             )
+    try:
+        data["crop_width"] = int(data.get("crop_width", 130))
+        data["crop_height"] = int(data.get("crop_height", 546))
+    except (TypeError, ValueError) as exc:
+        raise SystemExit(f"Invalid crop dimensions: {exc}") from exc
+    if data["crop_width"] <= 0 or data["crop_height"] <= 0:
+        raise SystemExit("Crop dimensions must be positive.")
     return data
 
 
@@ -117,9 +126,28 @@ def expected_output_names(meta: dict[str, str], grid_rows: list[dict[str, str]])
     return names
 
 
+def expected_crop_issue(path: Path, source_mtime: int, crop_width: int, crop_height: int) -> str | None:
+    if not path.is_file():
+        return "missing"
+    if path.stat().st_mtime_ns < source_mtime:
+        return "older than source"
+    try:
+        with Image.open(path) as image:
+            size = image.size
+    except OSError:
+        return "unreadable/corrupt image"
+
+    valid_sizes = {(crop_width, crop_height), (crop_height, crop_width)}
+    if size not in valid_sizes:
+        return f"size {size[0]}x{size[1]} does not match configured {crop_width}x{crop_height} (or rotated)"
+    return None
+
+
 def build_report(config: dict) -> tuple[list[str], bool, list[dict[str, str]]]:
     image_root = Path(config["image_root"])
     crop_root = Path(config["crop_output"])
+    crop_width = int(config.get("crop_width", 130))
+    crop_height = int(config.get("crop_height", 546))
     grid = read_csv(Path(config["grid_csv"]))
     images = read_csv(Path(config["images_csv"]))
     sources = discover_sources(image_root)
@@ -152,6 +180,7 @@ def build_report(config: dict) -> tuple[list[str], bool, list[dict[str, str]]]:
     pending_rows: list[dict[str, str]] = []
     partial_images: list[str] = []
     stale_expected_crops: list[str] = []
+    incompatible_expected_crops: list[str] = []
     grid_missing: list[str] = []
     output_claims: dict[Path, list[Path]] = defaultdict(list)
     logical_name_claims: dict[str, list[Path]] = defaultdict(list)
@@ -178,14 +207,17 @@ def build_report(config: dict) -> tuple[list[str], bool, list[dict[str, str]]]:
             output_path = output_dir / name
             output_claims[output_path].append(source)
             logical_name_claims[name.lower()].append(source)
-            if output_path.is_file() and output_path.stat().st_mtime_ns >= source_mtime:
+            issue = expected_crop_issue(output_path, source_mtime, crop_width, crop_height)
+            if issue is None:
                 existing_crops += 1
                 image_existing += 1
             else:
                 if output_path.is_file():
-                    stale_expected_crops.append(
-                        f"{output_path.relative_to(crop_root)} <- source newer: {source.relative_to(image_root)}"
-                    )
+                    detail = f"{output_path.relative_to(crop_root)} <- {issue}"
+                    if issue == "older than source":
+                        stale_expected_crops.append(detail + f": {source.relative_to(image_root)}")
+                    else:
+                        incompatible_expected_crops.append(detail)
                 missing_crops += 1
                 image_missing += 1
 
@@ -193,7 +225,7 @@ def build_report(config: dict) -> tuple[list[str], bool, list[dict[str, str]]]:
             pending_rows.append({field: meta.get(field, "") for field in IMAGE_FIELDS})
             if image_existing:
                 partial_images.append(
-                    f"{source.relative_to(image_root)}: {image_existing} current, {image_missing} missing/stale"
+                    f"{source.relative_to(image_root)}: {image_existing} current, {image_missing} missing/stale/incompatible"
                 )
         else:
             complete_images += 1
@@ -259,6 +291,13 @@ def build_report(config: dict) -> tuple[list[str], bool, list[dict[str, str]]]:
             "These derived crops are older than their source image. They are treated as pending and will be regenerated on the plate-level rerun."
         )
         lines.extend(f"- {item}" for item in stale_expected_crops)
+
+    if incompatible_expected_crops:
+        lines.extend(["", f"INCOMPATIBLE EXPECTED CROPS — WILL REBUILD ({len(incompatible_expected_crops)})"])
+        lines.append(
+            "These expected PNGs are unreadable or do not match the configured crop dimensions (in either orientation). They are treated as pending."
+        )
+        lines.extend(f"- {item}" for item in incompatible_expected_crops)
 
     if partial_images:
         lines.extend(["", f"PARTIALLY COMPLETE PLATES — NON-BLOCKING ({len(partial_images)})"])
