@@ -3,6 +3,7 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from tools import run_one_plate_validation as proof
 
@@ -47,6 +48,20 @@ class OnePlateValidationTests(unittest.TestCase):
 
             with self.assertRaises(SystemExit):
                 proof.patch_prepared_macro("other = 1;\n", target)
+
+    def test_running_proof_blocks_second_launch_before_prepare(self) -> None:
+        class RunningProcess:
+            def poll(self):
+                return None
+
+        with patch.object(proof, "_ACTIVE_FIJI_PROCESS", RunningProcess()), patch.object(
+            proof, "prepare"
+        ) as prepare:
+            self.assertTrue(proof.proof_is_running())
+            with self.assertRaises(SystemExit) as caught:
+                proof.run("plate1.jpg")
+            self.assertIn("still running", str(caught.exception))
+            prepare.assert_not_called()
 
 
 if __name__ == "__main__":
