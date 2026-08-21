@@ -29,6 +29,8 @@ def run_job(selection: dict, no_open_output: bool = False) -> Path:
     range_dir = custom.APP_DIR / "display-ranges"
     output_root = pillow_adapter.ensure_matrix_output_root(config)
     before = pillow_adapter.child_directories(output_root)
+    image_root_value = str(config.get("image_root", "")).strip()
+    image_root = Path(image_root_value) if image_root_value else None
 
     with tempfile.TemporaryDirectory(prefix="custom-matrix-presentation-", dir=custom.APP_DIR) as temp:
         root = Path(temp)
@@ -53,7 +55,7 @@ def run_job(selection: dict, no_open_output: bool = False) -> Path:
             filtered["grid_csv"],
             filtered["images_csv"],
             range_dir,
-            image_root=Path(config["image_root"]),
+            image_root=image_root,
         )
         configured = pillow_adapter.configured_copy("matrices", custom_config, image_root=staged_root)
         custom.patch_matrix_states(configured, selection["states"])
