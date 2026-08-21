@@ -21,6 +21,12 @@ DEFAULTS = {
     "grid_csv": "",
     "images_csv": "",
     "condition_order_csv": "",
+    "alignment_tolerance": "0.08",
+    "crop_width": "130",
+    "crop_height": "546",
+    "visibility_band": "50",
+    "visibility_black_offset": "3",
+    "visibility_high_percentile": "99.5",
 }
 
 PILLOW_JOBS = {
@@ -29,6 +35,15 @@ PILLOW_JOBS = {
     "All strains (extra WT removed)": "all-strains-dedup",
     "Label individual crops": "label-individual",
 }
+
+PROCESSING_SETTINGS = [
+    ("Alignment peak tolerance", "alignment_tolerance"),
+    ("Crop width", "crop_width"),
+    ("Crop height", "crop_height"),
+    ("Visibility outside band", "visibility_band"),
+    ("Visibility black offset", "visibility_black_offset"),
+    ("Visibility high percentile", "visibility_high_percentile"),
+]
 
 
 def load_config() -> dict[str, str]:
@@ -91,6 +106,8 @@ class Controller(tk.Tk):
         ttk.Button(self, text="ROI presets", command=lambda: self.launch_python("tools/roi_preset_gui.py")).grid(row=r, column=2, sticky="ew", **pad)
 
         r += 1
+        ttk.Button(self, text="Processing settings", command=self.open_processing_settings).grid(row=r, column=0, columnspan=3, sticky="ew", **pad)
+        r += 1
         ttk.Separator(self).grid(row=r, column=0, columnspan=3, sticky="ew", padx=5, pady=6)
         r += 1
 
@@ -130,6 +147,38 @@ class Controller(tk.Tk):
     def save(self) -> None:
         save_config({key: var.get().strip() for key, var in self.vars.items()})
         self.status.set(f"Saved: {CONFIG_FILE}")
+
+    def open_processing_settings(self) -> None:
+        dialog = tk.Toplevel(self)
+        dialog.title("Processing settings")
+        dialog.resizable(False, False)
+        dialog.transient(self)
+        dialog.grab_set()
+        pad = {"padx": 6, "pady": 4}
+        for row, (label, key) in enumerate(PROCESSING_SETTINGS):
+            ttk.Label(dialog, text=label).grid(row=row, column=0, sticky="w", **pad)
+            ttk.Entry(dialog, textvariable=self.vars[key], width=14).grid(row=row, column=1, **pad)
+
+        def save_and_close() -> None:
+            try:
+                if float(self.vars["alignment_tolerance"].get()) <= 0:
+                    raise ValueError("Alignment tolerance must be positive.")
+                if int(self.vars["crop_width"].get()) <= 0 or int(self.vars["crop_height"].get()) <= 0:
+                    raise ValueError("Crop dimensions must be positive integers.")
+                if float(self.vars["visibility_band"].get()) < 1:
+                    raise ValueError("Visibility band must be at least 1.")
+                percentile = float(self.vars["visibility_high_percentile"].get())
+                if percentile <= 0 or percentile > 100:
+                    raise ValueError("Visibility percentile must be >0 and <=100.")
+            except ValueError as exc:
+                messagebox.showerror("Processing settings", str(exc), parent=dialog)
+                return
+            self.save()
+            dialog.destroy()
+
+        ttk.Button(dialog, text="Save", command=save_and_close).grid(
+            row=len(PROCESSING_SETTINGS), column=0, columnspan=2, sticky="ew", **pad
+        )
 
     def validate_csvs(self) -> None:
         paths = [
