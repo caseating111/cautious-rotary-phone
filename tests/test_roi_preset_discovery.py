@@ -5,7 +5,15 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tools.roi_preset_gui import TOOLSET_NAME, configured_fiji_root, find_roi_click_tools
+from tools.roi_preset_gui import (
+    HELPER_MARKER,
+    PATCH_CALL,
+    TOOL_MARKER,
+    TOOLSET_NAME,
+    configured_fiji_root,
+    find_roi_click_tools,
+    patch_roi_click_tools,
+)
 
 
 class RoiPresetDiscoveryTests(unittest.TestCase):
@@ -37,6 +45,23 @@ class RoiPresetDiscoveryTests(unittest.TestCase):
             expected = nested / TOOLSET_NAME
             expected.write_text("macro source", encoding="utf-8")
             self.assertEqual(find_roi_click_tools(root), [expected.resolve()])
+
+    def test_patch_is_idempotent_after_first_success(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            toolset = Path(temp) / TOOLSET_NAME
+            toolset.write_text(
+                f"{HELPER_MARKER}\n\n{TOOL_MARKER}\n}}\n",
+                encoding="utf-8",
+            )
+            backup = patch_roi_click_tools(toolset)
+            self.assertIsNotNone(backup)
+            text = toolset.read_text(encoding="utf-8")
+            self.assertIn("function loadActiveRectPreset()", text)
+            self.assertIn(PATCH_CALL, text)
+
+            second = patch_roi_click_tools(toolset)
+            self.assertIsNone(second)
+            self.assertEqual(toolset.read_text(encoding="utf-8"), text)
 
 
 if __name__ == "__main__":
