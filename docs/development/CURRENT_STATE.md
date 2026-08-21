@@ -27,7 +27,7 @@ A task/commit/checkpoint is not a reason to create another branch. If work is sa
 - `fiji/apply_global_visibility.ijm`: robust outside-grid background + inside-grid high percentile -> one whole-image display range while preserving quantitative source pixels.
 - It can consume saved visibility settings through ImageJ macro arguments; direct no-argument launch retains the original dialog.
 - `fiji/export_crops_from_alignment.ijm`: accepted alignment -> established Top/Low crop naming and geometry.
-- Crop export now validates every intended Top/Low rectangle against source-image bounds before writing the first PNG. A bad edge crop therefore aborts cleanly instead of leaving a misleading partial output set. Non-positive crop dimensions and zero matching grid rows are rejected as well. Existing crop geometry and naming are unchanged.
+- Crop export validates every intended Top/Low rectangle against source-image bounds before writing the first PNG. A bad edge crop therefore aborts cleanly instead of leaving a misleading partial output set. Non-positive crop dimensions and zero matching grid rows are rejected as well. Existing crop geometry and naming are unchanged.
 
 ### Existing production batch composition
 - `tools/run_full_column_batch_from_config.py` reuses the existing production Fiji batch macro's folder/CSV/image loop.
@@ -39,11 +39,14 @@ A task/commit/checkpoint is not a reason to create another branch. If work is sa
 ### Batch preflight / resume
 - `tools/preflight_batch.py` mirrors production immediate-subfolder, basename metadata and exact output-name semantics.
 - It reports discovered/mapped/unmapped images, duplicate source basenames, stale metadata rows, missing grid definitions and expected/existing/missing crop counts.
+- It now blocks when two distinct source images would claim the same derived crop pathname in the same output folder. This catches the dangerous case where repeated Experiment/Set/Type metadata inside one source folder would otherwise cause one image's crops to overwrite another's while still looking complete.
+- Same metadata in different immediate source folders remains valid because production writes those crops to separate corresponding output folders.
 - It writes `~/.cautious-rotary-phone/last_preflight.txt` and pending-only `pending_images.csv`.
 - The composed batch uses pending-only metadata, so the unchanged production macro naturally skips fully completed plates on rerun.
 - Partially complete plates remain pending as a whole plate; no fragile per-crop resume path is introduced.
 - Controller checks preflight before AHK/Fiji and launches nothing when the batch is already complete.
-- `tests/test_preflight_batch.py` provides stdlib synthetic coverage for missing, complete and duplicate-basename cases.
+- `tests/test_preflight_batch.py` covers missing, complete, duplicate-basename, same-folder output-collision and separate-folder non-collision cases.
+- The newly added collision logic was also exercised independently against synthetic temporary folders: collision and non-collision cases passed. No GitHub Actions workflow is currently attached to these direct branch commits, so this local stdlib check is the available non-user execution check for this slice.
 
 ### Metadata reconciliation
 - `tools/reconcile_images_csv.py` scans the production source folders, preserves existing authoritative metadata, leaves new metadata blank rather than guessed, and preserves manual draft metadata across rescans.
