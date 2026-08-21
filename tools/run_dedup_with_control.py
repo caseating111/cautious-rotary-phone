@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import subprocess
 import sys
 import tempfile
@@ -10,6 +11,9 @@ try:
     from tools import run_existing_pillow_from_config as pillow_adapter
 except ModuleNotFoundError:
     import run_existing_pillow_from_config as pillow_adapter
+
+
+PREFERENCE_FILE = pillow_adapter.APP_DIR / "preferred_wt_source.json"
 
 
 def canonical_control(name: str) -> str | None:
@@ -29,6 +33,30 @@ def control_groups(grid_csv: Path) -> dict[tuple[str, str], set[str]]:
         key = (row.get("Experiment", ""), row.get("Set", ""))
         groups.setdefault(key, set()).add(control)
     return groups
+
+
+def load_preferred_source(path: Path = PREFERENCE_FILE) -> tuple[str, str] | None:
+    if not path.is_file():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    experiment = str(data.get("experiment", "")).strip()
+    set_name = str(data.get("set", "")).strip()
+    if not experiment or not set_name:
+        return None
+    return experiment, set_name
+
+
+def save_preferred_source(experiment: str, set_name: str, path: Path = PREFERENCE_FILE) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps({"experiment": experiment.strip(), "set": set_name.strip()}, indent=2) + "\n",
+        encoding="utf-8",
+    )
 
 
 def validate_control_source(config: dict, experiment: str, set_name: str) -> set[str]:
@@ -101,6 +129,7 @@ def run(experiment: str, set_name: str, no_open_output: bool = False) -> Path:
     if output is None or not pillow_adapter.directory_has_content(output):
         raise SystemExit("Deduplicated all-strains job returned success but produced no non-empty output folder.")
     pillow_adapter.record_output(output)
+    save_preferred_source(experiment, set_name)
     print(
         f"Preferred control source: {experiment.strip()}/{set_name.strip()} "
         f"({', '.join(sorted(controls))}; missing recognised controls fall back to the script's first available candidate)."
