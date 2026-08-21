@@ -18,6 +18,15 @@ IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".tif", ".tiff"}
 IMAGE_FIELDS = ["Filename", "Experiment", "Set", "Type"]
 
 
+def validate_output_layout(image_root: str | Path, crop_output: str | Path) -> None:
+    source_root = Path(image_root).resolve()
+    crop_root = Path(crop_output).resolve()
+    if crop_root == source_root or crop_root.is_relative_to(source_root):
+        raise SystemExit(
+            "crop_output must be outside image_root. Derived crop files should not be written into the production source-image tree."
+        )
+
+
 def load_config(path: Path) -> dict:
     if not path.is_file():
         raise SystemExit(f"Config not found: {path}")
@@ -26,6 +35,7 @@ def load_config(path: Path) -> dict:
     missing = [key for key in required if not str(data.get(key, "")).strip()]
     if missing:
         raise SystemExit("Missing config values: " + ", ".join(missing))
+    validate_output_layout(data["image_root"], data["crop_output"])
     for key in ("grid_csv", "crop_output"):
         if ";" in str(data[key]):
             raise SystemExit(
