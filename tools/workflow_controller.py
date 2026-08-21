@@ -14,6 +14,7 @@ APP_DIR = Path.home() / ".cautious-rotary-phone"
 CONFIG_FILE = APP_DIR / "config.json"
 PENDING_IMAGES_CSV = APP_DIR / "pending_images.csv"
 CONFIGURED_BATCH_MACRO = APP_DIR / "batch_full_column.configured.ijm"
+CONFIGURED_LEGACY_BATCH_MACRO = APP_DIR / "batch_four_point_fallback.configured.ijm"
 
 DEFAULTS = {
     "fiji_executable": "",
@@ -136,7 +137,8 @@ class Controller(tk.Tk):
 
         r += 1
         ttk.Button(self, text="Batch preflight", command=self.run_batch_preflight).grid(row=r, column=0, sticky="ew", **pad)
-        ttk.Button(self, text="Run full-column batch", command=self.run_full_column_batch).grid(row=r, column=1, columnspan=2, sticky="ew", **pad)
+        ttk.Button(self, text="Run full-column batch", command=self.run_full_column_batch).grid(row=r, column=1, sticky="ew", **pad)
+        ttk.Button(self, text="Run 4-point fallback", command=self.run_four_point_batch).grid(row=r, column=2, sticky="ew", **pad)
 
         r += 1
         ttk.Label(self, text="Pillow output").grid(row=r, column=0, sticky="w", **pad)
@@ -307,7 +309,7 @@ class Controller(tk.Tk):
             return
         self.status.set(f"Launched configured Fiji macro: {macro_alias}")
 
-    def run_full_column_batch(self) -> None:
+    def run_prepared_batch(self, legacy: bool) -> None:
         self.save()
         script = REPO_ROOT / "tools" / "run_full_column_batch_from_config.py"
         if not script.is_file():
@@ -315,8 +317,16 @@ class Controller(tk.Tk):
             self.status.set("Batch not started: helper missing.")
             return
 
+        args = [sys.executable, str(script), "--prepare-only"]
+        configured_macro = CONFIGURED_BATCH_MACRO
+        route_name = "full-column"
+        if legacy:
+            args.append("--legacy")
+            configured_macro = CONFIGURED_LEGACY_BATCH_MACRO
+            route_name = "4-point fallback"
+
         prepared = subprocess.run(
-            [sys.executable, str(script), "--prepare-only"],
+            args,
             capture_output=True,
             text=True,
             check=False,
@@ -328,16 +338,16 @@ class Controller(tk.Tk):
                 self.status.set("Batch already complete.")
             else:
                 messagebox.showerror("Batch preparation", output)
-                self.status.set("Batch not started: preparation needs attention.")
+                self.status.set(f"{route_name} batch not started: preparation needs attention.")
             return
 
         exe = self.fiji_executable()
         if exe is None:
-            self.status.set("Batch prepared, but Fiji is not configured.")
+            self.status.set(f"{route_name} batch prepared, but Fiji is not configured.")
             return
-        if not CONFIGURED_BATCH_MACRO.is_file():
-            messagebox.showerror("Batch preparation", f"Prepared macro not found:\n{CONFIGURED_BATCH_MACRO}")
-            self.status.set("Batch not started: prepared macro missing.")
+        if not configured_macro.is_file():
+            messagebox.showerror("Batch preparation", f"Prepared macro not found:\n{configured_macro}")
+            self.status.set(f"{route_name} batch not started: prepared macro missing.")
             return
 
         ahk_was_running = bool(self.ahk_process and self.ahk_process.poll() is None)
@@ -347,14 +357,20 @@ class Controller(tk.Tk):
         started_ahk_here = not ahk_was_running and bool(self.ahk_process and self.ahk_process.poll() is None)
 
         try:
-            subprocess.Popen([str(exe), "-macro", str(CONFIGURED_BATCH_MACRO)])
+            subprocess.Popen([str(exe), "-macro", str(configured_macro)])
         except OSError as exc:
             if started_ahk_here:
                 self.stop_ahk()
             messagebox.showerror("Fiji launch", str(exc))
-            self.status.set("Batch prepared but Fiji launch failed.")
+            self.status.set(f"{route_name} batch prepared but Fiji launch failed.")
             return
-        self.status.set("Prepared batch launched in Fiji.")
+        self.status.set(f"Prepared {route_name} batch launched in Fiji.")
+
+    def run_full_column_batch(self) -> None:
+        self.run_prepared_batch(legacy=False)
+
+    def run_four_point_batch(self) -> None:
+        self.run_prepared_batch(legacy=True)
 
     def run_pillow_job(self) -> None:
         alias = PILLOW_JOBS[self.pillow_job.get()]
