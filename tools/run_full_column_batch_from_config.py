@@ -25,6 +25,7 @@ LEGACY_STATE_FILE = APP_DIR / "four_point_fallback.state.txt"
 
 START_MARKER = "        // ====================================================\n        // IDENTIFY CURRENT PLATE"
 END_MARKER = "        setBatchMode(false);"
+LEGACY_EXPORT_MARKER = "        // ====================================================\n        // EXPORT CROPS"
 
 
 def load_config(
@@ -190,8 +191,141 @@ def configure_source_settings(source: str, config: dict) -> str:
     return source
 
 
+def enhance_four_point_macro(source: str) -> str:
+    """Keep the mature four-point math/export, replacing only its interaction block."""
+    if source.count(START_MARKER) != 1 or source.count(LEGACY_EXPORT_MARKER) != 1:
+        raise SystemExit("Four-point calibration markers changed; refusing to guess where to patch.")
+
+    start = source.index(START_MARKER)
+    export = source.index(LEGACY_EXPORT_MARKER, start)
+    block = r'''        // ====================================================
+        // FOUR-POINT MATHEMATICAL ALIGNMENT + QC
+        // Geometry remains the established R1C1/R1C(last)/R5C1/R5C(last)
+        // centre-click method. The boosted alignment view is a disposable copy;
+        // source pixels and the established crop export remain untouched.
+        // ====================================================
+
+        showMessage(
+            "Next plate",
+            "Folder: " + cleanFolderName + "\n\n" +
+            "Image: " + sourceTitle + "\n\n" +
+            "Experiment: " + experiment + "\n" +
+            "Set: " + setName + "\n" +
+            "Type: " + typeName + "\n" +
+            "Grid: 8 x " + gridCols + "\n" +
+            "Exports: " + (nWanted * 2) + "\n\n" +
+            "A temporary boosted alignment view will open. Centre the 108x108 box four times."
+        );
+
+        // Disposable alignment-only copy: sample the central 30% so bright
+        // plate rims do not dominate the temporary contrast stretch.
+        selectWindow(sourceTitle);
+        if (isOpen("__alignment_view__")) {
+            selectWindow("__alignment_view__");
+            close();
+            selectWindow(sourceTitle);
+        }
+        run("Duplicate...", "title=__alignment_view__");
+        getDimensions(viewW, viewH, viewC, viewZ, viewT);
+        sampleW = round(viewW * 0.30);
+        sampleH = round(viewH * 0.30);
+        sampleX = round((viewW - sampleW) / 2);
+        sampleY = round((viewH - sampleH) / 2);
+        makeRectangle(sampleX, sampleY, sampleW, sampleH);
+        run("Enhance Contrast", "saturated=0.35");
+
+        CLICK_ROI = 108;
+        accepted = 0;
+        makeRectangle(round(viewW / 2 - CLICK_ROI / 2), round(viewH / 2 - CLICK_ROI / 2), CLICK_ROI, CLICK_ROI);
+
+        while (accepted == 0) {
+            Overlay.remove;
+
+            waitForUser(
+                "1 / 4 — R1C1",
+                sourceTitle + "\n\nCentre box on ROW 1, COLUMN 1.\n\nReposition as needed, then click OK."
+            );
+            getSelectionBounds(x, y, w, h);
+            if (w <= 0 || h <= 0)
+                exit("No rectangle ROI found for R1C1.");
+            R1LX = x + w / 2;
+            R1LY = y + h / 2;
+
+            waitForUser(
+                "2 / 4 — R1C" + gridCols,
+                sourceTitle + "\n\nCentre box on ROW 1, COLUMN " + gridCols + ".\n\nReposition as needed, then click OK."
+            );
+            getSelectionBounds(x, y, w, h);
+            if (w <= 0 || h <= 0)
+                exit("No rectangle ROI found for row 1 right.");
+            R1RX = x + w / 2;
+            R1RY = y + h / 2;
+
+            waitForUser(
+                "3 / 4 — R5C1",
+                sourceTitle + "\n\nCentre box on ROW 5, COLUMN 1.\n\nReposition as needed, then click OK."
+            );
+            getSelectionBounds(x, y, w, h);
+            if (w <= 0 || h <= 0)
+                exit("No rectangle ROI found for R5C1.");
+            R5LX = x + w / 2;
+            R5LY = y + h / 2;
+
+            waitForUser(
+                "4 / 4 — R5C" + gridCols,
+                sourceTitle + "\n\nCentre box on ROW 5, COLUMN " + gridCols + ".\n\nReposition as needed, then click OK."
+            );
+            getSelectionBounds(x, y, w, h);
+            if (w <= 0 || h <= 0)
+                exit("No rectangle ROI found for row 5 right.");
+            R5RX = x + w / 2;
+            R5RY = y + h / 2;
+
+            // Pure mathematical 8 x N lattice from the four authoritative centres.
+            Overlay.remove;
+            setColor("cyan");
+            for (qcRow = 1; qcRow <= 8; qcRow++) {
+                v = (qcRow - 1) / 4;
+                qcLeftX = R1LX + v * (R5LX - R1LX);
+                qcLeftY = R1LY + v * (R5LY - R1LY);
+                qcRightX = R1RX + v * (R5RX - R1RX);
+                qcRightY = R1RY + v * (R5RY - R1RY);
+                for (qcCol = 1; qcCol <= gridCols; qcCol++) {
+                    u = (qcCol - 1) / (gridCols - 1);
+                    qcX = qcLeftX + u * (qcRightX - qcLeftX);
+                    qcY = qcLeftY + u * (qcRightY - qcLeftY);
+                    Overlay.drawRect(qcX - CLICK_ROI / 2, qcY - CLICK_ROI / 2, CLICK_ROI, CLICK_ROI);
+                }
+            }
+            Overlay.show;
+
+            Dialog.create("Full-grid QC");
+            Dialog.addMessage(
+                "Inspect the mathematically calculated 8 x " + gridCols + " grid.\n\n" +
+                "Accept exports the fixed-size crops from the unchanged source image. Retry repeats the four centre placements."
+            );
+            Dialog.addChoice("Action", newArray("Accept", "Retry"), "Accept");
+            Dialog.show();
+            qcAction = Dialog.getChoice();
+            if (qcAction == "Accept") {
+                accepted = 1;
+            } else {
+                Overlay.remove;
+                makeRectangle(round(R1LX - CLICK_ROI / 2), round(R1LY - CLICK_ROI / 2), CLICK_ROI, CLICK_ROI);
+            }
+        }
+
+        Overlay.remove;
+        close();
+        selectWindow(sourceTitle);
+
+'''
+    return source[:start] + block + source[export:]
+
+
 def build_legacy_macro(config: dict) -> Path:
     source = configure_source_settings(SOURCE_MACRO.read_text(encoding="utf-8"), config)
+    source = enhance_four_point_macro(source)
     APP_DIR.mkdir(parents=True, exist_ok=True)
     CONFIGURED_LEGACY_MACRO.write_text(source, encoding="utf-8")
     return CONFIGURED_LEGACY_MACRO
@@ -229,9 +363,8 @@ def build_macro(config: dict) -> Path:
             "cols=" + gridCols + ";rows=8;tolerance={config['alignment_tolerance']};" +
             "context=" + experiment + "/" + setName + "/" + typeName
         );
-
         if (alignmentResult != "accepted")
-            exit("Full-column alignment did not complete successfully. No crops were written for this run.");
+            exit("Full-column alignment did not complete successfully; crop export was not started.");
 
         runMacro(
             "{macro_path(CROP_HELPER)}",
@@ -259,7 +392,7 @@ def main() -> None:
     parser.add_argument(
         "--legacy",
         action="store_true",
-        help="use the preserved original four-point calibration/export block as the fallback route",
+        help="use the established four-point centre-click geometry with mathematical full-grid QC",
     )
     args = parser.parse_args()
 
@@ -277,7 +410,7 @@ def main() -> None:
 
     if args.prepare_only:
         if args.legacy:
-            print(f"Prepared four-point fallback batch for {pending} pending image(s): {macro}")
+            print(f"Prepared four-point batch for {pending} pending image(s): {macro}")
         else:
             print(f"Prepared composed batch for {pending} pending image(s): {macro}")
         return
