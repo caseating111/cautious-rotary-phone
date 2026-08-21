@@ -15,13 +15,7 @@ if (!File.exists(alignmentFile))
 sourceTitle = getTitle();
 sourceWidth = getWidth();
 sourceHeight = getHeight();
-expectedTitle = readAlignmentValue(alignmentFile, "source_title", "");
-expectedWidth = parseInt(readAlignmentValue(alignmentFile, "source_width", "-1"));
-expectedHeight = parseInt(readAlignmentValue(alignmentFile, "source_height", "-1"));
-
-if (expectedTitle == "" || expectedWidth < 1 || expectedHeight < 1)
-    exit("Alignment geometry predates image-identity checks. Re-align this image once before applying visibility.");
-if (expectedTitle != sourceTitle || expectedWidth != sourceWidth || expectedHeight != sourceHeight)
+if (!alignmentMatchesCurrentImage(alignmentFile, sourceTitle, sourceWidth, sourceHeight))
     exit("The saved alignment belongs to a different image. Re-align the current image before applying visibility.");
 
 arg = getArgument();
@@ -145,6 +139,19 @@ function robustSideMedian(a, b, c, d) {
     n = vals.length;
     if (n % 2 == 1) return vals[floor(n / 2)];
     return (vals[n / 2 - 1] + vals[n / 2]) / 2;
+}
+
+function alignmentMatchesCurrentImage(path, title, width, height) {
+    savedDirectory = readAlignmentValue(path, "source_directory", "");
+    savedFilename = readAlignmentValue(path, "source_filename", "");
+    dimensionsMatch = parseInt(readAlignmentValue(path, "source_width", "-1")) == width &&
+                      parseInt(readAlignmentValue(path, "source_height", "-1")) == height;
+
+    if (savedDirectory != "" && savedFilename != "")
+        return dimensionsMatch && savedDirectory == getInfo("image.directory") && savedFilename == getInfo("image.filename");
+
+    // Backward-compatible fallback for older alignment files and unsaved synthetic images.
+    return dimensionsMatch && readAlignmentValue(path, "source_title", "") == title;
 }
 
 function readAlignmentValue(path, key, fallback) {
