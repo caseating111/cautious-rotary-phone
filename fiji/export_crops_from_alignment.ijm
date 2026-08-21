@@ -22,6 +22,8 @@ if (!File.exists(gridFile))
     exit("grid.csv not found: " + gridFile);
 if (lengthOf(outDir) == 0 || lengthOf(experiment) == 0 || lengthOf(typeName) == 0)
     exit("Missing output_dir, experiment or type macro argument.");
+if (CROP_W <= 0 || CROP_H <= 0)
+    exit("Crop width and height must be positive.");
 if (!endsWith(outDir, File.separator))
     outDir = outDir + File.separator;
 if (!File.exists(outDir))
@@ -55,8 +57,43 @@ if (leftTopY < 0 || rightTopY < 0 || leftLowY < 0 || rightLowY < 0)
 
 gridText = File.openAsString(gridFile);
 gridLines = split(gridText, "\n");
-exported = 0;
+matched = 0;
 
+// Validate every intended crop before writing the first file. This avoids a
+// late bad rectangle leaving a plausible-looking but incomplete output set.
+for (i = 1; i < gridLines.length; i++) {
+    line = replace(gridLines[i], "\r", "");
+    if (lengthOf(line) == 0)
+        continue;
+
+    fields = split(line, ",");
+    if (fields.length < 5)
+        continue;
+
+    gExp = clean(fields[0]);
+    gSet = clean(fields[1]);
+    if (gExp != experiment || gSet != setName)
+        continue;
+
+    declaredCols = parseInt(clean(fields[2]));
+    col = parseInt(clean(fields[3]));
+    if (declaredCols != gridCols || col < 1 || col > gridCols)
+        continue;
+
+    u = (col - 1) / (gridCols - 1);
+    cx = leftX + u * (rightX - leftX);
+    topY = leftTopY + u * (rightTopY - leftTopY);
+    lowY = leftLowY + u * (rightLowY - leftLowY);
+
+    if (!cropFitsImage(cx, topY, sourceWidth, sourceHeight) || !cropFitsImage(cx, lowY, sourceWidth, sourceHeight))
+        exit("Crop bounds exceed the source image for grid column " + col + ". Re-align or reduce crop dimensions; no crops were exported.");
+    matched++;
+}
+
+if (matched == 0)
+    exit("No grid rows matched experiment " + experiment + " set " + setName + ". No crops were exported.");
+
+exported = 0;
 setBatchMode(true);
 for (i = 1; i < gridLines.length; i++) {
     line = replace(gridLines[i], "\r", "");
@@ -94,6 +131,12 @@ setBatchMode(false);
 selectWindow(sourceTitle);
 run("Select None");
 showStatus("Exported " + exported + " crops from accepted alignment.");
+
+function cropFitsImage(cx, cy, width, height) {
+    x = round(cx - CROP_W / 2);
+    y = round(cy - CROP_H / 2);
+    return x >= 0 && y >= 0 && x + CROP_W <= width && y + CROP_H <= height;
+}
 
 function exportCrop(sourceTitle, cx, cy, outputName, outDir) {
     selectWindow(sourceTitle);
