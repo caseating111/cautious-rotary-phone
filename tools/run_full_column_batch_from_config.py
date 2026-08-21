@@ -25,7 +25,10 @@ START_MARKER = "        // ====================================================\
 END_MARKER = "        setBatchMode(false);"
 
 
-def load_config(require_fiji: bool = True) -> dict:
+def load_config(
+    require_fiji: bool = True,
+    require_fiji_handoff_paths: bool = True,
+) -> dict:
     if not CONFIG_FILE.is_file():
         raise SystemExit(f"Config not found: {CONFIG_FILE}")
     data = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
@@ -42,11 +45,12 @@ def load_config(require_fiji: bool = True) -> dict:
     if missing:
         raise SystemExit("Missing config values: " + ", ".join(missing))
 
-    for key in ("grid_csv", "crop_output"):
-        if ";" in str(data[key]):
-            raise SystemExit(
-                f"Configured {key} contains a semicolon, which conflicts with the composed Fiji macro-argument delimiter: {data[key]}"
-            )
+    if require_fiji_handoff_paths:
+        for key in ("grid_csv", "crop_output"):
+            if ";" in str(data[key]):
+                raise SystemExit(
+                    f"Configured {key} contains a semicolon, which conflicts with the composed Fiji macro-argument delimiter: {data[key]}"
+                )
 
     try:
         data["alignment_tolerance"] = float(data.get("alignment_tolerance", 0.08))
@@ -104,16 +108,20 @@ def validate_legacy_grid_widths(config: dict) -> None:
         )
 
 
-def run_preflight() -> int:
+def run_preflight(require_fiji_handoff_paths: bool = True) -> int:
+    command = [
+        sys.executable,
+        str(PREFLIGHT),
+        "--report",
+        str(PREFLIGHT_REPORT),
+        "--pending-images-csv",
+        str(PENDING_IMAGES_CSV),
+    ]
+    if not require_fiji_handoff_paths:
+        command.append("--no-fiji-handoff-path-rules")
+
     result = subprocess.run(
-        [
-            sys.executable,
-            str(PREFLIGHT),
-            "--report",
-            str(PREFLIGHT_REPORT),
-            "--pending-images-csv",
-            str(PENDING_IMAGES_CSV),
-        ],
+        command,
         capture_output=True,
         text=True,
         check=False,
@@ -221,12 +229,15 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    config = load_config(require_fiji=not args.prepare_only)
+    config = load_config(
+        require_fiji=not args.prepare_only,
+        require_fiji_handoff_paths=not args.legacy,
+    )
     validate_runtime_files(config, require_fiji=not args.prepare_only, legacy=args.legacy)
     validate_csvs(config)
     if args.legacy:
         validate_legacy_grid_widths(config)
-    pending = run_preflight()
+    pending = run_preflight(require_fiji_handoff_paths=not args.legacy)
     macro = build_legacy_macro(config) if args.legacy else build_macro(config)
 
     if args.prepare_only:
