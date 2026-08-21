@@ -60,6 +60,12 @@ class PreflightBatchTests(unittest.TestCase):
                 preflight_batch.validate_project_csvs(config)
         self.assertIn("synthetic preflight metadata failure", str(caught.exception))
 
+    def test_crop_output_cannot_live_inside_source_image_tree(self) -> None:
+        with self.assertRaises(SystemExit) as caught:
+            preflight_batch.validate_output_layout(self.image_root, self.image_root / "derived")
+        self.assertIn("crop_output must be outside image_root", str(caught.exception))
+        preflight_batch.validate_output_layout(self.image_root, self.crop_root)
+
     def test_missing_outputs_leave_image_pending(self) -> None:
         lines, problems, pending = build_report(self.config)
         self.assertFalse(problems)
