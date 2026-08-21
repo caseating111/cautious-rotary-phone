@@ -7,8 +7,10 @@ from collections import Counter
 from pathlib import Path
 
 try:
+    from tools.preflight_batch import discover_sources
     from tools.validate_project_csvs import validate
 except ModuleNotFoundError:
+    from preflight_batch import discover_sources
     from validate_project_csvs import validate
 
 APP_DIR = Path.home() / ".cautious-rotary-phone"
@@ -22,7 +24,7 @@ def load_config(path: Path) -> dict:
     if not path.is_file():
         raise SystemExit(f"Config not found: {path}")
     data = json.loads(path.read_text(encoding="utf-8"))
-    required = ["grid_csv", "condition_order_csv"]
+    required = ["image_root", "grid_csv", "condition_order_csv"]
     missing = [key for key in required if not str(data.get(key, "")).strip()]
     if missing:
         raise SystemExit("Missing config values: " + ", ".join(missing))
@@ -42,6 +44,37 @@ def read_review(path: Path) -> list[dict[str, str]]:
             {key: (value or "").strip() for key, value in row.items()}
             for row in reader
         ]
+
+
+def validate_review_source_set(review: list[dict[str, str]], image_root: Path) -> None:
+    current_sources = discover_sources(image_root)
+    current_keys = {(source.parent.name, source.name) for source in current_sources}
+    review_keys = {
+        (row.get("Folder", ""), row.get("Filename", ""))
+        for row in review
+        if row.get("Folder", "") and row.get("Filename", "")
+    }
+
+    if current_keys == review_keys:
+        return
+
+    new_sources = sorted(current_keys - review_keys)
+    stale_rows = sorted(review_keys - current_keys)
+    lines = [
+        "Reconciliation review is stale relative to the current source folders.",
+        "Use Reconcile / refresh review CSV before finalizing, then review any new/changed rows.",
+    ]
+    if new_sources:
+        lines.append("Current source files missing from the review:")
+        lines.extend(f"  - {folder}/{filename}" for folder, filename in new_sources[:20])
+        if len(new_sources) > 20:
+            lines.append(f"  ... plus {len(new_sources) - 20} more")
+    if stale_rows:
+        lines.append("Review rows whose source file is no longer present:")
+        lines.extend(f"  - {folder}/{filename}" for folder, filename in stale_rows[:20])
+        if len(stale_rows) > 20:
+            lines.append(f"  ... plus {len(stale_rows) - 20} more")
+    raise SystemExit("\n".join(lines))
 
 
 def candidate_rows(review: list[dict[str, str]]) -> list[dict[str, str]]:
@@ -83,7 +116,9 @@ def main() -> int:
     args = parser.parse_args()
 
     config = load_config(args.config)
-    rows = candidate_rows(read_review(args.review))
+    review = read_review(args.review)
+    validate_review_source_set(review, Path(config["image_root"]))
+    rows = candidate_rows(review)
     write_candidate(args.output, rows)
 
     problems = validate(
@@ -100,6 +135,7 @@ def main() -> int:
 
     print(f"Validated candidate written: {args.output}")
     print(f"Rows: {len(rows)}")
+    print("Source set matches the current image root.")
     print("Authoritative images.csv was not changed.")
     return 0
 
