@@ -42,6 +42,14 @@ class ControllerContractTests(unittest.TestCase):
         self.assertIn("self.run_prepared_batch(legacy=True)", prepared_block)
         self.assertIn("self.start_ahk()", prepared_block)
 
+    def test_controller_exposes_saved_preflight_report(self) -> None:
+        text = CONTROLLER.read_text(encoding="utf-8")
+        self.assertIn('PREFLIGHT_REPORT = APP_DIR / "last_preflight.txt"', text)
+        self.assertIn('text="Open last preflight report"', text)
+        self.assertIn("command=self.open_preflight_report", text)
+        self.assertIn('self.open_existing_path(PREFLIGHT_REPORT, "Preflight report")', text)
+        self.assertIn("Open the saved report for easier review.", text)
+
     def test_single_hotkey_helper_covers_full_column_and_four_point_dialogs(self) -> None:
         text = AHK_HELPER.read_text(encoding="utf-8")
         for title in ("1 / 2", "2 / 2", "Alignment QC", "1 / 4", "2 / 4", "3 / 4", "4 / 4", "ALL DONE"):
