@@ -1,7 +1,9 @@
 # Current state
 
 ## Durable line
-`workflow-dev` is the only active development line. Routine work goes directly here; do not create side branches for ordinary fixes/features/tests/docs. Current repository branches are `main`, `workflow-dev` and `alpha-pre-release`; `alpha-pre-release` points at an ancestor of `workflow-dev` and is a stale pre-release pointer, not a development line. Previously superseded side branches are no longer present.
+`workflow-dev` is the only active development line. Routine work goes directly here; do not create side branches for ordinary fixes/features/tests/docs.
+
+Current repository branches are `main`, `workflow-dev` and `alpha-pre-release`. `alpha-pre-release` is a **diverged obsolete release snapshot**, not an active development line: an explicit 2026-08-21 compare found four alpha-only commits (archival release notes plus older/smaller batch/preflight/controller-test implementations) and 98 workflow-dev-only commits. Do not merge/cherry-pick its old runtime/test changes merely because Git reports unique commits. See `docs/development/BRANCH_AUDIT.md`.
 
 Binding rules: root `AGENTS.md` and `docs/development/IMPLEMENTATION_DECISION_POLICY.md`. Optimize total user time-to-reliable-result, reuse mature tools first, preserve source pixels/manual alignment authority, prove small routes, and stop patch/retest escalation early.
 
@@ -40,7 +42,7 @@ Detailed contract: `docs/development/ALIGNED_CROP_HELPER.md`.
 
 Current important behavior:
 - `--prepare-only` validates CSVs, preflights, creates the pending-only metadata file, builds the configured macro, creates `crop_output` if needed and proves it writable before Fiji starts;
-- the reused Fiji loop now looks up raw `fileName` in the active metadata **before** `open(fullPath)`, so completed/non-pending plates are not loaded during resumed batches;
+- the reused Fiji loop looks up raw `fileName` in the active metadata **before** `open(fullPath)`, so completed/non-pending plates are not loaded during resumed batches;
 - its final summary separates `Not listed / not pending` from real post-metadata skips;
 - the composed full-column macro neutralizes only the old pre-calibration 10/12-column guard, so full-column batches accept any validated `GridCols >= 2`;
 - `--legacy` keeps the original four-point calibration/export block **and** original 10/12-only guard.
@@ -63,7 +65,9 @@ Detailed CSV contract: `docs/development/CSV_VALIDATION.md`.
 
 Before an established Pillow child runs it validates project/source readiness, resolves exact current crop filenames, rejects missing/duplicate/case-colliding logical inputs, creates/probes `matrix_output`, stages only exact crops, normalizes orientation on staged copies, disables legacy in-place rotation, requires one new non-empty output folder and removes staging.
 
-Real `crop_output` files are never rotated/rewritten. All four standard controller choices have representative synthetic end-to-end tests. `tools/standard_pillow_preview.py` also builds one disposable representative output for multi-image standard jobs without creating the configured real output folder or modifying real crops.
+Real `crop_output` files are never rotated/rewritten. All four standard controller choices have representative synthetic end-to-end tests. `tools/standard_pillow_preview.py` builds one disposable representative output for multi-image standard jobs without creating the configured real output folder or modifying real crops. `tools/workflow_controller_extended.py` uses that preview by default when a standard job will create multiple images; single-image jobs remain direct.
+
+A broader alias-specific completeness postcondition for the large standard wrapper was considered on 2026-08-21 but deliberately not forced through a whole-file high-blast-radius edit merely to guard a rare staging-regression case. Existing exact-crop validation plus synthetic end-to-end tests remain the current standard-route protection.
 
 Detailed route: `docs/development/EXISTING_PILLOW_ADAPTERS.md`. Deferred legacy semantics: `docs/development/DEFERRED_LEGACY_OUTPUT_QUESTIONS.md`.
 
@@ -76,19 +80,24 @@ Focused composition is an opt-in **thin adapter over the established matrix gene
 - resolves/stages only exact selected current crops;
 - normalizes orientation only on staged copies;
 - patches only `STATES_TO_BUILD` in a generated copy of the established `make_matrices.py` route;
+- verifies every selected Experiment/Set × state matrix exists before recording/opening success;
 - remembers the **last successful** selection as convenience, not metadata authority; failed/rejected builds do not replace it.
 
 `tools/custom_matrix_gui_recorded.py` is the user-facing focused-composition GUI. It supports Experiment/Set-specific strain-column selection, per-group **All / None / Only this set** shortcuts, independent condition **All / None**, Top/Low, representative preview before multi-output generation, raw versus presentation-normalized display, detailed selected-crop availability, reopening prior JSON recipes, and readable processing logs. It does not silently launch Fiji or recrop missing selections.
 
-The availability action checks exact crop readiness. In presentation-normalized mode it also reports whether every selected source plate has a current archived Fiji display range, so missing/stale normalization inputs are visible before preview/render.
+Saved/old selections are now exact: before checkboxes are changed, `tools/custom_matrix_gui.py` verifies every saved group, original column and condition still exists in the current project. A stale recipe/last-selection is refused rather than silently narrowing to whatever metadata remains. Automatic startup restoration reports this non-modally and leaves the full-project default intact. Regression: `tests/test_custom_matrix_selection_restore.py`.
+
+The availability action checks exact crop readiness and collapses missing/stale/incompatible selected cells into the unique source plates that actually need rerunning. Missing/ambiguous source images are distinguished instead of being misleadingly presented as rerunnable. In presentation-normalized mode availability also reports whether every selected source plate has a current archived Fiji display range.
 
 Successful outputs place human-readable TXT records under `Processing Logs`; exact machine recipes remain separately under `_workflow`. The GUI exposes `Processing Logs` directly and reports the human log path after a successful build.
 
-Presentation mode remains derived-output-only. `tools/run_fiji_macro_from_config.py` launches `fiji/apply_global_visibility_and_archive.ijm`, a thin wrapper that runs the existing visibility calculation unchanged and archives the accepted source-specific range. `tools/presentation_normalize.py` applies that archived range only to disposable staged crop copies before the mature matrix generator runs.
+Presentation mode remains derived-output-only. `tools/run_fiji_macro_from_config.py` launches `fiji/apply_global_visibility_and_archive.ijm`, a thin wrapper that runs the existing visibility calculation unchanged and archives the accepted source-specific range. `tools/presentation_normalize.py` applies that archived range only to disposable staged crop copies before the mature matrix generator runs. When `image_root` is configured, an archive older than the current source image is rejected and the user is told to rerun Global visibility once or use Raw mode.
 
-`tools/run_dedup_with_control.py` provides a similarly narrow adapter for the established `all-strains-dedup` script: the user chooses an Experiment/Set containing recognised WT X/Y rows and only the generated script's existing E2/A preference condition is patched. The old script's contradictory E2/B comment is not treated as biological authority. The selector now restores the **last successful** user-selected WT source when still valid; otherwise it starts from the available groups without an E2/A special-case default.
+Preview performance is intentionally bounded: focused raw/presentation previews validate freshness on the representative exact crops they are already scanning/staging rather than performing an additional complete-selection crop-tree scan. The accepted full build still revalidates the whole requested selection at the real output boundary.
 
-Detailed contract: `docs/development/CUSTOM_COMPOSITION.md`. Relevant tests include `tests/test_custom_matrix_selection.py`, `tests/test_custom_matrix_preview.py`, `tests/test_custom_matrix_presentation_end_to_end.py`, `tests/test_custom_crop_inventory.py`, `tests/test_custom_matrix_gui_selection_controls.py`, `tests/test_custom_matrix_last_selection.py`, `tests/test_custom_matrix_processing_log_ui.py`, `tests/test_custom_presentation_range_inventory.py`, `tests/test_run_custom_matrix_job.py`, `tests/test_dedup_control_source.py`, `tests/test_output_processing_records.py` and `tests/test_output_recipe_loader.py`.
+`tools/run_dedup_with_control.py` is a similarly narrow adapter for the established `all-strains-dedup` script: the user chooses an Experiment/Set containing recognised WT X/Y rows and only the generated script's existing E2/A preference condition is patched. The old script's contradictory E2/B comment is not treated as biological authority. The selector restores the **last successful** user-selected WT source when still valid; otherwise it starts from available groups without an E2/A special-case default. Top preview is shown before Top+Low by default, and the full job now verifies both established Top/Low output images exist **before** recording last output, remembering the WT source or writing success records.
+
+Detailed contract: `docs/development/CUSTOM_COMPOSITION.md`. Relevant tests include `tests/test_custom_matrix_selection.py`, `tests/test_custom_matrix_preview.py`, `tests/test_custom_matrix_presentation_end_to_end.py`, `tests/test_custom_crop_inventory.py`, `tests/test_custom_matrix_gui_selection_controls.py`, `tests/test_custom_matrix_last_selection.py`, `tests/test_custom_matrix_processing_log_ui.py`, `tests/test_custom_presentation_range_inventory.py`, `tests/test_run_custom_matrix_job.py`, `tests/test_dedup_control_source.py`, `tests/test_output_processing_records.py`, `tests/test_output_recipe_loader.py` and `tests/test_custom_matrix_selection_restore.py`.
 
 Do not evolve this into a freeform figure editor. If arbitrary publication-figure rearrangement becomes necessary, evaluate mature tooling such as QuickFigures before adding custom canvas/layout machinery.
 
@@ -98,7 +107,7 @@ Do not evolve this into a freeform figure editor. If arbitrary publication-figur
 Detailed route: `docs/development/GLOBAL_VISIBILITY.md`.
 
 ## Controller / setup
-`start_controller.cmd` launches `tools/workflow_controller_extended.py`. The extension subclasses the existing lightweight controller rather than duplicating it, adding only entry points for **Custom matrices** and **Preferred WT source**.
+`start_controller.cmd` launches `tools/workflow_controller_extended.py`. The extension subclasses the existing lightweight controller rather than duplicating it, adding only entry points for **Custom matrices** and **Preferred WT source**, processing-log navigation and preview-first standard Pillow orchestration.
 
 The controller remains an orchestration surface: paths, CSV discovery/validation, metadata review, ROI presets, settings, preflight/report opening, both Fiji batch routes, standard Pillow jobs, focused-output launchers, AHK and output navigation.
 
@@ -109,7 +118,7 @@ Important hardening:
 - standalone metadata/ROI helpers also handle non-object config cleanly;
 - launchers remain thin: named conda -> Windows `py` -> PATH Python. No installer layer.
 
-Environment: `environment.yml` = Python >=3.11 + Pillow. CI is configured for compileall + unittest discovery on Python 3.11 and 3.14. Validation-only PR #26 ran the full current suite successfully on both versions at `workflow-dev` commit `01f066ae506d77d534a3fd9aa1cae7c50341902f`; it was closed without merge. `main` and `alpha-pre-release` were not advanced.
+Environment: `environment.yml` = Python >=3.11 + Pillow. CI is configured for compileall + unittest discovery on Python 3.11 and 3.14. Validation-only PR #26 ran the then-current full suite successfully on both versions at `workflow-dev` commit `01f066ae506d77d534a3fd9aa1cae7c50341902f`; it was closed without merge. Newer direct-push workflow runs are not exposed by the current connector, so do not claim the post-PR suite has run until visible evidence exists.
 
 ## Mature fallbacks / optional routes
 ### Peak fallback
