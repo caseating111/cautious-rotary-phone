@@ -10,6 +10,7 @@ HEADERS = {
     "images": ["Filename", "Experiment", "Set", "Type"],
     "conditions": ["Order", "Type"],
 }
+OUTPUT_NAME_UNSAFE = set('/\\:*?"<>|')
 
 
 def rows(path: Path, required: list[str]) -> list[dict[str, str]]:
@@ -57,6 +58,22 @@ def macro_argument_unsafe(
             )
 
 
+def output_filename_unsafe(
+    problems: list[str],
+    file_name: str,
+    line_no: int,
+    row: dict[str, str],
+    fields: list[str],
+) -> None:
+    for field in fields:
+        value = row.get(field, "")
+        bad = sorted(set(value) & OUTPUT_NAME_UNSAFE)
+        if bad:
+            problems.append(
+                f"{file_name} row {line_no}: {field} contains filename-unsafe character(s) {''.join(bad)!r}; this value is used directly in crop filenames"
+            )
+
+
 def validate(grid_path: Path, images_path: Path, conditions_path: Path) -> list[str]:
     problems: list[str] = []
     try:
@@ -70,6 +87,7 @@ def validate(grid_path: Path, images_path: Path, conditions_path: Path) -> list[
     for line_no, row in enumerate(grid, 2):
         imagej_line_unsafe(problems, "grid.csv", line_no, row, ["Experiment", "Set", "Strain"])
         macro_argument_unsafe(problems, "grid.csv", line_no, row, ["Experiment", "Set"])
+        output_filename_unsafe(problems, "grid.csv", line_no, row, ["Experiment", "Set"])
         key = (row["Experiment"], row["Set"])
         if not all(key):
             problems.append(f"grid.csv row {line_no}: empty Experiment/Set")
@@ -112,6 +130,7 @@ def validate(grid_path: Path, images_path: Path, conditions_path: Path) -> list[
     condition_orders: dict[int, str] = {}
     condition_names: set[str] = set()
     for line_no, row in enumerate(conditions, 2):
+        output_filename_unsafe(problems, "condition_order.csv", line_no, row, ["Type"])
         name = row["Type"]
         if not name:
             problems.append(f"condition_order.csv row {line_no}: empty Type")
@@ -134,6 +153,7 @@ def validate(grid_path: Path, images_path: Path, conditions_path: Path) -> list[
     for line_no, row in enumerate(images, 2):
         imagej_line_unsafe(problems, "images.csv", line_no, row, ["Experiment", "Set", "Type"])
         macro_argument_unsafe(problems, "images.csv", line_no, row, ["Experiment", "Set", "Type"])
+        output_filename_unsafe(problems, "images.csv", line_no, row, ["Experiment", "Set", "Type"])
         filename = row["Filename"]
         key = (row["Experiment"], row["Set"])
         type_name = row["Type"]
