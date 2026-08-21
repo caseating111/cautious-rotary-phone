@@ -3,6 +3,8 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import os
+import tempfile
 from collections import Counter, defaultdict
 from pathlib import Path
 
@@ -40,6 +42,23 @@ def read_csv_rows(path: Path) -> list[dict[str, str]]:
         return [
             {key: (value or "").strip() for key, value in row.items()}
             for row in csv.DictReader(handle)
+        ]
+
+
+def read_previous_review(path: Path) -> list[dict[str, str]]:
+    if not path.is_file():
+        return []
+    with path.open("r", encoding="utf-8-sig", newline="") as handle:
+        reader = csv.DictReader(handle)
+        headers = reader.fieldnames or []
+        if headers != FIELDS:
+            raise SystemExit(
+                "Existing reconciliation review columns changed; refusing to overwrite manual edits. "
+                f"Expected exactly: {', '.join(FIELDS)}. Found: {', '.join(headers) or '(none)'}."
+            )
+        return [
+            {key: (value or "").strip() for key, value in row.items()}
+            for row in reader
         ]
 
 
@@ -131,10 +150,26 @@ def build_rows(
 
 def write_review(path: Path, rows: list[dict[str, str]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8-sig", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=FIELDS)
-        writer.writeheader()
-        writer.writerows(rows)
+    staged: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8-sig",
+            newline="",
+            prefix=path.name + ".refresh-",
+            suffix=".tmp",
+            dir=path.parent,
+            delete=False,
+        ) as handle:
+            staged = Path(handle.name)
+            writer = csv.DictWriter(handle, fieldnames=FIELDS)
+            writer.writeheader()
+            writer.writerows(rows)
+        os.replace(staged, path)
+        staged = None
+    finally:
+        if staged is not None:
+            staged.unlink(missing_ok=True)
 
 
 def main() -> int:
@@ -145,7 +180,7 @@ def main() -> int:
     parser.add_argument("--output", type=Path, default=DEFAULT_REVIEW)
     args = parser.parse_args()
 
-    previous = read_csv_rows(args.output)
+    previous = read_previous_review(args.output)
     rows, counts = build_rows(load_config(args.config), previous)
     write_review(args.output, rows)
 
