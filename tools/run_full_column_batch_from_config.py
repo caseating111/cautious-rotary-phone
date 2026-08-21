@@ -224,11 +224,14 @@ def build_macro(config: dict) -> Path:
             " | grid 8x" + gridCols + " | exports " + (nWanted * 2)
         );
 
-        runMacro(
+        alignmentResult = runMacro(
             "{macro_path(ALIGNMENT_MACRO)}",
             "cols=" + gridCols + ";rows=8;tolerance={config['alignment_tolerance']};" +
             "context=" + experiment + "/" + setName + "/" + typeName
         );
+
+        if (alignmentResult != "accepted")
+            exit("Full-column alignment did not complete successfully. No crops were written for this run.");
 
         runMacro(
             "{macro_path(CROP_HELPER)}",
