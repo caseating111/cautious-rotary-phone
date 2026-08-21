@@ -71,6 +71,14 @@ class ControllerContractTests(unittest.TestCase):
         raw_failure = preflight_dialog_text(1, 0, "Config not found", report_exists=False)
         self.assertEqual(raw_failure, "Config not found")
 
+        stale_report_failure = preflight_dialog_text(
+            1,
+            0,
+            "CSV validation FAILED\n- bad metadata",
+            report_exists=True,
+        )
+        self.assertEqual(stale_report_failure, "CSV validation FAILED\n- bad metadata")
+
     def test_batch_preparation_only_summarizes_actual_preflight_output(self) -> None:
         preflight_output = "BATCH PREFLIGHT\n" + ("detail line\n" * 200)
         summary = preparation_error_text(preflight_output, report_exists=True)
