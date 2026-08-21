@@ -23,6 +23,38 @@ def proof_is_running() -> bool:
     return False
 
 
+def open_window_titles() -> list[str]:
+    """Return top-level Windows window titles; other platforms need no desktop guard."""
+    if sys.platform != "win32":
+        return []
+
+    import ctypes
+
+    titles: list[str] = []
+    user32 = ctypes.windll.user32
+    callback_type = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
+
+    def collect(hwnd, _lparam):
+        length = user32.GetWindowTextLengthW(hwnd)
+        if length > 0:
+            buffer = ctypes.create_unicode_buffer(length + 1)
+            user32.GetWindowTextW(hwnd, buffer, length + 1)
+            if buffer.value:
+                titles.append(buffer.value)
+        return True
+
+    user32.EnumWindows(callback_type(collect), 0)
+    return titles
+
+
+def proof_plate_is_open(filename: str) -> bool:
+    """Block only when the exact selected source plate window is already open in Fiji."""
+    wanted = Path(filename).name.strip().casefold()
+    if not wanted:
+        return False
+    return any(title.strip().casefold() == wanted for title in open_window_titles())
+
+
 def read_pending_rows(path: Path) -> tuple[list[str], list[dict[str, str]]]:
     if not path.is_file():
         raise SystemExit(f"Prepared pending-image list not found: {path}")
