@@ -210,6 +210,36 @@ class SourceAdapterTests(unittest.TestCase):
             self.assertIn("old/E1_A_YPDA_01_Top_old.png", message)
             self.assertIn("current/E1_A_YPDA_01_Top_WT.png", message)
 
+    def test_pillow_input_guard_rejects_lone_stale_strain_suffix(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            crop_root = root / "crops"
+            crop_root.mkdir()
+            grid_csv = root / "grid.csv"
+            images_csv = root / "images.csv"
+            grid_csv.write_text(
+                "Experiment,Set,GridCols,Column,Strain\n"
+                "E1,A,1,1,WT_NEW\n",
+                encoding="utf-8",
+            )
+            images_csv.write_text(
+                "Filename,Experiment,Set,Type\n"
+                "plate1.jpg,E1,A,YPDA\n",
+                encoding="utf-8",
+            )
+            stale = crop_root / "E1_A_YPDA_01_Top_WT_OLD.png"
+            Image.new("L", (546, 130), 10).save(stale)
+
+            with self.assertRaises(SystemExit) as caught:
+                pillow_adapter.validate_unique_crop_matches(
+                    crop_root, grid_csv, images_csv, allow_missing=True
+                )
+
+            message = str(caught.exception)
+            self.assertIn("Stale crop filename mismatch", message)
+            self.assertIn("expected: E1_A_YPDA_01_Top_WT_NEW.png", message)
+            self.assertIn("found:    E1_A_YPDA_01_Top_WT_OLD.png", message)
+
     def test_pillow_input_guard_returns_only_current_logical_matches(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
