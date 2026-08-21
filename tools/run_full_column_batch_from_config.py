@@ -3,9 +3,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
-import os
 import subprocess
-import sys
 import tempfile
 from pathlib import Path
 
@@ -56,11 +54,6 @@ def required_path(config: dict, key: str, *, directory: bool = False) -> Path:
     return path
 
 
-def read_csv(path: Path) -> list[dict[str, str]]:
-    with path.open("r", encoding="utf-8-sig", newline="") as handle:
-        return list(csv.DictReader(handle))
-
-
 def write_pending_images(rows: list[dict[str, str]], destination: Path) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
     headers = ["Filename", "Experiment", "Set", "Type"]
@@ -69,35 +62,6 @@ def write_pending_images(rows: list[dict[str, str]], destination: Path) -> None:
         writer.writeheader()
         for row in rows:
             writer.writerow({header: row.get(header, "") for header in headers})
-
-
-def source_image_paths(image_root: Path) -> dict[str, list[Path]]:
-    mapped: dict[str, list[Path]] = {}
-    for folder in sorted(path for path in image_root.iterdir() if path.is_dir()):
-        for path in sorted(folder.iterdir()):
-            if path.is_file() and path.suffix.lower() in preflight_batch.IMAGE_EXTENSIONS:
-                mapped.setdefault(path.name, []).append(path)
-    return mapped
-
-
-def pending_rows_from_report(config: dict, report: preflight_batch.PreflightReport) -> list[dict[str, str]]:
-    images_path = required_path(config, "images_csv")
-    rows = read_csv(images_path)
-    pending_names = set(report.pending_images)
-    pending = [row for row in rows if row.get("Filename", "") in pending_names]
-    discovered = source_image_paths(required_path(config, "image_root", directory=True))
-
-    missing_or_ambiguous = [
-        row.get("Filename", "")
-        for row in pending
-        if len(discovered.get(row.get("Filename", ""), [])) != 1
-    ]
-    if missing_or_ambiguous:
-        raise SystemExit(
-            "Pending image list contains missing or ambiguous source file(s): "
-            + ", ".join(missing_or_ambiguous)
-        )
-    return pending
 
 
 def ensure_configured_output_root(config: dict) -> Path:
@@ -191,7 +155,7 @@ def launch_fiji(config: dict, macro: Path) -> int:
     return subprocess.call([str(fiji), "-macro", str(macro)])
 
 
-def run_preflight(config: dict) -> preflight_batch.PreflightReport:
+def run_preflight(config: dict) -> list[dict[str, str]]:
     csv_problems = validate_csvs(
         required_path(config, "grid_csv"),
         required_path(config, "images_csv"),
@@ -200,12 +164,13 @@ def run_preflight(config: dict) -> preflight_batch.PreflightReport:
     if csv_problems:
         raise SystemExit("CSV validation failed:\n- " + "\n- ".join(csv_problems))
 
-    report = preflight_batch.preflight(config)
+    lines, blocking_problems, pending_rows = preflight_batch.build_report(config)
+    text = "\n".join(lines) + "\n"
     APP_DIR.mkdir(parents=True, exist_ok=True)
-    PREFLIGHT_REPORT.write_text(report.render(), encoding="utf-8")
-    if report.blocking_problems:
-        raise SystemExit(report.render())
-    return report
+    PREFLIGHT_REPORT.write_text(text, encoding="utf-8")
+    if blocking_problems:
+        raise SystemExit(text)
+    return pending_rows
 
 
 def parse_args() -> argparse.Namespace:
@@ -218,9 +183,8 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     config = load_config()
-    report = run_preflight(config)
+    pending = run_preflight(config)
     ensure_configured_output_root(config)
-    pending = pending_rows_from_report(config, report)
     write_pending_images(pending, PENDING_IMAGES_CSV)
 
     macro = build_legacy_macro(config) if args.legacy else build_macro(config)
