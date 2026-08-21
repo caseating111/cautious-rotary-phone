@@ -19,20 +19,21 @@ def rows(path: Path, required: list[str]) -> list[dict[str, str]]:
     with path.open("r", encoding="utf-8-sig", newline="") as handle:
         reader = csv.DictReader(handle)
         raw_headers = reader.fieldnames or []
-        actual = [h.strip() for h in raw_headers]
-        duplicates = sorted({h for h in actual if h and actual.count(h) > 1})
+        stripped_headers = [h.strip() for h in raw_headers]
+        duplicates = sorted({h for h in stripped_headers if h and stripped_headers.count(h) > 1})
         if duplicates:
             raise ValueError(
                 f"{path.name}: duplicate columns after trimming header whitespace: {', '.join(duplicates)}"
             )
-        missing = [h for h in required if h not in actual]
+        if raw_headers != stripped_headers:
+            changed = [raw for raw, clean in zip(raw_headers, stripped_headers) if raw != clean]
+            raise ValueError(
+                f"{path.name}: column names must not contain surrounding whitespace; fix: "
+                + ", ".join(repr(value) for value in changed)
+            )
+        missing = [h for h in required if h not in raw_headers]
         if missing:
             raise ValueError(f"{path.name}: missing columns: {', '.join(missing)}")
-
-        # Keep the forgiving whitespace behavior intentional and consistent:
-        # once trimmed names pass the header contract, normalize DictReader's
-        # row keys to those same names rather than later indexing raw headers.
-        reader.fieldnames = actual
         return [{k: (v or "").strip() for k, v in row.items()} for row in reader]
 
 
