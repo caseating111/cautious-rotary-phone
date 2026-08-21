@@ -5,6 +5,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from PIL import Image
+
 from tools import run_existing_pillow_from_config as pillow_adapter
 from tools import run_full_column_batch_from_config as batch_adapter
 
@@ -60,7 +62,28 @@ class SourceAdapterTests(unittest.TestCase):
                         self.assertIn("IMAGES_CSV = Path('C:/project/images.csv')", text)
                         self.assertIn("CONDITION_ORDER_CSV = Path('C:/project/condition_order.csv')", text)
                         self.assertIn("MATRIX_ROOT = Path('C:/project/matrices')", text)
+                        self.assertIn("ROTATE_IMAGES_90_CCW = False", text)
                         self.assertNotIn('Path(r"path here")', text)
+
+    def test_crop_orientation_normalization_only_rotates_portrait_crops_once(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            folder = root / "setA"
+            folder.mkdir()
+            portrait = folder / "portrait.png"
+            landscape = folder / "landscape.png"
+            unexpected = folder / "unexpected.png"
+            Image.new("L", (130, 546), 10).save(portrait)
+            Image.new("L", (546, 130), 20).save(landscape)
+            Image.new("L", (100, 100), 30).save(unexpected)
+
+            first = pillow_adapter.normalize_crop_orientation(root, 130, 546)
+            self.assertEqual(first, (1, 1, 1))
+            with Image.open(portrait) as image:
+                self.assertEqual(image.size, (546, 130))
+
+            second = pillow_adapter.normalize_crop_orientation(root, 130, 546)
+            self.assertEqual(second, (0, 2, 1))
 
 
 if __name__ == "__main__":
