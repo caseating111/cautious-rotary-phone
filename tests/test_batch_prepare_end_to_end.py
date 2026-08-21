@@ -23,7 +23,6 @@ class BatchPrepareEndToEndTests(unittest.TestCase):
         crop_root = root / "derived" / "crops"
         app_dir.mkdir(parents=True)
         source_folder.mkdir(parents=True)
-        # crop_root is deliberately absent: successful preparation should create it.
         (source_folder / "plate1.jpg").write_bytes(b"synthetic source placeholder")
 
         grid_csv = root / "grid.csv"
@@ -41,7 +40,6 @@ class BatchPrepareEndToEndTests(unittest.TestCase):
         )
         conditions_csv.write_text("Order,Type\n1,YPDA\n", encoding="utf-8")
 
-        # Deliberately omit fiji_executable: prepare-only must not require it.
         (app_dir / "config.json").write_text(
             json.dumps(
                 {
@@ -97,14 +95,14 @@ class BatchPrepareEndToEndTests(unittest.TestCase):
             self.assertNotIn("1 / 4 — R1C1", text)
             self.assertNotIn("4 / 4 — R5C", text)
 
-    def test_prepare_only_builds_preserved_four_point_fallback_without_fiji(self) -> None:
+    def test_prepare_only_builds_four_point_math_qc_without_fiji(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             home, app_dir, crop_root = self.write_project(Path(temp), grid_cols=10)
             self.assertFalse(crop_root.exists())
             result = self.run_prepare(home, "--legacy")
 
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-            self.assertIn("Prepared four-point fallback batch for 1 pending image(s)", result.stdout)
+            self.assertIn("Prepared four-point batch for 1 pending image(s)", result.stdout)
             self.assertTrue(crop_root.is_dir())
 
             pending = app_dir / "pending_images.csv"
@@ -116,8 +114,10 @@ class BatchPrepareEndToEndTests(unittest.TestCase):
             configured = app_dir / "batch_four_point_fallback.configured.ijm"
             self.assertTrue(configured.is_file())
             text = configured.read_text(encoding="utf-8")
+            self.assertIn("FOUR-POINT MATHEMATICAL ALIGNMENT + QC", text)
             self.assertIn("1 / 4 — R1C1", text)
             self.assertIn("4 / 4 — R5C", text)
+            self.assertIn('Dialog.create("Full-grid QC")', text)
             self.assertIn("CROP_W = 20;", text)
             self.assertIn("CROP_H = 48;", text)
             self.assertNotIn("FULL-COLUMN COMPOSED ROUTE", text)
