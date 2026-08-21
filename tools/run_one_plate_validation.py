@@ -14,7 +14,7 @@ except ModuleNotFoundError:
 APP_DIR = batch.APP_DIR
 PROOF_IMAGES_CSV = APP_DIR / "one_plate_validation_images.csv"
 PROOF_MACRO = APP_DIR / "one_plate_validation.configured.ijm"
-_ACTIVE_FIJI_PROCESS: subprocess.Popen | None = None
+PROOF_LEGACY_MACRO = APP_DIR / "one_plate_four_point_validation.configured.ijm"
 
 
 def read_pending_rows(path: Path) -> tuple[list[str], list[dict[str, str]]]:
@@ -56,73 +56,60 @@ def patch_prepared_macro(source: str, proof_csv: Path) -> str:
     new = f'imagesFile = "{batch.macro_path(proof_csv)}";'
     if source.count(old) != 1:
         raise SystemExit(
-            "Prepared full-column macro no longer contains exactly one pending-images path; refusing to guess where to patch."
+            "Prepared macro no longer contains exactly one pending-images path; refusing to guess where to patch."
         )
     return source.replace(old, new, 1)
 
 
-def prepare(filename: str | None = None) -> tuple[Path, dict[str, str]]:
-    result = subprocess.run(
-        [sys.executable, str(Path(batch.__file__).resolve()), "--prepare-only"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+def prepare(filename: str | None = None, *, legacy: bool = False) -> tuple[Path, dict[str, str]]:
+    args = [sys.executable, str(Path(batch.__file__).resolve()), "--prepare-only"]
+    configured = batch.CONFIGURED_MACRO
+    proof_macro = PROOF_MACRO
+    if legacy:
+        args.append("--legacy")
+        configured = batch.CONFIGURED_LEGACY_MACRO
+        proof_macro = PROOF_LEGACY_MACRO
+
+    result = subprocess.run(args, capture_output=True, text=True, check=False)
     output = (result.stdout + result.stderr).strip()
     if result.returncode != 0:
-        raise SystemExit(output or "Full-column preparation failed before one-plate validation.")
+        raise SystemExit(output or "Batch preparation failed before one-plate validation.")
 
     fieldnames, rows = read_pending_rows(batch.PENDING_IMAGES_CSV)
     selected = choose_pending_row(rows, filename)
     write_one_row_csv(PROOF_IMAGES_CSV, fieldnames, selected)
 
-    if not batch.CONFIGURED_MACRO.is_file():
-        raise SystemExit(f"Prepared full-column macro not found: {batch.CONFIGURED_MACRO}")
-    proof_text = patch_prepared_macro(batch.CONFIGURED_MACRO.read_text(encoding="utf-8"), PROOF_IMAGES_CSV)
-    PROOF_MACRO.write_text(proof_text, encoding="utf-8")
-    return PROOF_MACRO, selected
+    if not configured.is_file():
+        raise SystemExit(f"Prepared macro not found: {configured}")
+    proof_text = patch_prepared_macro(configured.read_text(encoding="utf-8"), PROOF_IMAGES_CSV)
+    proof_macro.write_text(proof_text, encoding="utf-8")
+    return proof_macro, selected
 
 
-def proof_is_running() -> bool:
-    return _ACTIVE_FIJI_PROCESS is not None and _ACTIVE_FIJI_PROCESS.poll() is None
-
-
-def run(filename: str | None = None) -> dict[str, str]:
-    global _ACTIVE_FIJI_PROCESS
-
-    if proof_is_running():
-        raise SystemExit(
-            "A one-plate Fiji proof launched by this controller is still running. "
-            "Finish or close that Fiji instance before launching another proof."
-        )
-
-    macro, selected = prepare(filename)
-    config = batch.load_config(require_fiji=True, require_fiji_handoff_paths=True)
+def run(filename: str | None = None, *, legacy: bool = False) -> tuple[dict[str, str], subprocess.Popen]:
+    macro, selected = prepare(filename, legacy=legacy)
+    config = batch.load_config(require_fiji=True, require_fiji_handoff_paths=not legacy)
     fiji = Path(config["fiji_executable"])
     if not fiji.is_file():
         raise SystemExit(f"Fiji executable not found: {fiji}")
     try:
-        _ACTIVE_FIJI_PROCESS = subprocess.Popen([str(fiji), "-macro", str(macro)])
+        process = subprocess.Popen([str(fiji), "-macro", str(macro)])
     except OSError as exc:
-        _ACTIVE_FIJI_PROCESS = None
         raise SystemExit(f"Could not launch Fiji one-plate validation: {exc}") from exc
-    return selected
+    return selected, process
 
 
 def main() -> None:
     import argparse
 
-    parser = argparse.ArgumentParser(
-        description="Launch the prepared full-column route for exactly one pending source image."
-    )
-    parser.add_argument(
-        "--filename",
-        help="exact pending source filename to validate; default is the first authoritative pending row",
-    )
+    parser = argparse.ArgumentParser(description="Launch exactly one selected pending source image for validation.")
+    parser.add_argument("--filename", help="exact pending source filename; default is the first authoritative pending row")
+    parser.add_argument("--legacy", action="store_true", help="use the four-point mathematical alignment route")
     args = parser.parse_args()
-    selected = run(args.filename)
+    selected, _process = run(args.filename, legacy=args.legacy)
+    route = "four-point" if args.legacy else "full-column"
     print(
-        "Launched one-plate validation: "
+        f"Launched one-plate {route} validation: "
         f"{selected.get('Filename', '')} | {selected.get('Experiment', '')}/"
         f"{selected.get('Set', '')}/{selected.get('Type', '')}"
     )
