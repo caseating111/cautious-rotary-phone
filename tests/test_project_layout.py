@@ -34,7 +34,7 @@ class ProjectLayoutTests(unittest.TestCase):
 
             layout = initialize_project(source, "21.08.26")
 
-            self.assertEqual(layout.project_root, parent / "21.08.26_MyImages")
+            self.assertEqual(layout.project_root, (parent / "21.08.26_MyImages").resolve())
             self.assertEqual(layout.image_root, layout.project_root / "Raw" / "MyImages")
             self.assertFalse(source.exists())
             self.assertEqual((layout.image_root / "setA" / "plate1.jpg").read_bytes(), b"unchanged-image-bytes")
@@ -64,8 +64,8 @@ class ProjectLayoutTests(unittest.TestCase):
 
             layout = initialize_project(image_root, "IGNORED")
 
-            self.assertEqual(layout.project_root, project)
-            self.assertEqual(layout.image_root, image_root)
+            self.assertEqual(layout.project_root, project.resolve())
+            self.assertEqual(layout.image_root, image_root.resolve())
             self.assertTrue((project / "Crops").is_dir())
             self.assertTrue((project / "Matrices").is_dir())
             self.assertTrue((project / "Metadata").is_dir())
@@ -80,8 +80,8 @@ class ProjectLayoutTests(unittest.TestCase):
 
             layout = initialize_project(image_root, "IGNORED")
 
-            self.assertEqual(layout.project_root, project)
-            self.assertEqual(layout.image_root, image_root)
+            self.assertEqual(layout.project_root, project.resolve())
+            self.assertEqual(layout.image_root, image_root.resolve())
             self.assertTrue((project / "Metadata").is_dir())
             self.assertFalse((project / "Raw" / "IGNORED_MyImages").exists())
 
