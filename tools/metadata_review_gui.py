@@ -132,6 +132,16 @@ class MetadataReview(tk.Tk):
             messagebox.showerror("Metadata candidate", output)
 
     def finalize_and_adopt(self) -> None:
+        refreshed = self.run_helper("reconcile_images_csv.py")
+        refresh_output = (refreshed.stdout + refreshed.stderr).strip() or "No reconciliation output."
+        if refreshed.returncode != 0:
+            self.status.set(refresh_output)
+            if REVIEW.is_file():
+                self.open_path(REVIEW)
+            title = "Metadata needs review" if refreshed.returncode == 1 else "Metadata reconciliation failed"
+            messagebox.showerror(title, refresh_output)
+            return
+
         result = self.run_helper("finalize_images_reconciliation.py")
         output = (result.stdout + result.stderr).strip() or "No finalization output."
         if result.returncode != 0:
@@ -148,7 +158,7 @@ class MetadataReview(tk.Tk):
 
         confirmed = messagebox.askyesno(
             "Use validated metadata candidate",
-            "The reconciliation has just been rebuilt and validated.\n\n"
+            "Current source folders were just reconciled and the candidate was validated.\n\n"
             f"Replace the configured images.csv with this candidate?\n\n{destination}\n\n"
             "If the current file exists, an adjacent backup will be created first.",
         )
