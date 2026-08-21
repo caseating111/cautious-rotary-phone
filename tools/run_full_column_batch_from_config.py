@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import math
 import subprocess
 import sys
 from pathlib import Path
@@ -58,6 +59,8 @@ def load_config(
         data["crop_height"] = int(data.get("crop_height", 546))
     except (TypeError, ValueError) as exc:
         raise SystemExit(f"Invalid processing setting: {exc}") from exc
+    if not math.isfinite(data["alignment_tolerance"]):
+        raise SystemExit("Alignment tolerance must be a finite number.")
     if data["alignment_tolerance"] <= 0 or data["crop_width"] <= 0 or data["crop_height"] <= 0:
         raise SystemExit("Alignment tolerance and crop dimensions must be positive.")
     return data
@@ -108,8 +111,8 @@ def validate_legacy_grid_widths(config: dict) -> None:
         )
 
 
-def run_preflight(require_fiji_handoff_paths: bool = True) -> int:
-    command = [
+def run_preflight(legacy: bool = False) -> int:
+    args = [
         sys.executable,
         str(PREFLIGHT),
         "--report",
@@ -117,15 +120,9 @@ def run_preflight(require_fiji_handoff_paths: bool = True) -> int:
         "--pending-images-csv",
         str(PENDING_IMAGES_CSV),
     ]
-    if not require_fiji_handoff_paths:
-        command.append("--no-fiji-handoff-path-rules")
-
-    result = subprocess.run(
-        command,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    if legacy:
+        args.append("--no-fiji-handoff-path-rules")
+    result = subprocess.run(args, capture_output=True, text=True, check=False)
     output = (result.stdout + result.stderr).strip()
     if result.returncode != 0:
         raise SystemExit(output or f"Batch preflight failed. See {PREFLIGHT_REPORT}")
@@ -237,7 +234,7 @@ def main() -> None:
     validate_csvs(config)
     if args.legacy:
         validate_legacy_grid_widths(config)
-    pending = run_preflight(require_fiji_handoff_paths=not args.legacy)
+    pending = run_preflight(legacy=args.legacy)
     macro = build_legacy_macro(config) if args.legacy else build_macro(config)
 
     if args.prepare_only:
