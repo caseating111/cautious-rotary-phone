@@ -4,7 +4,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tools.workflow_controller import PROJECT_CSV_FILES, preflight_dialog_text, sibling_project_csvs
+from tools.workflow_controller import (
+    PROJECT_CSV_FILES,
+    preflight_dialog_text,
+    preparation_error_text,
+    sibling_project_csvs,
+)
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -65,6 +70,18 @@ class ControllerContractTests(unittest.TestCase):
 
         raw_failure = preflight_dialog_text(1, 0, "Config not found", report_exists=False)
         self.assertEqual(raw_failure, "Config not found")
+
+    def test_batch_preparation_only_summarizes_actual_preflight_output(self) -> None:
+        preflight_output = "BATCH PREFLIGHT\n" + ("detail line\n" * 200)
+        summary = preparation_error_text(preflight_output, report_exists=True)
+        self.assertIn("Batch preparation stopped at preflight", summary)
+        self.assertNotIn("detail line", summary)
+
+        validator_error = "CSV validation FAILED\n- images.csv row 2: bad metadata"
+        self.assertEqual(
+            preparation_error_text(validator_error, report_exists=True),
+            validator_error,
+        )
 
     def test_single_hotkey_helper_covers_full_column_and_four_point_dialogs(self) -> None:
         text = AHK_HELPER.read_text(encoding="utf-8")
