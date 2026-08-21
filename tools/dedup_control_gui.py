@@ -6,10 +6,10 @@ from pathlib import Path
 
 try:
     from tools import run_existing_pillow_from_config as pillow_adapter
-    from tools.run_dedup_with_control import control_groups, run
+    from tools.run_dedup_with_control import control_groups, load_preferred_source, run
 except ModuleNotFoundError:
     import run_existing_pillow_from_config as pillow_adapter
-    from run_dedup_with_control import control_groups, run
+    from run_dedup_with_control import control_groups, load_preferred_source, run
 
 
 class DedupControlGui(tk.Tk):
@@ -23,10 +23,16 @@ class DedupControlGui(tk.Tk):
         if not groups:
             raise SystemExit("No WT X/WT Y control rows were found in grid.csv.")
         self.groups = groups
-        labels = [self.group_label(key) for key in sorted(groups)]
-        preferred = "E2 / A"
-        self.choice = tk.StringVar(value=preferred if preferred in labels else labels[0])
-        self.status = tk.StringVar(value="Choose the experiment/set whose WT culture should be preferred.")
+        ordered_keys = sorted(groups)
+        labels = [self.group_label(key) for key in ordered_keys]
+        remembered = load_preferred_source()
+        initial_key = remembered if remembered in groups else ordered_keys[0]
+        self.choice = tk.StringVar(value=self.group_label(initial_key))
+        if remembered in groups:
+            status = f"Restored last successful WT source: {remembered[0]}/{remembered[1]}."
+        else:
+            status = "Choose the experiment/set whose WT culture should be preferred."
+        self.status = tk.StringVar(value=status)
 
         pad = {"padx": 8, "pady": 6}
         ttk.Label(self, text="Preferred WT source").grid(row=0, column=0, sticky="w", **pad)
@@ -60,7 +66,7 @@ class DedupControlGui(tk.Tk):
             messagebox.showerror("Preferred WT source", str(exc))
             self.status.set("Output stopped without modifying source crops.")
             return
-        self.status.set(f"Created: {output}")
+        self.status.set(f"Created: {output} | this WT source will be restored next time")
         messagebox.showinfo("Preferred WT source", f"Created output:\n{output}")
 
 
