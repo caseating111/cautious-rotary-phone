@@ -11,6 +11,18 @@ alignmentFile = getDirectory("home") + ".cautious-rotary-phone" + File.separator
 if (!File.exists(alignmentFile))
     exit("No accepted alignment found. Run full_column_alignment.ijm first.");
 
+sourceTitle = getTitle();
+sourceWidth = getWidth();
+sourceHeight = getHeight();
+expectedTitle = readAlignmentValue(alignmentFile, "source_title", "");
+expectedWidth = parseInt(readAlignmentValue(alignmentFile, "source_width", "-1"));
+expectedHeight = parseInt(readAlignmentValue(alignmentFile, "source_height", "-1"));
+
+if (expectedTitle == "" || expectedWidth < 1 || expectedHeight < 1)
+    exit("Alignment geometry predates image-identity checks. Re-align this image once before applying visibility.");
+if (expectedTitle != sourceTitle || expectedWidth != sourceWidth || expectedHeight != sourceHeight)
+    exit("The saved alignment belongs to a different image. Re-align the current image before applying visibility.");
+
 Dialog.create("Global visibility");
 Dialog.addNumber("Outside-grid band (px)", 50);
 Dialog.addNumber("Black-point offset", 3);
@@ -26,7 +38,6 @@ if (band < 1)
 if (highPercent <= 0 || highPercent > 1)
     exit("High percentile must be >0 and <=100.");
 
-sourceTitle = getTitle();
 sourceDepth = bitDepth();
 run("Select None");
 
@@ -64,7 +75,6 @@ gridBottom = minOf(imgH, maxOf(bottomLeftY, bottomRightY) + roiH / 2);
 if (gridRight - gridLeft < 2 || gridBottom - gridTop < 2)
     exit("Calculated total-grid bounds are invalid.");
 
-// Four outside strips. Invalid edge strips are ignored; median resists one odd side.
 topMedian = sampleRectPercentile(gridLeft, maxOf(0, gridTop - band), gridRight - gridLeft, minOf(band, gridTop), 0.5);
 bottomMedian = sampleRectPercentile(gridLeft, gridBottom, gridRight - gridLeft, minOf(band, imgH - gridBottom), 0.5);
 leftMedian = sampleRectPercentile(maxOf(0, gridLeft - band), gridTop, minOf(band, gridLeft), gridBottom - gridTop, 0.5);
@@ -74,7 +84,6 @@ background = robustSideMedian(topMedian, bottomMedian, leftMedian, rightMedian);
 if (isNaN(background))
     exit("No usable outside-grid background strips were available.");
 
-// High point from the tilted total-grid quadrilateral, not the whole image.
 xs = newArray(leftX - roiW / 2, rightX + roiW / 2, rightX + roiW / 2, leftX - roiW / 2);
 ys = newArray(topLeftY - roiH / 2, topRightY - roiH / 2, bottomRightY + roiH / 2, bottomLeftY + roiH / 2);
 makeSelection("polygon", xs, ys);
