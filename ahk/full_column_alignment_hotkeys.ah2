@@ -5,7 +5,7 @@ SetTitleMatchMode(2)
 
 AlignmentDialogExists()
 {
-    for title in ["Next plate", "1 / 2", "2 / 2", "Alignment QC", "ALL DONE"]
+    for title in ["1 / 2", "2 / 2", "Alignment QC", "ALL DONE"]
     {
         if WinExist(title)
             return true
@@ -14,12 +14,12 @@ AlignmentDialogExists()
 }
 
 ; Z is only intercepted while one of the workflow's Fiji dialogs exists.
-; It acknowledges Next plate, advances first/last-column placement, accepts QC,
-; and dismisses ALL DONE before closing this helper.
+; It advances first/last-column placement, accepts QC, and dismisses ALL DONE
+; before closing this helper.
 #HotIf AlignmentDialogExists()
 z::
 {
-    for title in ["Next plate", "1 / 2", "2 / 2", "Alignment QC", "ALL DONE"]
+    for title in ["1 / 2", "2 / 2", "Alignment QC", "ALL DONE"]
     {
         if hwnd := WinExist(title)
         {
