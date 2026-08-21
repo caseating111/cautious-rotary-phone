@@ -24,6 +24,8 @@ def configured_images_csv(config_path: Path = CONFIG) -> Path:
         data = json.loads(config_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise ValueError(f"Could not read config: {exc}") from exc
+    if not isinstance(data, dict):
+        raise ValueError("Config must contain a JSON object of named settings.")
     raw = str(data.get("images_csv", "")).strip()
     if not raw:
         raise ValueError("Configured images_csv path is missing.")
