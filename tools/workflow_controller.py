@@ -110,6 +110,9 @@ class Controller(tk.Tk):
             ttk.Button(self, text=label, command=lambda m=macro: self.launch_fiji_macro(m)).grid(row=r, column=col, sticky="ew", **pad)
 
         r += 1
+        ttk.Button(self, text="Run full-column batch", command=self.run_full_column_batch).grid(row=r, column=0, columnspan=3, sticky="ew", **pad)
+
+        r += 1
         ttk.Label(self, text="Pillow output").grid(row=r, column=0, sticky="w", **pad)
         ttk.Combobox(self, textvariable=self.pillow_job, values=list(PILLOW_JOBS), state="readonly", width=34).grid(row=r, column=1, sticky="w", **pad)
         ttk.Button(self, text="Run", command=self.run_pillow_job).grid(row=r, column=2, sticky="ew", **pad)
@@ -199,6 +202,12 @@ class Controller(tk.Tk):
             messagebox.showerror("Python helper", str(exc))
             return
         self.status.set(f"Launched: {script.name}")
+
+    def run_full_column_batch(self) -> None:
+        ahk = Path(self.vars["ahk_executable"].get().strip())
+        if ahk.is_file() and (not self.ahk_process or self.ahk_process.poll() is not None):
+            self.start_ahk()
+        self.launch_python("tools/run_full_column_batch_from_config.py")
 
     def run_pillow_job(self) -> None:
         alias = PILLOW_JOBS[self.pillow_job.get()]
