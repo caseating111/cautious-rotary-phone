@@ -15,8 +15,44 @@ PlacementDialogTitle(title)
     )
 }
 
+MoveFijiToolbarOnce()
+{
+    ; Keep only the exact Fiji/ImageJ main toolbar window in the upper-right.
+    for hwnd in WinGetList()
+    {
+        try title := WinGetTitle(hwnd)
+        catch
+            continue
+        if (title != "Fiji" && title != "ImageJ")
+            continue
+
+        try
+        {
+            WinGetPos(, , w, h, hwnd)
+            MonitorGetWorkArea(1, &left, &top, &right, &bottom)
+            x := Max(left, right - w - 10)
+            WinMove(x, top + 10, , , hwnd)
+        }
+        return
+    }
+}
+
+MoveKnownWorkflowWindowsOnce()
+{
+    for title in ["1 / 2", "2 / 2", "1 / 4", "2 / 4", "3 / 4", "4 / 4"]
+    {
+        if hwnd := WinExist(title)
+            try WinMove(10, 10, , , hwnd)
+    }
+    MoveFijiToolbarOnce()
+}
+
+; Put an already-open Fiji toolbar in place when this helper starts.
+MoveKnownWorkflowWindowsOnce()
+
 ; Reuse the original four-point helper's shell-hook behavior: move a placement
-; dialog once when Windows creates it. This does not activate or confirm it.
+; dialog immediately when Windows creates it. Java can assign the final title a
+; fraction later, so each creation event also schedules one small delayed retry.
 DllCall("RegisterShellHookWindow", "ptr", A_ScriptHwnd)
 SHELLHOOK := DllCall("RegisterWindowMessage", "str", "SHELLHOOK")
 OnMessage(SHELLHOOK, ShellMessage)
@@ -28,41 +64,15 @@ ShellMessage(wParam, lParam, msg, hwnd)
         return
 
     try title := WinGetTitle("ahk_id " lParam)
-    catch
-        return
+    catch title := ""
 
     if PlacementDialogTitle(title)
         try WinMove(10, 10, , , "ahk_id " lParam)
-}
+    else if (title == "Fiji" || title == "ImageJ")
+        MoveFijiToolbarOnce()
 
-; Java dialogs can be created before their final title is visible to the shell
-; hook. This tiny fallback only repositions recognised workflow windows.
-SetTimer(KeepWorkflowWindowsVisible, 300)
-
-KeepWorkflowWindowsVisible()
-{
-    for title in ["1 / 2", "2 / 2", "1 / 4", "2 / 4", "3 / 4", "4 / 4"]
-    {
-        if hwnd := WinExist(title)
-            try WinMove(10, 10, , , hwnd)
-    }
-
-    ; Keep Fiji's small main toolbar window visible at the upper-right. Do not
-    ; touch image windows; only exact main-window titles are considered.
-    for title in ["Fiji", "ImageJ"]
-    {
-        if hwnd := WinExist(title)
-        {
-            try
-            {
-                WinGetPos(, , w, h, hwnd)
-                MonitorGetWorkArea(1, &left, &top, &right, &bottom)
-                x := Max(left, right - w - 10)
-                WinMove(x, top + 10, , , hwnd)
-            }
-            break
-        }
-    }
+    ; One catch-up pass only: no permanent timer, polling or repeated jitter.
+    SetTimer(MoveKnownWorkflowWindowsOnce, -120)
 }
 
 AlignmentDialogExists()
