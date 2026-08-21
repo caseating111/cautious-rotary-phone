@@ -173,6 +173,31 @@ def patch_matrix_states(configured_script: Path, states: list[str]) -> None:
     configured_script.write_text(text, encoding="utf-8")
 
 
+def expected_matrix_names(selection: dict) -> set[str]:
+    clean = normalize_selection(selection)
+    return {
+        f"{group['experiment']}_{group['set']}_{state}_MATRIX.png"
+        for group in clean["groups"]
+        for state in clean["states"]
+    }
+
+
+def validate_matrix_outputs(output: Path, selection: dict) -> None:
+    expected = expected_matrix_names(selection)
+    actual_keys = {
+        path.name.casefold()
+        for path in output.glob("*.png")
+        if path.is_file()
+    }
+    missing = sorted(name for name in expected if name.casefold() not in actual_keys)
+    if missing:
+        raise SystemExit(
+            "Custom matrix generator returned success but did not create every selected matrix:\n"
+            + "\n".join(f"  - {name}" for name in missing)
+            + f"\nPartial output was left for inspection: {output}"
+        )
+
+
 def run_selection(selection: dict, no_open_output: bool = False) -> Path:
     selection = normalize_selection(selection)
     config = pillow_adapter.load_config()
@@ -217,6 +242,7 @@ def run_selection(selection: dict, no_open_output: bool = False) -> Path:
     output = pillow_adapter.newest_new_directory(before, after)
     if output is None or not pillow_adapter.directory_has_content(output):
         raise SystemExit("Custom matrix job returned success but produced no non-empty output folder.")
+    validate_matrix_outputs(output, selection)
     save_last_selection(selection)
     pillow_adapter.record_output(output)
     if not no_open_output:
