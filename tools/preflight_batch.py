@@ -143,7 +143,10 @@ def expected_crop_issue(path: Path, source_mtime: int, crop_width: int, crop_hei
     return None
 
 
-def build_report(config: dict) -> tuple[list[str], bool, list[dict[str, str]]]:
+def build_report(
+    config: dict,
+    require_full_column_geometry: bool = True,
+) -> tuple[list[str], bool, list[dict[str, str]]]:
     image_root = Path(config["image_root"])
     crop_root = Path(config["crop_output"])
     crop_width = int(config.get("crop_width", 130))
@@ -160,12 +163,13 @@ def build_report(config: dict) -> tuple[list[str], bool, list[dict[str, str]]]:
         grid_by_key[(row.get("Experiment", ""), row.get("Set", ""))].append(row)
 
     unsupported_full_column_grids: list[str] = []
-    for (exp, set_name), rows_for_grid in sorted(grid_by_key.items()):
-        declared_values = {int(row["GridCols"]) for row in rows_for_grid}
-        if len(declared_values) == 1:
-            declared = next(iter(declared_values))
-            if declared < 2:
-                unsupported_full_column_grids.append(f"{exp}/{set_name}: GridCols={declared}")
+    if require_full_column_geometry:
+        for (exp, set_name), rows_for_grid in sorted(grid_by_key.items()):
+            declared_values = {int(row["GridCols"]) for row in rows_for_grid}
+            if len(declared_values) == 1:
+                declared = next(iter(declared_values))
+                if declared < 2:
+                    unsupported_full_column_grids.append(f"{exp}/{set_name}: GridCols={declared}")
 
     metadata_by_name: dict[str, list[dict[str, str]]] = defaultdict(list)
     for row in images:
