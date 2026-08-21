@@ -160,6 +160,13 @@ def build_report(config: dict) -> tuple[list[str], bool, list[dict[str, str]]]:
                 sources_text = ", ".join(str(path) for path in unique_claimants)
                 downstream_ambiguities.append(f"{name} <- {sources_text}")
 
+    expected_paths = {path.resolve() for path in output_claims}
+    unexpected_crop_pngs: list[str] = []
+    if crop_root.is_dir():
+        for path in sorted(crop_root.rglob("*.png")):
+            if path.is_file() and path.resolve() not in expected_paths:
+                unexpected_crop_pngs.append(str(path.relative_to(crop_root)))
+
     lines = [
         "BATCH PREFLIGHT",
         f"Source folders: {len([p for p in image_root.iterdir() if p.is_dir()])}",
@@ -189,6 +196,11 @@ def build_report(config: dict) -> tuple[list[str], bool, list[dict[str, str]]]:
         problems = True
         lines.extend(["", f"{title} ({len(items)})"])
         lines.extend(f"- {item}" for item in items)
+
+    if unexpected_crop_pngs:
+        lines.extend(["", f"UNEXPECTED CROP PNGS — NON-BLOCKING ({len(unexpected_crop_pngs)})"])
+        lines.append("These files are not part of the current metadata-defined crop set; review/remove them if they are stale.")
+        lines.extend(f"- {item}" for item in unexpected_crop_pngs)
 
     lines.extend(["", "STATUS: CHECK ITEMS ABOVE BEFORE BATCH ALIGNMENT" if problems else "STATUS: READY FOR BATCH ALIGNMENT"])
     return lines, problems, pending_rows
