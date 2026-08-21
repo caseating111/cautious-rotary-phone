@@ -140,6 +140,17 @@ def run_preflight(legacy: bool = False) -> int:
     return pending
 
 
+def ensure_crop_output_root(config: dict) -> Path:
+    root = Path(config["crop_output"])
+    try:
+        root.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise SystemExit(f"Could not create crop output folder {root}: {exc}") from exc
+    if not root.is_dir():
+        raise SystemExit(f"Configured crop_output is not a directory: {root}")
+    return root
+
+
 def macro_path(value: str | Path) -> str:
     return str(Path(value)).replace("\\", "/").replace('"', '\\"')
 
@@ -162,7 +173,7 @@ def configure_source_settings(source: str, config: dict) -> str:
         "CROP_H = 546;": f'CROP_H = {config["crop_height"]};',
     }
     for old, new in replacements.items():
-        source = replace_once(source, old, new)
+        source = replace_once(source, old, new, 1)
     return source
 
 
@@ -241,6 +252,7 @@ def main() -> None:
     if args.legacy:
         validate_legacy_grid_widths(config)
     pending = run_preflight(legacy=args.legacy)
+    ensure_crop_output_root(config)
     macro = build_legacy_macro(config) if args.legacy else build_macro(config)
 
     if args.prepare_only:
