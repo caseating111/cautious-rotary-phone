@@ -10,9 +10,11 @@ if /I "%CONDA_DEFAULT_ENV%"=="cautious-rotary-phone" (
 )
 
 rem Otherwise use the named conda environment if conda is available.
+rem conda is commonly a .bat/.cmd entry point on Windows, so CALL is required
+rem or this launcher may never regain control to reach the Python fallbacks.
 where conda >nul 2>nul
 if not errorlevel 1 (
-    conda run --no-capture-output -n cautious-rotary-phone python tools\workflow_controller_extended.py
+    call conda run --no-capture-output -n cautious-rotary-phone python tools\workflow_controller_extended.py
     if not errorlevel 1 exit /b 0
     echo.
     echo Named conda environment was unavailable or failed; trying the Windows Python launcher.
