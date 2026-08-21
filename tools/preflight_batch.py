@@ -159,6 +159,14 @@ def build_report(config: dict) -> tuple[list[str], bool, list[dict[str, str]]]:
     for row in grid:
         grid_by_key[(row.get("Experiment", ""), row.get("Set", ""))].append(row)
 
+    unsupported_full_column_grids: list[str] = []
+    for (exp, set_name), rows_for_grid in sorted(grid_by_key.items()):
+        declared_values = {int(row["GridCols"]) for row in rows_for_grid}
+        if len(declared_values) == 1:
+            declared = next(iter(declared_values))
+            if declared < 2:
+                unsupported_full_column_grids.append(f"{exp}/{set_name}: GridCols={declared}")
+
     metadata_by_name: dict[str, list[dict[str, str]]] = defaultdict(list)
     for row in images:
         metadata_by_name[row.get("Filename", "")].append(row)
@@ -267,6 +275,7 @@ def build_report(config: dict) -> tuple[list[str], bool, list[dict[str, str]]]:
     ]
 
     sections = [
+        ("GRIDS UNSUPPORTED BY FULL-COLUMN ALIGNMENT", unsupported_full_column_grids),
         ("SOURCE FOLDERS UNSAFE FOR FIJI ARGUMENT HANDOFF", delimiter_unsafe_folders),
         ("UNMAPPED SOURCE IMAGES", [str(path.relative_to(image_root)) for path in unmapped_sources]),
         ("CSV ROWS WITH NO DISCOVERED SOURCE FILE", csv_missing_files),
