@@ -37,6 +37,17 @@ class FijiLauncherTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             visibility_argument({"visibility_high_percentile": 0})
 
+    def test_visibility_settings_reject_non_finite_values(self) -> None:
+        for key, value in (
+            ("visibility_band", "NaN"),
+            ("visibility_black_offset", "inf"),
+            ("visibility_high_percentile", "-inf"),
+        ):
+            with self.subTest(key=key, value=value):
+                with self.assertRaises(SystemExit) as caught:
+                    visibility_argument({key: value})
+                self.assertIn("finite numbers", str(caught.exception))
+
 
 if __name__ == "__main__":
     unittest.main()
