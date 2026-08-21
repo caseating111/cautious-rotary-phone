@@ -48,7 +48,7 @@ class PreflightWindowsCollisionTests(unittest.TestCase):
             config = self.write_project(Path(temp), second_experiment="e1")
 
             lines, problems, _pending = build_report(config)
-            text = "\n".join(lines)
+            text = "\n".join(lines).replace("\\", "/")
 
             self.assertTrue(problems)
             self.assertIn("OUTPUT PATH COLLISIONS (WINDOWS CASE-INSENSITIVE)", text)
