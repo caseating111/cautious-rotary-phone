@@ -85,6 +85,57 @@ class SourceAdapterTests(unittest.TestCase):
             second = pillow_adapter.normalize_crop_orientation(root, 130, 546)
             self.assertEqual(second, (0, 2, 1))
 
+    def test_pillow_input_guard_rejects_multiple_files_for_one_logical_cell(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            crop_root = root / "crops"
+            (crop_root / "old").mkdir(parents=True)
+            (crop_root / "current").mkdir()
+            grid_csv = root / "grid.csv"
+            images_csv = root / "images.csv"
+            grid_csv.write_text(
+                "Experiment,Set,GridCols,Column,Strain\n"
+                "E1,A,1,1,WT\n",
+                encoding="utf-8",
+            )
+            images_csv.write_text(
+                "Filename,Experiment,Set,Type\n"
+                "plate1.jpg,E1,A,YPDA\n",
+                encoding="utf-8",
+            )
+            Image.new("L", (546, 130), 10).save(crop_root / "old" / "E1_A_YPDA_01_Top_old.png")
+            Image.new("L", (546, 130), 20).save(crop_root / "current" / "E1_A_YPDA_01_Top_WT.png")
+
+            with self.assertRaises(SystemExit) as caught:
+                pillow_adapter.validate_unique_crop_matches(crop_root, grid_csv, images_csv)
+
+            message = str(caught.exception)
+            self.assertIn("Ambiguous crop inputs", message)
+            self.assertIn("old/E1_A_YPDA_01_Top_old.png", message)
+            self.assertIn("current/E1_A_YPDA_01_Top_WT.png", message)
+
+    def test_pillow_input_guard_allows_single_match_per_logical_cell(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            crop_root = root / "crops"
+            crop_root.mkdir()
+            grid_csv = root / "grid.csv"
+            images_csv = root / "images.csv"
+            grid_csv.write_text(
+                "Experiment,Set,GridCols,Column,Strain\n"
+                "E1,A,1,1,WT\n",
+                encoding="utf-8",
+            )
+            images_csv.write_text(
+                "Filename,Experiment,Set,Type\n"
+                "plate1.jpg,E1,A,YPDA\n",
+                encoding="utf-8",
+            )
+            Image.new("L", (546, 130), 10).save(crop_root / "E1_A_YPDA_01_Top_WT.png")
+            Image.new("L", (546, 130), 20).save(crop_root / "E1_A_YPDA_01_Low_WT.png")
+
+            pillow_adapter.validate_unique_crop_matches(crop_root, grid_csv, images_csv)
+
 
 if __name__ == "__main__":
     unittest.main()
