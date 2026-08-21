@@ -27,6 +27,16 @@ SCRIPTS = {
 }
 
 
+def validate_output_layout(crop_output: str | Path, matrix_output: str | Path) -> None:
+    crop_root = Path(crop_output).resolve()
+    matrix_root = Path(matrix_output).resolve()
+    if matrix_root == crop_root or matrix_root.is_relative_to(crop_root):
+        raise SystemExit(
+            "Matrix output must be outside crop_output. The reused Pillow scripts search crop_output recursively, "
+            "so putting generated matrices inside that tree would make later runs ingest their own outputs."
+        )
+
+
 def load_config() -> dict:
     if not CONFIG_FILE.is_file():
         raise SystemExit(f"Config not found: {CONFIG_FILE}")
@@ -35,6 +45,7 @@ def load_config() -> dict:
     missing = [key for key in required if not str(data.get(key, "")).strip()]
     if missing:
         raise SystemExit("Missing config values: " + ", ".join(missing))
+    validate_output_layout(data["crop_output"], data["matrix_output"])
     try:
         data["crop_width"] = int(data.get("crop_width", 130))
         data["crop_height"] = int(data.get("crop_height", 546))
