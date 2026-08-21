@@ -8,11 +8,11 @@ from pathlib import Path
 try:
     from tools import custom_matrix_selection as custom
     from tools import run_existing_pillow_from_config as pillow_adapter
-    from tools.run_custom_matrix_job import inspect_selected_inputs
+    from tools.run_custom_matrix_job import validate_selected_freshness
 except ModuleNotFoundError:
     import custom_matrix_selection as custom
     import run_existing_pillow_from_config as pillow_adapter
-    from run_custom_matrix_job import inspect_selected_inputs
+    from run_custom_matrix_job import validate_selected_freshness
 
 
 class PreviewResult:
@@ -41,8 +41,6 @@ def representative_selection(selection: dict) -> dict:
 def build_preview(selection: dict) -> PreviewResult:
     selection = custom.normalize_selection(selection)
     config = pillow_adapter.load_config()
-    # Validate the complete requested selection before showing a representative preview.
-    inspect_selected_inputs(config, selection)
     preview_selection = representative_selection(selection)
 
     custom.APP_DIR.mkdir(parents=True, exist_ok=True)
@@ -59,6 +57,7 @@ def build_preview(selection: dict) -> PreviewResult:
         selected_crops = pillow_adapter.validate_unique_crop_matches(
             Path(config["crop_output"]), filtered["grid_csv"], filtered["images_csv"], allow_missing=False
         )
+        validate_selected_freshness(config, filtered, selected_crops)
         staged_root = root / "crops"
         staged_crops = pillow_adapter.stage_selected_crops(selected_crops, staged_root)
         pillow_adapter.normalize_crop_orientation(
