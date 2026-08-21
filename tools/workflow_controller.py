@@ -111,13 +111,9 @@ class Controller(tk.Tk):
         ttk.Separator(self).grid(row=r, column=0, columnspan=3, sticky="ew", padx=5, pady=6)
         r += 1
 
-        buttons = [
-            ("Synthetic test plate", "fiji/create_synthetic_grid_plate.ijm"),
-            ("Full-column alignment", "fiji/full_column_alignment.ijm"),
-            ("Global visibility", "fiji/apply_global_visibility.ijm"),
-        ]
-        for col, (label, macro) in enumerate(buttons):
-            ttk.Button(self, text=label, command=lambda m=macro: self.launch_fiji_macro(m)).grid(row=r, column=col, sticky="ew", **pad)
+        ttk.Button(self, text="Synthetic test plate", command=lambda: self.launch_fiji_macro("fiji/create_synthetic_grid_plate.ijm")).grid(row=r, column=0, sticky="ew", **pad)
+        ttk.Button(self, text="Full-column alignment", command=lambda: self.launch_configured_fiji("alignment")).grid(row=r, column=1, sticky="ew", **pad)
+        ttk.Button(self, text="Global visibility", command=lambda: self.launch_configured_fiji("visibility")).grid(row=r, column=2, sticky="ew", **pad)
 
         r += 1
         ttk.Button(self, text="Run full-column batch", command=self.run_full_column_batch).grid(row=r, column=0, columnspan=3, sticky="ew", **pad)
@@ -176,9 +172,7 @@ class Controller(tk.Tk):
             self.save()
             dialog.destroy()
 
-        ttk.Button(dialog, text="Save", command=save_and_close).grid(
-            row=len(PROCESSING_SETTINGS), column=0, columnspan=2, sticky="ew", **pad
-        )
+        ttk.Button(dialog, text="Save", command=save_and_close).grid(row=len(PROCESSING_SETTINGS), column=0, columnspan=2, sticky="ew", **pad)
 
     def validate_csvs(self) -> None:
         paths = [
@@ -191,12 +185,7 @@ class Controller(tk.Tk):
             return
 
         validator = REPO_ROOT / "tools" / "validate_project_csvs.py"
-        result = subprocess.run(
-            [sys.executable, str(validator), *paths],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+        result = subprocess.run([sys.executable, str(validator), *paths], capture_output=True, text=True, check=False)
         output = (result.stdout + result.stderr).strip() or "No validator output."
         if result.returncode == 0:
             messagebox.showinfo("CSV validation", output)
@@ -241,6 +230,9 @@ class Controller(tk.Tk):
             messagebox.showerror("Python helper", str(exc))
             return
         self.status.set(f"Launched: {script.name}")
+
+    def launch_configured_fiji(self, macro_alias: str) -> None:
+        self.launch_python("tools/run_fiji_macro_from_config.py", macro_alias)
 
     def run_full_column_batch(self) -> None:
         ahk = Path(self.vars["ahk_executable"].get().strip())
