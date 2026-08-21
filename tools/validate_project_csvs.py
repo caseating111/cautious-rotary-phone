@@ -200,6 +200,33 @@ def validate(grid_path: Path, images_path: Path, conditions_path: Path) -> list[
         condition_orders[order] = name
         condition_names.add(name)
 
+    # The reused matrix scripts search crops with one lowercase underscore-delimited
+    # prefix: Experiment_Set_Type_Column_State_.  Underscores remain allowed in
+    # metadata, but the Cartesian grid-key x condition set must not produce two
+    # different tuples with the same flattened prefix.
+    lookup_prefix_claims: dict[str, tuple[str, str, str]] = {}
+    for exp, set_name in groups:
+        for type_name in condition_names:
+            claimant = (exp, set_name, type_name)
+            prefix = f"{exp}_{set_name}_{type_name}".casefold()
+            previous = lookup_prefix_claims.get(prefix)
+            if previous is None:
+                lookup_prefix_claims[prefix] = claimant
+                continue
+            if previous == claimant:
+                continue
+            previous_folded = tuple(value.casefold() for value in previous)
+            claimant_folded = tuple(value.casefold() for value in claimant)
+            if previous_folded == claimant_folded:
+                # A targeted case-only collision is already reported above.
+                continue
+            problems.append(
+                "CSV metadata creates an ambiguous Pillow lookup prefix "
+                f"{prefix!r}: {previous[0]}/{previous[1]}/{previous[2]} vs "
+                f"{claimant[0]}/{claimant[1]}/{claimant[2]}. "
+                "Underscores are allowed, but these particular Experiment/Set/Type combinations flatten to the same legacy filename prefix."
+            )
+
     image_filenames: set[str] = set()
     for line_no, row in enumerate(images, 2):
         imagej_line_unsafe(problems, "images.csv", line_no, row, ["Experiment", "Set", "Type"])
