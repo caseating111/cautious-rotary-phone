@@ -98,7 +98,7 @@ class ControllerContractTests(unittest.TestCase):
 
         self.assertIn("math.isfinite", settings_block)
         self.assertIn("Processing settings must be finite numbers.", settings_block)
-        self.assertLess(settings_block.index("math.isfinite"), settings_block.index("self.save()"))
+        self.assertLess(settings_block.index("math.isfinite"), settings_block.index("self.save("))
 
     def test_single_hotkey_helper_covers_full_column_and_four_point_dialogs(self) -> None:
         text = AHK_HELPER.read_text(encoding="utf-8")
