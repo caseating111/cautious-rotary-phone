@@ -75,7 +75,7 @@ class ExtendedController(Controller):
         if not self.save():
             return
 
-        self.status.set("Preparing authoritative pending list and one-plate proof…")
+        self.status.set("Refreshing authoritative pending list and preparing one-plate proof…")
         self.update_idletasks()
         ahk_was_running = bool(self.ahk_process and self.ahk_process.poll() is None)
         ahk = Path(self.vars["ahk_executable"].get().strip())
@@ -90,7 +90,7 @@ class ExtendedController(Controller):
             if started_ahk_here:
                 self.stop_ahk()
             messagebox.showerror("One-plate validation", str(exc))
-            self.status.set("One-plate proof was not launched; production pending metadata was not changed.")
+            self.status.set("One-plate proof was not launched; authoritative prepare-only results remain available.")
             return
 
         filename = selected.get("Filename", "")
@@ -101,7 +101,7 @@ class ExtendedController(Controller):
         messagebox.showinfo(
             "One-plate validation",
             f"Launched exactly one pending source:\n{filename}\n\nContext: {context or 'not specified'}\n\n"
-            "The normal pending list and production batch macro were left unchanged.",
+            "Prepare-only refreshed the normal full pending list/configured macro. The proof uses a separate one-row CSV and separate macro copy, so the normal batch remains complete rather than being truncated to this plate.",
         )
 
     def standard_output_count(self, alias: str, config: dict) -> int:
