@@ -16,6 +16,7 @@ CONFIG_FILE = APP_DIR / "config.json"
 LAST_OUTPUT_FILE = APP_DIR / "last_pillow_output.txt"
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT_DIR = REPO_ROOT / "existing scripts clean"
+VALIDATOR = REPO_ROOT / "tools" / "validate_project_csvs.py"
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".tif", ".tiff"}
 
 SCRIPTS = {
@@ -42,6 +43,26 @@ def load_config() -> dict:
     if data["crop_width"] <= 0 or data["crop_height"] <= 0:
         raise SystemExit("Crop dimensions must be positive.")
     return data
+
+
+def validate_csvs(config: dict) -> None:
+    if not VALIDATOR.is_file():
+        raise SystemExit(f"CSV validator not found: {VALIDATOR}")
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(VALIDATOR),
+            str(config["grid_csv"]),
+            str(config["images_csv"]),
+            str(config["condition_order_csv"]),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        output = (result.stdout + result.stderr).strip()
+        raise SystemExit(output or "CSV validation failed.")
 
 
 def configured_copy(alias: str, config: dict) -> Path:
@@ -232,6 +253,7 @@ def main() -> None:
     args = parser.parse_args()
 
     config = load_config()
+    validate_csvs(config)
     configured = configured_copy(args.script, config)
 
     crop_root = Path(config["crop_output"])
