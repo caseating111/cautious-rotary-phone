@@ -6,7 +6,7 @@ import subprocess
 from pathlib import Path
 
 APP_DIR = Path.home() / ".cautious-rotary-phone"
-CONFIG_FILE = APP_DIR / "config.json"
+DEFAULT_CONFIG = APP_DIR / "config.json"
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 MACROS = {
@@ -15,10 +15,10 @@ MACROS = {
 }
 
 
-def load_config() -> dict:
-    if not CONFIG_FILE.is_file():
-        raise SystemExit(f"Config not found: {CONFIG_FILE}")
-    data = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+def load_config(path: Path) -> dict:
+    if not path.is_file():
+        raise SystemExit(f"Config not found: {path}")
+    data = json.loads(path.read_text(encoding="utf-8"))
     fiji = str(data.get("fiji_executable", "")).strip()
     if not fiji:
         raise SystemExit("Fiji executable is not configured.")
@@ -39,18 +39,34 @@ def macro_argument(alias: str, config: dict) -> str:
         raise SystemExit("visibility_band must be at least 1.")
     if high_percentile <= 0 or high_percentile > 100:
         raise SystemExit("visibility_high_percentile must be >0 and <=100.")
-    return (
-        f"band={band:g};black_offset={black_offset:g};"
-        f"high_percentile={high_percentile:g}"
-    )
+    return f"band={band:g};black_offset={black_offset:g};high_percentile={high_percentile:g}"
+
+
+def build_command(alias: str, config: dict) -> list[str]:
+    return [
+        str(Path(config["fiji_executable"])),
+        "-macro",
+        str(MACROS[alias]),
+        macro_argument(alias, config),
+    ]
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("macro", choices=sorted(MACROS))
+    parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
+    parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
-    config = load_config()
+    config = load_config(args.config)
+    command = build_command(args.macro, config)
+
+    if args.dry_run:
+        print("COMMAND")
+        for part in command:
+            print(part)
+        return
+
     fiji = Path(config["fiji_executable"])
     macro = MACROS[args.macro]
     if not fiji.is_file():
@@ -58,7 +74,7 @@ def main() -> None:
     if not macro.is_file():
         raise SystemExit(f"Macro not found: {macro}")
 
-    subprocess.Popen([str(fiji), "-macro", str(macro), macro_argument(args.macro, config)])
+    subprocess.Popen(command)
 
 
 if __name__ == "__main__":
