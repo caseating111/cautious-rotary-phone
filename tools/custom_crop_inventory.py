@@ -10,10 +10,12 @@ try:
     from tools import custom_matrix_selection as custom
     from tools import run_existing_pillow_from_config as pillow_adapter
     from tools.preflight_batch import discover_sources, expected_crop_issue, safe_name
+    from tools.presentation_normalize import load_range
 except ModuleNotFoundError:
     import custom_matrix_selection as custom
     import run_existing_pillow_from_config as pillow_adapter
     from preflight_batch import discover_sources, expected_crop_issue, safe_name
+    from presentation_normalize import load_range
 
 
 @dataclass(frozen=True)
@@ -125,6 +127,38 @@ def selected_inventory(config: dict, selection: dict) -> list[CropInventoryItem]
                 )
 
     return items
+
+
+def presentation_range_issues(config: dict, items: list[CropInventoryItem]) -> tuple[int, list[str]]:
+    source_names = sorted({item.source_filename for item in items if item.source_filename}, key=str.casefold)
+    if not source_names:
+        return 0, []
+
+    range_dir = custom.APP_DIR / "display-ranges"
+    image_root_value = str(config.get("image_root", "")).strip()
+    image_root = Path(image_root_value) if image_root_value else None
+    source_by_name: dict[str, list[Path]] = defaultdict(list)
+    if image_root is not None:
+        for source in discover_sources(image_root):
+            source_by_name[source.name.casefold()].append(source)
+
+    ready = 0
+    issues: list[str] = []
+    for source_name in source_names:
+        source_path = None
+        if image_root is not None:
+            matches = source_by_name.get(source_name.casefold(), [])
+            if len(matches) != 1:
+                issues.append(f"{source_name}: expected one current source image, found {len(matches)}")
+                continue
+            source_path = matches[0]
+        try:
+            load_range(range_dir, source_name, source_path=source_path)
+        except SystemExit as exc:
+            issues.append(str(exc))
+            continue
+        ready += 1
+    return ready, issues
 
 
 def inventory_summary(items: list[CropInventoryItem]) -> str:
