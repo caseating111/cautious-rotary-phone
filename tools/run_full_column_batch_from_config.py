@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 from pathlib import Path
 
 APP_DIR = Path.home() / ".cautious-rotary-phone"
@@ -10,6 +11,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 SOURCE_MACRO = REPO_ROOT / "existing scripts clean" / "roibox RUN ALL IN PARENT.ijm"
 ALIGNMENT_MACRO = REPO_ROOT / "fiji" / "full_column_alignment.ijm"
 CROP_HELPER = REPO_ROOT / "fiji" / "export_crops_from_alignment.ijm"
+VALIDATOR = REPO_ROOT / "tools" / "validate_project_csvs.py"
 CONFIGURED_MACRO = APP_DIR / "batch_full_column.configured.ijm"
 
 START_MARKER = "        // ====================================================\n        // IDENTIFY CURRENT PLATE"
@@ -20,11 +22,36 @@ def load_config() -> dict:
     if not CONFIG_FILE.is_file():
         raise SystemExit(f"Config not found: {CONFIG_FILE}")
     data = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
-    required = ["fiji_executable", "image_root", "crop_output", "grid_csv", "images_csv"]
+    required = [
+        "fiji_executable",
+        "image_root",
+        "crop_output",
+        "grid_csv",
+        "images_csv",
+        "condition_order_csv",
+    ]
     missing = [key for key in required if not str(data.get(key, "")).strip()]
     if missing:
         raise SystemExit("Missing config values: " + ", ".join(missing))
     return data
+
+
+def validate_csvs(config: dict) -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(VALIDATOR),
+            str(config["grid_csv"]),
+            str(config["images_csv"]),
+            str(config["condition_order_csv"]),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        output = (result.stdout + result.stderr).strip()
+        raise SystemExit(output or "CSV preflight failed.")
 
 
 def macro_path(value: str | Path) -> str:
@@ -96,6 +123,7 @@ def build_macro(config: dict) -> Path:
 
 def main() -> None:
     config = load_config()
+    validate_csvs(config)
     fiji = Path(config["fiji_executable"])
     if not fiji.is_file():
         raise SystemExit(f"Fiji executable not found: {fiji}")
