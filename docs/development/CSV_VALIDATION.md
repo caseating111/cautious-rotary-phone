@@ -11,7 +11,9 @@ Checks include:
 - unique source filenames;
 - every `images.csv` Experiment/Set exists in `grid.csv`;
 - every image `Type` exists in `condition_order.csv`;
-- comma-bearing `Experiment`, `Set`, `Type` and `Strain` values that the reused ImageJ macros cannot safely parse with their simple comma-splitting logic.
+- comma-bearing `Experiment`, `Set`, `Type` and `Strain` values that the reused ImageJ macros cannot safely parse with simple comma splitting;
+- embedded line breaks in those ImageJ line-parsed metadata fields;
+- semicolons in `Experiment`, `Set` or `Type`, because the composed Fiji helpers use semicolon-delimited `runMacro` arguments.
 
 Comma-containing source filenames remain supported. The existing production ImageJ macro already has explicit handling for quoted filenames containing commas, so the validator deliberately does not reject that case.
 
