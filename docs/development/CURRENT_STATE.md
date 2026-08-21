@@ -19,7 +19,7 @@ A task/commit/checkpoint is not a reason to create another branch. If work is sa
 ### ROI presets / manual alignment assistance
 - Named ROI-size presets around the published ROI 1-Click Tools plugin.
 - `fiji/full_column_alignment.ijm`: manually authoritative first/last whole-column ROIs -> vertical row-average profile -> native ImageJ `Array.findMaxima()` -> regular grid -> full-grid QC -> accept/retry.
-- Important correctness fix: ImageJ's macro `getProfile()` constructs `ProfilePlot(imp, IJ.altKeyDown())`, so a normal macro call does not request the required vertical rectangular profile. The alignment macro now explicitly averages intensity across each ROI row using ImageJ `getValue()` and leaves peak finding to the mature native `Array.findMaxima()` implementation. This also keeps RGB-converted source compatibility.
+- Important correctness fix: ImageJ's macro `getProfile()` normally returns the rectangular column-average profile, not the required vertical row-average profile. The alignment macro explicitly averages intensity across each ROI row using ImageJ `getValue()` and leaves peak finding to native `Array.findMaxima()`. This also keeps RGB-converted source compatibility.
 - `ahk/full_column_alignment_hotkeys.ah2` keeps only small global-hotkey convenience.
 - Source identity/dimensions are persisted with accepted alignment geometry to prevent stale reuse.
 
@@ -68,7 +68,7 @@ A task/commit/checkpoint is not a reason to create another branch. If work is sa
 - `environment.yml` remains minimal (`python`, `pillow`).
 
 ## Branch cleanup status
-Many historical milestone branches are already fully represented by `workflow-dev`. The available GitHub connector can move/create refs but does not expose remote branch deletion, so do not create more routine branches. Historical branches can be deleted in GitHub's branch UI when convenient; no development depends on them.
+Many historical milestone branches are already fully represented by `workflow-dev`. The available GitHub connector does not expose remote branch deletion, so do not create more routine branches. Historical branches can be deleted in GitHub's branch UI when convenient; no development depends on them.
 
 ## Legacy audit result
 - The remaining unwrapped `existing scripts clean/pythonfileaudit.py` is an E2/B-specific diagnostic and is superseded by the generic preflight/reconciliation tooling; do not expose or expand it unless a concrete missing use case appears.
@@ -81,11 +81,13 @@ Many historical milestone branches are already fully represented by `workflow-de
 
 ## Research notes / stop-loss
 - ImageJ documentation confirms `Array.findMaxima(array, tolerance)` returns peak positions ordered by descending strength; retaining the strongest expected count and then sorting spatially is therefore a valid small native-tool route for initial validation.
-- Do not add a bespoke colony detector or spacing optimizer before real-plate QC demonstrates a concrete failure. If native maxima selection is weak, first evaluate Fiji/BAR/profile alternatives or a small manual/profile-assisted adjustment.
+- BAR's established `Find Peaks` command is a concrete mature fallback if native maxima selection is weak. It is installable through Fiji's BAR update site, callable from an ImageJ macro with `run("Find Peaks", ...)`, supports minimum peak amplitude and minimum peak distance, and reports flat-topped peaks at their centers. Prefer evaluating this before any custom colony detector or spacing optimizer.
+- The separate Intensity Profile Tools Fiji update site also provides maintained X/Y profile tooling, but it is mainly interactive visualization and is lower priority than BAR Find Peaks for automated peak selection.
 - ImageJ itself supports installed macro keyboard shortcuts, but the current AHK helper remains preferable for the present modal-dialog flow because it provides global keys while the image window does not necessarily have focus. Avoid adding more AHK workflow logic.
 
 ## Highest-value next routes
 1. Validate the smallest real desktop end-to-end route when user testing becomes available; keep the old four-point fallback intact.
-2. Reduce repeated batch navigation/cleanup only where it composes with existing output folders and does not obscure files.
-3. Research/reuse Fiji/BAR profile/peak alternatives only if native `Array.findMaxima()` proves weak on real plates; do not build a custom colony detector first.
-4. Keep metadata inference conservative unless real data demonstrates a stable, verifiable pattern worth exploiting.
+2. Add only cheap output-safety guards where they prevent partial/wrong crop sets (especially crop-bound checks before export), without changing established crop geometry.
+3. If native peak selection fails representative plates, test BAR Find Peaks as the first mature replacement; do not build a custom colony detector first.
+4. Reduce repeated batch navigation/cleanup only where it composes with existing output folders and does not obscure files.
+5. Keep metadata inference conservative unless real data demonstrates a stable, verifiable pattern worth exploiting.
