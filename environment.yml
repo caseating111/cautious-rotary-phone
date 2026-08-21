@@ -1,0 +1,6 @@
+name: cautious-rotary-phone
+channels:
+  - defaults
+dependencies:
+  - python>=3.11
+  - pillow
