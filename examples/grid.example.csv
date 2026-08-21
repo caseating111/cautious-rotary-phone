@@ -1,0 +1,13 @@
+Experiment,Set,GridCols,Column,Strain
+E1,0,6,1,WT Y
+E1,0,6,2,Mutant A
+E1,0,6,3,Mutant B
+E1,0,6,4,Mutant C
+E1,0,6,5,Mutant D
+E1,0,6,6,Mutant E
+E2,A,6,1,WT Y
+E2,A,6,2,WT X
+E2,A,6,3,Mutant F
+E2,A,6,4,Mutant G
+E2,A,6,5,Mutant H
+E2,A,6,6,Mutant I
