@@ -10,6 +10,8 @@ Checks include:
 - exactly columns `1..GridCols` with no duplicates;
 - non-empty strain names;
 - unique condition order/type entries;
+- **case-insensitive uniqueness of Experiment/Set identities** and condition `Type` names, because the reused Pillow scripts lowercase crop prefixes before matching;
+- uniqueness of every flattened legacy `Experiment_Set_Type` lookup prefix across the Cartesian grid-key × condition set. Underscores remain allowed in metadata; only combinations that become indistinguishable after underscore-delimited flattening are rejected;
 - unique source filenames;
 - source filenames with no surrounding whitespace, because the reused Fiji batch macro matches the raw CSV filename field before later trimming/metadata handling;
 - every `images.csv` Experiment/Set exists in `grid.csv`;
@@ -18,6 +20,8 @@ Checks include:
 - embedded line breaks in those ImageJ line-parsed metadata fields;
 - semicolons in `Experiment`, `Set` or `Type`, because the composed Fiji helpers use semicolon-delimited `runMacro` arguments;
 - Windows filename-unsafe characters (`/ \\ : * ? " < > |`) in `Experiment`, `Set` or `Type`, because those values are inserted directly into crop filenames without sanitizing.
+
+The case/flattening checks are intentionally targeted to the established scripts rather than imposing a generic naming convention. For example, `EXP_1 / SET_A / YPDA_CONTROL` remains valid when it is unambiguous. A combination such as `E1 / A_B / YPDA` alongside `E1_A / B / YPDA` is rejected because both legacy lookups flatten to the same lower-case prefix even though the structured metadata tuples are different.
 
 `Strain` is different: the established Fiji crop exporter already sanitizes filename-unsafe strain characters through `safeName()`, so the validator does not unnecessarily prohibit them there.
 
