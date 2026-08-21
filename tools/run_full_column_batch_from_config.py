@@ -118,7 +118,13 @@ def validate_legacy_grid_widths(config: dict) -> None:
         )
 
 
-def run_preflight(legacy: bool = False) -> int:
+def run_preflight(
+    legacy: bool = False,
+    require_fiji_handoff_paths: bool | None = None,
+) -> int:
+    if require_fiji_handoff_paths is None:
+        require_fiji_handoff_paths = not legacy
+
     args = [
         sys.executable,
         str(PREFLIGHT),
@@ -127,7 +133,7 @@ def run_preflight(legacy: bool = False) -> int:
         "--pending-images-csv",
         str(PENDING_IMAGES_CSV),
     ]
-    if legacy:
+    if not require_fiji_handoff_paths:
         args.append("--no-fiji-handoff-path-rules")
     result = subprocess.run(args, capture_output=True, text=True, check=False)
     output = (result.stdout + result.stderr).strip()
