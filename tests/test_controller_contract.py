@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tools.workflow_controller import PROJECT_CSV_FILES, sibling_project_csvs
+from tools.workflow_controller import PROJECT_CSV_FILES, preflight_dialog_text, sibling_project_csvs
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -49,6 +49,22 @@ class ControllerContractTests(unittest.TestCase):
         self.assertIn("command=self.open_preflight_report", text)
         self.assertIn('self.open_existing_path(PREFLIGHT_REPORT, "Preflight report")', text)
         self.assertIn("Open the saved report for easier review.", text)
+
+    def test_preflight_dialog_summary_avoids_repeating_long_saved_report(self) -> None:
+        long_output = "BATCH PREFLIGHT\n" + ("detail line\n" * 200)
+
+        ready = preflight_dialog_text(0, 7, long_output, report_exists=True)
+        self.assertIn("Pending images: 7", ready)
+        self.assertIn("Full details are saved", ready)
+        self.assertNotIn("detail line", ready)
+
+        blocked = preflight_dialog_text(1, 0, long_output, report_exists=True)
+        self.assertIn("Preflight found blocking items", blocked)
+        self.assertIn("Open the saved preflight report", blocked)
+        self.assertNotIn("detail line", blocked)
+
+        raw_failure = preflight_dialog_text(1, 0, "Config not found", report_exists=False)
+        self.assertEqual(raw_failure, "Config not found")
 
     def test_single_hotkey_helper_covers_full_column_and_four_point_dialogs(self) -> None:
         text = AHK_HELPER.read_text(encoding="utf-8")
