@@ -12,6 +12,7 @@ from tools.run_dedup_with_control import (
     patch_preferred_control,
     save_preferred_source,
     validate_control_source,
+    validate_dedup_outputs,
 )
 
 
@@ -74,6 +75,18 @@ class DeduplicatedControlSourceTests(unittest.TestCase):
             self.assertIsNone(load_preferred_source(path))
             path.write_text("{not-json", encoding="utf-8")
             self.assertIsNone(load_preferred_source(path))
+
+    def test_full_output_requires_both_top_and_low_images(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            output = Path(temp)
+            output.joinpath("WT_EXP2A_ALL_Top.png").write_bytes(b"top")
+            with self.assertRaises(SystemExit) as caught:
+                validate_dedup_outputs(output)
+            self.assertIn("WT_EXP2A_ALL_Low.png", str(caught.exception))
+            self.assertIn("Partial output was left for inspection", str(caught.exception))
+
+            output.joinpath("WT_EXP2A_ALL_Low.png").write_bytes(b"low")
+            validate_dedup_outputs(output)
 
 
 if __name__ == "__main__":
