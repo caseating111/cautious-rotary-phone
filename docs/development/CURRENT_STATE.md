@@ -18,14 +18,15 @@ Routine implementation goes directly onto `workflow-dev`. Do **not** create a ne
 - Named ROI-size presets around the published ROI 1-Click Tools plugin.
 - `fiji/full_column_alignment.ijm`: manually authoritative first/last whole-column ROIs -> vertical average profile -> native ImageJ `Array.findMaxima()` -> regular grid -> full-grid QC -> accept/retry.
 - User interaction remains one tall rectangle on the first column and the same rectangle moved to the last column. Manual placement remains authoritative.
-- Profile averaging now uses a mature native ImageJ path: the tall rectangle is temporarily converted to a vertical straight-line ROI with the same width, then `getProfile()` delegates to ImageJ's wide-line/`Straightener` machinery. The rectangle is immediately restored. The previous explicit `getValue()` pixel loop remains only as a fallback if the native profile is unexpectedly unavailable/short.
+- Profile averaging uses a mature native ImageJ path: the tall rectangle is temporarily converted to a vertical straight-line ROI with the same width, then `getProfile()` delegates to ImageJ's wide-line/`Straightener` machinery. The rectangle is immediately restored. The previous explicit `getValue()` pixel loop remains only as fallback if the native profile is unexpectedly unavailable/short.
 - `ahk/full_column_alignment_hotkeys.ah2` remains small global-hotkey convenience only.
 - Source identity/dimensions are persisted with accepted alignment geometry to prevent stale reuse.
 
 ### Visibility / crop handoff
 - `fiji/apply_global_visibility.ijm`: robust outside-grid background + inside-grid high percentile -> one whole-image display range while preserving quantitative source pixels.
+- Visibility percentile/background work already uses ImageJ's native histogram machinery; do not replace it with bespoke pixel loops.
 - It can consume saved visibility settings through ImageJ macro arguments; direct no-argument launch retains the original dialog.
-- Official ImageJ documentation confirms the launcher form `-macro path [arg]`, so the config-driven visibility argument itself no longer needs manual compatibility testing.
+- Official ImageJ documentation confirms the launcher form `-macro path [arg]`, so config-driven visibility argument passing itself no longer needs manual compatibility testing.
 - `fiji/export_crops_from_alignment.ijm`: accepted alignment -> established Top/Low crop naming and geometry.
 - Crop export validates every intended Top/Low rectangle against source-image bounds before writing the first PNG. Non-positive crop dimensions and zero matching grid rows are rejected as well.
 
@@ -36,15 +37,18 @@ Routine implementation goes directly onto `workflow-dev`. Do **not** create a ne
 - CSV semantic validation runs before Fiji starts.
 - Saved crop width/height and alignment tolerance are consumed only where metadata already supplies the grid column count.
 - `--prepare-only` performs CSV validation, preflight, pending-image generation, exact source-marker checks and configured macro construction without launching Fiji.
+- Batch preparation now verifies the production macro, alignment macro, crop helper, validator and preflight helper exist before doing work. Actual launch also verifies the configured Fiji executable first, while `--prepare-only` deliberately remains independent of a local Fiji installation.
+- `tests/test_source_adapters.py` covers the distinction between preparation-only runtime requirements and actual-launch Fiji requirements.
 
 ### Batch preflight / resume
 - `tools/preflight_batch.py` mirrors production immediate-subfolder, basename metadata and exact output-name semantics.
 - It reports discovered/mapped/unmapped images, duplicate source basenames, stale metadata rows, missing grid definitions and expected/existing/missing crop counts.
 - It blocks exact same-path output collisions before Fiji can overwrite a plate.
-- It also blocks duplicate logical crop names across different output folders. This is required because the reused Pillow matrix scripts recursively search by filename prefix and otherwise warn then choose the first match, so cross-folder duplicates are downstream-ambiguous even though Fiji itself writes them to separate folders.
+- It also blocks duplicate logical crop names across different output folders because the reused Pillow matrix scripts recursively search by filename prefix and otherwise warn then choose the first match.
+- Existing PNGs under `crop_output` that are not part of the current metadata-defined expected crop set are now listed as **UNEXPECTED CROP PNGS — NON-BLOCKING**. This exposes likely stale outputs earlier without preventing valid processing merely because unrelated/old files exist.
 - It writes `~/.cautious-rotary-phone/last_preflight.txt` and pending-only `pending_images.csv`.
 - The composed batch uses pending-only metadata, so completed plates are naturally skipped on rerun. Partially complete plates remain pending as a whole plate; no fragile per-crop resume path is introduced.
-- `tests/test_preflight_batch.py` covers missing, complete, duplicate-basename, same-folder collision, cross-folder downstream ambiguity and distinct-condition non-ambiguity cases.
+- `tests/test_preflight_batch.py` covers missing, complete, stale non-blocking PNG reporting, duplicate-basename, same-folder collision, cross-folder downstream ambiguity and distinct-condition non-ambiguity cases.
 
 ### Metadata reconciliation
 - `tools/reconcile_images_csv.py` scans production source folders, preserves existing authoritative metadata, leaves new metadata blank rather than guessed, and preserves manual draft metadata across rescans.
@@ -58,7 +62,7 @@ Routine implementation goes directly onto `workflow-dev`. Do **not** create a ne
 - All four aliases are regression-checked for the shared path-block adapter.
 - Before output generation, the wrapper derives the same logical crop prefixes used by the existing scripts from `grid.csv` + `images.csv` and blocks any prefix with multiple real file matches. This catches stale/legacy duplicates before the old scripts can silently choose the first match.
 - Only current logical crop matches are passed to orientation normalization. Unrelated images under `crop_output` are ignored.
-- Current crop inputs matching the configured unrotated dimensions are rotated once with Pillow; already-rotated crops are skipped. Current logical crops with incompatible dimensions fail before matrix generation.
+- Current crop inputs matching configured unrotated dimensions are rotated once with Pillow; already-rotated crops are skipped. Current logical crops with incompatible dimensions fail before matrix generation.
 - Temporary configured copies force `ROTATE_IMAGES_90_CCW = False`, removing dependence on the legacy one-shot `.rotated_90ccw.done` behavior.
 
 ### CSV validation
@@ -74,11 +78,13 @@ Routine implementation goes directly onto `workflow-dev`. Do **not** create a ne
 - Quick buttons open configured source-image, crop-output and matrix-output folders directly using the OS shell.
 - Controller window is titled `Image workflow controller`.
 - `tools/run_fiji_macro_from_config.py` is a thin visibility launcher using ImageJ's macro argument mechanism and supports dry-run command inspection.
+- `tests/test_fiji_launcher.py` verifies config-to-macro argument construction without requiring Fiji on the test runner.
 - `environment.yml` remains minimal (`python`, `pillow`).
 
 ### Automated regression checks
 - `.github/workflows/python-glue-tests.yml` runs the Python unittest suite on pushes to `workflow-dev` and pull requests.
-- The workflow now installs Pillow explicitly before running tests, so clean GitHub runners can execute the current adapter/orientation tests instead of depending on an incidental preinstalled package.
+- The workflow installs Pillow explicitly and now runs `python -m compileall -q tools tests` before behavioral tests so syntax breakage in the glue layer is caught cheaply.
+- The GitHub connector's combined-status endpoint is currently returning no status contexts for these direct branch commits; do not infer a passing or failing Actions result from that absence.
 
 ## Branch cleanup status
 Historical milestone branches are not needed for routine continuation. Do not create more routine branches; development remains on `workflow-dev`.
