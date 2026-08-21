@@ -124,9 +124,10 @@ class MetadataReview(tk.Tk):
         result = self.run_helper("reconcile_images_csv.py")
         output = (result.stdout + result.stderr).strip() or "No reconciliation output."
         self.status.set(output)
-        if REVIEW.is_file():
+        expected = reconciliation_result_is_expected(result.returncode, output)
+        if expected and REVIEW.is_file():
             self.open_path(REVIEW)
-        if not reconciliation_result_is_expected(result.returncode, output):
+        if not expected:
             messagebox.showerror("Metadata reconciliation", output)
 
     def finalize(self) -> None:
