@@ -44,7 +44,12 @@ def existing_layout_for_raw(image_root: Path) -> ProjectLayout | None:
     if raw_dir.name.casefold() != "raw":
         return None
     project_root = raw_dir.parent
-    if not project_root.name.casefold().endswith(("_" + image_root.name).casefold()):
+    named_like_project = project_root.name.casefold().endswith(("_" + image_root.name).casefold())
+    structured_like_project = any(
+        (project_root / name).is_dir()
+        for name in ("Crops", "Matrices", "Metadata")
+    )
+    if not named_like_project and not structured_like_project:
         return None
     return ProjectLayout(
         project_root=project_root,
