@@ -14,6 +14,42 @@ except ModuleNotFoundError:
     import run_existing_pillow_from_config as pillow_adapter
 
 
+def validate_selection_available(
+    selection: dict,
+    groups: dict[tuple[str, str], list[tuple[int, str]]],
+    conditions: list[str],
+) -> dict:
+    clean = custom.normalize_selection(selection)
+    available_groups = {
+        (exp.casefold(), set_name.casefold()): {column for column, _strain in rows}
+        for (exp, set_name), rows in groups.items()
+    }
+    available_conditions = {value.casefold() for value in conditions}
+
+    missing: list[str] = []
+    for group in clean["groups"]:
+        key = (group["experiment"].casefold(), group["set"].casefold())
+        columns = available_groups.get(key)
+        if columns is None:
+            missing.append(f"group {group['experiment']}/{group['set']}")
+            continue
+        for column in group["columns"]:
+            if column not in columns:
+                missing.append(f"{group['experiment']}/{group['set']} column {column}")
+
+    for condition in clean["conditions"]:
+        if condition.casefold() not in available_conditions:
+            missing.append(f"condition/type {condition}")
+
+    if missing:
+        raise SystemExit(
+            "Saved custom selection no longer matches the current project and was not applied:\n"
+            + "\n".join(f"  - {item}" for item in missing)
+            + "\nUpdate the selection manually or use a recipe that matches the current CSV metadata."
+        )
+    return clean
+
+
 class CustomMatrixBuilder(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
@@ -143,7 +179,8 @@ class CustomMatrixBuilder(tk.Tk):
         return custom.normalize_selection({"groups": groups, "conditions": conditions, "states": states})
 
     def apply_selection(self, selection: dict) -> None:
-        selection = custom.normalize_selection(selection)
+        groups, conditions = self.project_data()
+        selection = validate_selection_available(selection, groups, conditions)
         self.set_all(False)
         wanted_groups = {
             (group["experiment"].casefold(), group["set"].casefold()): set(group["columns"])
@@ -166,8 +203,11 @@ class CustomMatrixBuilder(tk.Tk):
                 self.apply_selection(json.loads(custom.LAST_SELECTION_FILE.read_text(encoding="utf-8")))
                 self.status.set("Restored the last custom selection. Use All to return to the full project.")
                 return
-            except (OSError, json.JSONDecodeError, SystemExit):
+            except (OSError, json.JSONDecodeError):
                 pass
+            except SystemExit as exc:
+                self.status.set(f"Previous selection was not restored: {exc}")
+                return
         self.status.set("Full project selected. Narrow only what you want to compare.")
 
     def restore_last_selection(self) -> None:
