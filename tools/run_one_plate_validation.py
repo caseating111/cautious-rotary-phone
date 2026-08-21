@@ -15,6 +15,11 @@ APP_DIR = batch.APP_DIR
 PROOF_IMAGES_CSV = APP_DIR / "one_plate_validation_images.csv"
 PROOF_MACRO = APP_DIR / "one_plate_validation.configured.ijm"
 PROOF_LEGACY_MACRO = APP_DIR / "one_plate_four_point_validation.configured.ijm"
+_PROOF_PROCESS: subprocess.Popen | None = None
+
+
+def proof_is_running() -> bool:
+    return bool(_PROOF_PROCESS and _PROOF_PROCESS.poll() is None)
 
 
 def read_pending_rows(path: Path) -> tuple[list[str], list[dict[str, str]]]:
@@ -86,17 +91,21 @@ def prepare(filename: str | None = None, *, legacy: bool = False) -> tuple[Path,
     return proof_macro, selected
 
 
-def run(filename: str | None = None, *, legacy: bool = False) -> tuple[dict[str, str], subprocess.Popen]:
+def run(filename: str | None = None, *, legacy: bool = False) -> dict[str, str]:
+    global _PROOF_PROCESS
+    if proof_is_running():
+        raise SystemExit("A one-plate Fiji proof launched by this controller is already running.")
+
     macro, selected = prepare(filename, legacy=legacy)
     config = batch.load_config(require_fiji=True, require_fiji_handoff_paths=not legacy)
     fiji = Path(config["fiji_executable"])
     if not fiji.is_file():
         raise SystemExit(f"Fiji executable not found: {fiji}")
     try:
-        process = subprocess.Popen([str(fiji), "-macro", str(macro)])
+        _PROOF_PROCESS = subprocess.Popen([str(fiji), "-macro", str(macro)])
     except OSError as exc:
         raise SystemExit(f"Could not launch Fiji one-plate validation: {exc}") from exc
-    return selected, process
+    return selected
 
 
 def main() -> None:
@@ -106,7 +115,7 @@ def main() -> None:
     parser.add_argument("--filename", help="exact pending source filename; default is the first authoritative pending row")
     parser.add_argument("--legacy", action="store_true", help="use the four-point mathematical alignment route")
     args = parser.parse_args()
-    selected, _process = run(args.filename, legacy=args.legacy)
+    selected = run(args.filename, legacy=args.legacy)
     route = "four-point" if args.legacy else "full-column"
     print(
         f"Launched one-plate {route} validation: "
