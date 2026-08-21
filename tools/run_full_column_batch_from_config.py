@@ -33,6 +33,15 @@ def load_config() -> dict:
     missing = [key for key in required if not str(data.get(key, "")).strip()]
     if missing:
         raise SystemExit("Missing config values: " + ", ".join(missing))
+
+    try:
+        data["alignment_tolerance"] = float(data.get("alignment_tolerance", 0.08))
+        data["crop_width"] = int(data.get("crop_width", 130))
+        data["crop_height"] = int(data.get("crop_height", 546))
+    except (TypeError, ValueError) as exc:
+        raise SystemExit(f"Invalid processing setting: {exc}") from exc
+    if data["alignment_tolerance"] <= 0 or data["crop_width"] <= 0 or data["crop_height"] <= 0:
+        raise SystemExit("Alignment tolerance and crop dimensions must be positive.")
     return data
 
 
@@ -73,6 +82,8 @@ def build_macro(config: dict) -> Path:
         'imagesFile = "path here";': f'imagesFile = "{macro_path(config["images_csv"])}";',
         'inputRoot  = "path here";': f'inputRoot  = "{macro_path(config["image_root"])}";',
         'outputRoot = "path here";': f'outputRoot = "{macro_path(config["crop_output"])}";',
+        "CROP_W = 130;": f'CROP_W = {config["crop_width"]};',
+        "CROP_H = 546;": f'CROP_H = {config["crop_height"]};',
     }
     for old, new in replacements.items():
         source = replace_once(source, old, new)
@@ -102,7 +113,7 @@ def build_macro(config: dict) -> Path:
 
         runMacro(
             "{macro_path(ALIGNMENT_MACRO)}",
-            "cols=" + gridCols + ";rows=8;tolerance=0.08"
+            "cols=" + gridCols + ";rows=8;tolerance={config['alignment_tolerance']}"
         );
 
         runMacro(
