@@ -16,7 +16,7 @@ WRAPPER = REPO_ROOT / "tools" / "run_existing_pillow_from_config.py"
 
 
 class LabelIndividualEndToEndTests(unittest.TestCase):
-    def test_label_individual_job_uses_metadata_for_underscore_names_and_one_output_tree(self) -> None:
+    def test_label_individual_job_uses_metadata_for_underscore_names_and_exporter_safe_strains(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             home = root / "home"
@@ -38,6 +38,8 @@ class LabelIndividualEndToEndTests(unittest.TestCase):
             exp = "E_1"
             set_name = "A_B"
             type_name = "YPDA_day_1"
+            unsafe_strain = "mut:1?"
+            safe_strain = "mut-1"
 
             grid_csv = root / "grid.csv"
             images_csv = root / "images.csv"
@@ -45,7 +47,7 @@ class LabelIndividualEndToEndTests(unittest.TestCase):
             grid_csv.write_text(
                 "Experiment,Set,GridCols,Column,Strain\n"
                 f"{exp},{set_name},2,1,WT\n"
-                f"{exp},{set_name},2,2,mut1\n",
+                f"{exp},{set_name},2,2,{unsafe_strain}\n",
                 encoding="utf-8",
             )
             images_csv.write_text(
@@ -59,17 +61,17 @@ class LabelIndividualEndToEndTests(unittest.TestCase):
             )
 
             real_crops: list[Path] = []
-            for index, (column, strain, state) in enumerate(
+            for index, (column, exporter_strain, state) in enumerate(
                 (
                     (1, "WT", "Top"),
                     (1, "WT", "Low"),
-                    (2, "mut1", "Top"),
-                    (2, "mut1", "Low"),
+                    (2, safe_strain, "Top"),
+                    (2, safe_strain, "Low"),
                 ),
                 1,
             ):
                 path = crop_folder / (
-                    f"{exp}_{set_name}_{type_name}_{column:02d}_{state}_{strain}.png"
+                    f"{exp}_{set_name}_{type_name}_{column:02d}_{state}_{exporter_strain}.png"
                 )
                 Image.new("L", (20, 48), 30 + column).save(path)
                 os.utime(path, ns=(source_mtime + index, source_mtime + index))
@@ -104,6 +106,7 @@ class LabelIndividualEndToEndTests(unittest.TestCase):
             self.assertIn("Crop orientation: rotated 4, already ready 0", result.stdout)
             self.assertIn("Labelled: 4", result.stdout)
             self.assertIn("Skipped: 0", result.stdout)
+            self.assertIn(f"{unsafe_strain}:", result.stdout)
 
             # Labelling/rotation happens on staging copies only.
             for path in real_crops:
@@ -115,7 +118,7 @@ class LabelIndividualEndToEndTests(unittest.TestCase):
             output = outputs[0]
             self.assertTrue(output.name.startswith("Labelled Individual Images"))
             self.assertEqual(len(list((output / "WT").glob("*.png"))), 2)
-            self.assertEqual(len(list((output / "mut1").glob("*.png"))), 2)
+            self.assertEqual(len(list((output / safe_strain).glob("*.png"))), 2)
 
             with Image.open(next((output / "WT").glob("*.png"))) as labelled:
                 self.assertGreater(labelled.width, 48)
