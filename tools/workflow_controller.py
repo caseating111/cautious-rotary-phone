@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import csv
 import json
 import os
 import subprocess
@@ -22,12 +21,6 @@ DEFAULTS = {
     "grid_csv": "",
     "images_csv": "",
     "condition_order_csv": "",
-}
-
-CSV_REQUIREMENTS = {
-    "grid_csv": {"Experiment", "Set", "GridCols", "Column", "Strain"},
-    "images_csv": {"Filename", "Experiment", "Set", "Type"},
-    "condition_order_csv": {"Order", "Type"},
 }
 
 PILLOW_JOBS = {
@@ -139,32 +132,29 @@ class Controller(tk.Tk):
         self.status.set(f"Saved: {CONFIG_FILE}")
 
     def validate_csvs(self) -> None:
-        problems: list[str] = []
-        for key, required in CSV_REQUIREMENTS.items():
-            raw = self.vars[key].get().strip()
-            if not raw:
-                problems.append(f"{key}: no file selected")
-                continue
-            path = Path(raw)
-            if not path.is_file():
-                problems.append(f"{key}: file not found")
-                continue
-            try:
-                with path.open("r", encoding="utf-8-sig", newline="") as handle:
-                    header = next(csv.reader(handle), [])
-            except OSError as exc:
-                problems.append(f"{key}: {exc}")
-                continue
-            missing = required - {cell.strip() for cell in header}
-            if missing:
-                problems.append(f"{key}: missing {', '.join(sorted(missing))}")
+        paths = [
+            self.vars["grid_csv"].get().strip(),
+            self.vars["images_csv"].get().strip(),
+            self.vars["condition_order_csv"].get().strip(),
+        ]
+        if not all(paths):
+            messagebox.showerror("CSV validation", "Select grid.csv, images.csv and condition_order.csv first.")
+            return
 
-        if problems:
-            messagebox.showerror("CSV validation", "\n".join(problems))
-            self.status.set("CSV validation found issues.")
+        validator = REPO_ROOT / "tools" / "validate_project_csvs.py"
+        result = subprocess.run(
+            [sys.executable, str(validator), *paths],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        output = (result.stdout + result.stderr).strip() or "No validator output."
+        if result.returncode == 0:
+            messagebox.showinfo("CSV validation", output)
+            self.status.set("CSV structure and cross-file mappings valid.")
         else:
-            messagebox.showinfo("CSV validation", "All three CSV headers are valid.")
-            self.status.set("CSV headers valid.")
+            messagebox.showerror("CSV validation", output)
+            self.status.set("CSV validation found issues.")
 
     def fiji_executable(self) -> Path | None:
         raw = self.vars["fiji_executable"].get().strip()
