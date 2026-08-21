@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import tkinter as tk
 from pathlib import Path
-from tkinter import messagebox, ttk
+from tkinter import filedialog, messagebox, ttk
 
 try:
+    from tools import project_csv_discovery
     from tools import project_layout
     from tools import run_existing_pillow_from_config as pillow_adapter
     from tools import run_one_plate_validation as one_plate_validation
@@ -12,6 +13,7 @@ try:
     from tools.output_processing_records import write_output_records
     from tools.workflow_controller import Controller, PILLOW_JOBS, PROJECT_CSV_FILES
 except ModuleNotFoundError:
+    import project_csv_discovery
     import project_layout
     import run_existing_pillow_from_config as pillow_adapter
     import run_one_plate_validation as one_plate_validation
@@ -47,35 +49,72 @@ class ExtendedController(Controller):
             text="  default: dd.mm.yy; custom text such as ATTEMPT1 is allowed",
         ).pack(side="left")
 
+        csv_frame = ttk.Frame(self)
+        csv_frame.grid(row=19, column=0, columnspan=3, sticky="ew", padx=5, pady=(0, 3))
+        ttk.Button(
+            csv_frame,
+            text="Choose CSV folder and find project CSVs",
+            command=self.choose_csv_folder,
+        ).pack(side="left")
+        ttk.Label(
+            csv_frame,
+            text="  finds grid.csv, images.csv and condition_order.csv by case-insensitive filename match",
+        ).pack(side="left", padx=(8, 0))
+
         separator = ttk.Separator(self)
-        separator.grid(row=19, column=0, columnspan=3, sticky="ew", padx=5, pady=6)
+        separator.grid(row=20, column=0, columnspan=3, sticky="ew", padx=5, pady=6)
         ttk.Button(
             self,
             text="Custom matrices",
             command=lambda: self.launch_python("tools/custom_matrix_gui_recorded.py"),
-        ).grid(row=20, column=0, sticky="ew", padx=5, pady=3)
+        ).grid(row=21, column=0, sticky="ew", padx=5, pady=3)
         ttk.Button(
             self,
             text="Preferred WT source",
             command=lambda: self.launch_python("tools/dedup_control_gui.py"),
-        ).grid(row=20, column=1, sticky="ew", padx=5, pady=3)
+        ).grid(row=21, column=1, sticky="ew", padx=5, pady=3)
         ttk.Button(
             self,
             text="Open Processing Logs",
             command=self.open_processing_logs,
-        ).grid(row=20, column=2, sticky="ew", padx=5, pady=3)
+        ).grid(row=21, column=2, sticky="ew", padx=5, pady=3)
 
         ttk.Checkbutton(
             self,
             text="Preview first when a standard Pillow job will create multiple images",
             variable=self.preview_standard_outputs,
-        ).grid(row=21, column=0, columnspan=3, sticky="w", padx=5, pady=(3, 6))
+        ).grid(row=22, column=0, columnspan=3, sticky="w", padx=5, pady=(3, 6))
 
         ttk.Button(
             self,
             text="Run one-plate full-column proof (first pending image only)",
             command=self.run_one_plate_validation,
-        ).grid(row=22, column=0, columnspan=3, sticky="ew", padx=5, pady=(0, 6))
+        ).grid(row=23, column=0, columnspan=3, sticky="ew", padx=5, pady=(0, 6))
+
+    def choose_csv_folder(self) -> None:
+        initial = None
+        for key in PROJECT_CSV_FILES:
+            configured = self.vars[key].get().strip()
+            if configured:
+                initial = str(Path(configured).parent)
+                break
+        chosen = filedialog.askdirectory(initialdir=initial)
+        if not chosen:
+            return
+
+        try:
+            found = project_csv_discovery.discover_project_csvs(Path(chosen))
+        except ValueError as exc:
+            messagebox.showerror("Project CSV discovery", str(exc))
+            self.status.set("CSV folder selected, but the three project CSVs could not be identified safely.")
+            return
+
+        for key, path in found.items():
+            self.vars[key].set(str(path))
+
+        if self.save():
+            names = ", ".join(path.name for path in found.values())
+            self.status.set(f"Project CSVs found and configured from {chosen}: {names}")
 
     def browse(self, key: str, kind: str) -> None:
         before = self.vars[key].get().strip()
