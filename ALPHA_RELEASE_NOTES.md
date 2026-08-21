@@ -28,7 +28,11 @@ The new full-column Fiji interaction still needs one representative real desktop
 
 ## Launcher hotfix
 
-On 2026-08-21 the Windows launcher was patched to invoke `conda run` with `call`. Anaconda exposes `conda` through a batch/cmd entry point on common Windows installs; without `call`, installing Anaconda could cause `start_controller.cmd` to transfer control to conda and never reach its Python fallback. The alpha processing code itself was not otherwise advanced by this hotfix.
+On 2026-08-21 the Windows launcher was patched for newly installed Anaconda:
+- `conda run` is invoked through `call`, because Windows `conda` is commonly a batch/cmd entry point and otherwise the launcher may never regain control;
+- if the named `cautious-rotary-phone` environment does not exist yet, the launcher tries Anaconda `base` before falling back to Windows `py` and PATH Python.
+
+This is a launcher-only compatibility hotfix; the alpha processing code itself was not otherwise advanced.
 
 ## First use
 
