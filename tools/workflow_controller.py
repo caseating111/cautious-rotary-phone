@@ -13,6 +13,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 APP_DIR = Path.home() / ".cautious-rotary-phone"
 CONFIG_FILE = APP_DIR / "config.json"
 PENDING_IMAGES_CSV = APP_DIR / "pending_images.csv"
+PREFLIGHT_REPORT = APP_DIR / "last_preflight.txt"
 CONFIGURED_BATCH_MACRO = APP_DIR / "batch_full_column.configured.ijm"
 CONFIGURED_LEGACY_BATCH_MACRO = APP_DIR / "batch_four_point_fallback.configured.ijm"
 
@@ -148,6 +149,9 @@ class Controller(tk.Tk):
         r += 1
         ttk.Button(self, text="Start alignment hotkeys", command=self.start_ahk).grid(row=r, column=0, sticky="ew", **pad)
         ttk.Button(self, text="Stop alignment hotkeys", command=self.stop_ahk).grid(row=r, column=1, sticky="ew", **pad)
+
+        r += 1
+        ttk.Button(self, text="Open last preflight report", command=self.open_preflight_report).grid(row=r, column=0, columnspan=2, sticky="ew", **pad)
         ttk.Button(self, text="Open config folder", command=self.open_config_folder).grid(row=r, column=2, sticky="ew", **pad)
 
         r += 1
@@ -251,7 +255,7 @@ class Controller(tk.Tk):
             self.status.set(f"Batch preflight ready: {pending} image(s) pending.")
         else:
             messagebox.showerror("Batch preflight", output)
-            self.status.set("Batch preflight found items to resolve.")
+            self.status.set("Batch preflight found items to resolve. Open the saved report for easier review.")
 
     def fiji_executable(self) -> Path | None:
         raw = self.vars["fiji_executable"].get().strip()
@@ -423,23 +427,29 @@ class Controller(tk.Tk):
         else:
             self.status.set("No controller-started hotkey process is running.")
 
-    def open_path_from_config(self, key: str) -> None:
-        raw = self.vars[key].get().strip()
-        path = Path(raw) if raw else None
-        if not path or not path.is_dir():
-            messagebox.showerror("Open folder", f"Configured folder does not exist:\n{raw or '(not set)'}")
+    def open_preflight_report(self) -> None:
+        self.open_existing_path(PREFLIGHT_REPORT, "Preflight report")
+
+    def open_existing_path(self, path: Path, label: str) -> None:
+        if not path.exists():
+            messagebox.showerror(label, f"Not found:\n{path}")
             return
         try:
             os.startfile(path)  # type: ignore[attr-defined]
         except (AttributeError, OSError):
             self.status.set(str(path))
 
+    def open_path_from_config(self, key: str) -> None:
+        raw = self.vars[key].get().strip()
+        path = Path(raw) if raw else None
+        if not path or not path.is_dir():
+            messagebox.showerror("Open folder", f"Configured folder does not exist:\n{raw or '(not set)'}")
+            return
+        self.open_existing_path(path, "Open folder")
+
     def open_config_folder(self) -> None:
         APP_DIR.mkdir(parents=True, exist_ok=True)
-        try:
-            os.startfile(APP_DIR)  # type: ignore[attr-defined]
-        except (AttributeError, OSError):
-            self.status.set(str(APP_DIR))
+        self.open_existing_path(APP_DIR, "Open config folder")
 
 
 if __name__ == "__main__":
