@@ -63,6 +63,35 @@ class OnePlateValidationTests(unittest.TestCase):
             self.assertIn("still running", str(caught.exception))
             prepare.assert_not_called()
 
+    def test_four_point_prepare_uses_legacy_configured_macro(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            pending = root / "pending.csv"
+            configured = root / "legacy.ijm"
+            proof_csv = root / "proof.csv"
+            proof_macro = root / "proof.ijm"
+            pending.write_text(
+                "Filename,Experiment,Set,Type\nplate2.jpg,E2,B,SALT\n",
+                encoding="utf-8",
+            )
+            configured.write_text(
+                f'imagesFile = "{proof.batch.macro_path(pending)}";\n',
+                encoding="utf-8",
+            )
+            completed = type("Completed", (), {"returncode": 0, "stdout": "ok", "stderr": ""})()
+
+            with patch.object(proof.batch, "PENDING_IMAGES_CSV", pending), patch.object(
+                proof.batch, "CONFIGURED_LEGACY_MACRO", configured
+            ), patch.object(proof, "PROOF_IMAGES_CSV", proof_csv), patch.object(
+                proof, "PROOF_LEGACY_MACRO", proof_macro
+            ), patch.object(proof.subprocess, "run", return_value=completed) as run_mock:
+                built, selected = proof.prepare("plate2.jpg", legacy=True)
+
+            self.assertEqual(built, proof_macro)
+            self.assertEqual(selected["Filename"], "plate2.jpg")
+            self.assertIn("--legacy", run_mock.call_args.args[0])
+            self.assertIn(proof.batch.macro_path(proof_csv), proof_macro.read_text(encoding="utf-8"))
+
 
 if __name__ == "__main__":
     unittest.main()
