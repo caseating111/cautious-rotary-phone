@@ -112,7 +112,7 @@ class Controller(tk.Tk):
         r += 1
 
         ttk.Button(self, text="Synthetic test plate", command=lambda: self.launch_fiji_macro("fiji/create_synthetic_grid_plate.ijm")).grid(row=r, column=0, sticky="ew", **pad)
-        ttk.Button(self, text="Full-column alignment", command=lambda: self.launch_configured_fiji("alignment")).grid(row=r, column=1, sticky="ew", **pad)
+        ttk.Button(self, text="Full-column alignment", command=lambda: self.launch_fiji_macro("fiji/full_column_alignment.ijm")).grid(row=r, column=1, sticky="ew", **pad)
         ttk.Button(self, text="Global visibility", command=lambda: self.launch_configured_fiji("visibility")).grid(row=r, column=2, sticky="ew", **pad)
 
         r += 1
@@ -163,6 +163,7 @@ class Controller(tk.Tk):
                     raise ValueError("Crop dimensions must be positive integers.")
                 if float(self.vars["visibility_band"].get()) < 1:
                     raise ValueError("Visibility band must be at least 1.")
+                float(self.vars["visibility_black_offset"].get())
                 percentile = float(self.vars["visibility_high_percentile"].get())
                 if percentile <= 0 or percentile > 100:
                     raise ValueError("Visibility percentile must be >0 and <=100.")
