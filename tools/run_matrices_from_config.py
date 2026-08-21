@@ -1,13 +1,15 @@
 from __future__ import annotations
 
-import importlib.util
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 APP_DIR = Path.home() / ".cautious-rotary-phone"
 CONFIG_FILE = APP_DIR / "config.json"
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MATRIX_SCRIPT = REPO_ROOT / "existing scripts clean" / "make_matrices.py"
+CONFIGURED_SCRIPT = APP_DIR / "make_matrices.configured.py"
 
 
 def load_config() -> dict:
@@ -21,29 +23,34 @@ def load_config() -> dict:
     return data
 
 
-def load_existing_matrix_script():
-    spec = importlib.util.spec_from_file_location("existing_make_matrices", MATRIX_SCRIPT)
-    if spec is None or spec.loader is None:
-        raise SystemExit(f"Could not load matrix script: {MATRIX_SCRIPT}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+def py_path(value: str) -> str:
+    return repr(str(Path(value)))
+
+
+def configure_script(config: dict) -> Path:
+    source = MATRIX_SCRIPT.read_text(encoding="utf-8")
+    replacements = {
+        'IMAGE_ROOT = Path(r"path here")': f"IMAGE_ROOT = Path({py_path(config['crop_output'])})",
+        'GRID_CSV = Path(r"path here")': f"GRID_CSV = Path({py_path(config['grid_csv'])})",
+        'IMAGES_CSV = Path(r"path here")': f"IMAGES_CSV = Path({py_path(config['images_csv'])})",
+        'CONDITION_ORDER_CSV = Path(r"path here")': f"CONDITION_ORDER_CSV = Path({py_path(config['condition_order_csv'])})",
+        'MATRIX_ROOT = Path(r"path here")': f"MATRIX_ROOT = Path({py_path(config['matrix_output'])})",
+    }
+
+    for old, new in replacements.items():
+        if source.count(old) != 1:
+            raise SystemExit(f"Expected one matrix-script setting line, found {source.count(old)}: {old}")
+        source = source.replace(old, new, 1)
+
+    APP_DIR.mkdir(parents=True, exist_ok=True)
+    CONFIGURED_SCRIPT.write_text(source, encoding="utf-8")
+    return CONFIGURED_SCRIPT
 
 
 def main() -> None:
-    config = load_config()
-    matrix = load_existing_matrix_script()
-
-    # Override only the editable path/settings layer; keep existing matrix logic intact.
-    matrix.IMAGE_ROOT = Path(config["crop_output"])
-    matrix.GRID_CSV = Path(config["grid_csv"])
-    matrix.IMAGES_CSV = Path(config["images_csv"])
-    matrix.CONDITION_ORDER_CSV = Path(config["condition_order_csv"])
-    matrix.MATRIX_ROOT = Path(config["matrix_output"])
-    matrix.MATRIX_OUTPUT = matrix.make_unique_folder(matrix.MATRIX_ROOT, "EXP")
-    matrix.ROTATION_MARKER = matrix.IMAGE_ROOT / ".rotated_90ccw.done"
-
-    matrix.main()
+    configured = configure_script(load_config())
+    result = subprocess.run([sys.executable, str(configured)], check=False)
+    raise SystemExit(result.returncode)
 
 
 if __name__ == "__main__":
