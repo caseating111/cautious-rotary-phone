@@ -5,34 +5,58 @@ from tkinter import messagebox, ttk
 
 try:
     from tools.custom_matrix_gui import CustomMatrixBuilder
-    from tools.custom_matrix_preview import build_preview, output_count
-    from tools.run_custom_matrix_job import run_job
+    from tools.custom_matrix_preview import build_preview as build_raw_preview, output_count
+    from tools.custom_matrix_presentation_preview import build_preview as build_presentation_preview
+    from tools.run_custom_matrix_job import run_job as run_raw_job
+    from tools.run_custom_matrix_presentation import run_job as run_presentation_job
     from tools.run_existing_pillow_from_config import open_output
 except ModuleNotFoundError:
     from custom_matrix_gui import CustomMatrixBuilder
-    from custom_matrix_preview import build_preview, output_count
-    from run_custom_matrix_job import run_job
+    from custom_matrix_preview import build_preview as build_raw_preview, output_count
+    from custom_matrix_presentation_preview import build_preview as build_presentation_preview
+    from run_custom_matrix_job import run_job as run_raw_job
+    from run_custom_matrix_presentation import run_job as run_presentation_job
     from run_existing_pillow_from_config import open_output
+
+
+DISPLAY_MODES = ("Raw", "Presentation normalized")
 
 
 class RecordedCustomMatrixBuilder(CustomMatrixBuilder):
     def __init__(self) -> None:
         super().__init__()
+        controls = ttk.Frame(self)
+        controls.pack(fill="x", padx=12, pady=(0, 6))
+        self.display_mode = tk.StringVar(value="Raw")
         self.preview_first = tk.BooleanVar(value=True)
+        ttk.Label(controls, text="Display mode").pack(side="left")
+        ttk.Combobox(
+            controls,
+            textvariable=self.display_mode,
+            values=DISPLAY_MODES,
+            state="readonly",
+            width=24,
+        ).pack(side="left", padx=(6, 16))
         ttk.Checkbutton(
-            self,
+            controls,
             text="Preview first when multiple outputs",
             variable=self.preview_first,
-        ).pack(anchor="e", padx=12, pady=(0, 6))
+        ).pack(side="right")
 
     def build_matrix(self) -> None:
         preview = None
         try:
             selection = self.current_selection()
+            presentation = self.display_mode.get() == "Presentation normalized"
             if self.preview_first.get() and output_count(selection) > 1:
-                self.status.set("Building one representative preview…")
+                mode_label = "presentation-normalized" if presentation else "raw"
+                self.status.set(f"Building one representative {mode_label} preview…")
                 self.update_idletasks()
-                preview = build_preview(selection)
+                preview = (
+                    build_presentation_preview(selection)
+                    if presentation
+                    else build_raw_preview(selection)
+                )
                 open_output(preview.image)
                 accepted = messagebox.askyesno(
                     "Custom matrix preview",
@@ -47,7 +71,11 @@ class RecordedCustomMatrixBuilder(CustomMatrixBuilder):
 
             self.status.set("Checking selected crops and building matrix…")
             self.update_idletasks()
-            output = run_job(selection, no_open_output=False)
+            output = (
+                run_presentation_job(selection, no_open_output=False)
+                if presentation
+                else run_raw_job(selection, no_open_output=False)
+            )
         except SystemExit as exc:
             if preview is not None:
                 preview.cleanup()
