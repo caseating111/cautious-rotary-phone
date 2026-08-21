@@ -4,7 +4,9 @@ import csv
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
+from tools import preflight_batch
 from tools.preflight_batch import build_report, expected_output_names
 
 
@@ -41,6 +43,22 @@ class PreflightBatchTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.temp.cleanup()
+
+    def test_preflight_semantic_validation_failure_is_blocking(self) -> None:
+        validator = self.root / "validator.py"
+        validator.write_text(
+            "print('synthetic preflight metadata failure')\nraise SystemExit(1)\n",
+            encoding="utf-8",
+        )
+        config = {
+            "grid_csv": str(self.grid_csv),
+            "images_csv": str(self.images_csv),
+            "condition_order_csv": str(self.root / "condition_order.csv"),
+        }
+        with patch.object(preflight_batch, "VALIDATOR", validator):
+            with self.assertRaises(SystemExit) as caught:
+                preflight_batch.validate_project_csvs(config)
+        self.assertIn("synthetic preflight metadata failure", str(caught.exception))
 
     def test_missing_outputs_leave_image_pending(self) -> None:
         lines, problems, pending = build_report(self.config)
