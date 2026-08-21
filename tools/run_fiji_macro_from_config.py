@@ -9,7 +9,7 @@ from pathlib import Path
 APP_DIR = Path.home() / ".cautious-rotary-phone"
 DEFAULT_CONFIG = APP_DIR / "config.json"
 REPO_ROOT = Path(__file__).resolve().parents[1]
-VISIBILITY_MACRO = REPO_ROOT / "fiji" / "apply_global_visibility.ijm"
+VISIBILITY_MACRO = REPO_ROOT / "fiji" / "apply_global_visibility_and_archive.ijm"
 
 
 def load_config(path: Path) -> dict:
