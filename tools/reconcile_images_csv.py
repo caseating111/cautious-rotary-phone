@@ -25,8 +25,19 @@ def load_config(path: Path) -> dict:
     return data
 
 
-def read_images_csv(path: Path) -> list[dict[str, str]]:
+def read_csv_rows(path: Path) -> list[dict[str, str]]:
     if not path.is_file():
+        return []
+    with path.open("r", encoding="utf-8-sig", newline="") as handle:
+        return [
+            {key: (value or "").strip() for key, value in row.items()}
+            for row in csv.DictReader(handle)
+        ]
+
+
+def read_images_csv(path: Path) -> list[dict[str, str]]:
+    rows = read_csv_rows(path)
+    if not rows and not path.is_file():
         return []
     with path.open("r", encoding="utf-8-sig", newline="") as handle:
         reader = csv.DictReader(handle)
@@ -34,13 +45,17 @@ def read_images_csv(path: Path) -> list[dict[str, str]]:
         missing = required - set(reader.fieldnames or [])
         if missing:
             raise SystemExit(f"{path.name}: missing columns: {', '.join(sorted(missing))}")
-        return [
-            {key: (value or "").strip() for key, value in row.items()}
-            for row in reader
-        ]
+    return rows
 
 
-def build_rows(config: dict) -> tuple[list[dict[str, str]], dict[str, int]]:
+def complete_metadata(row: dict[str, str]) -> bool:
+    return all(row.get(field, "").strip() for field in ("Experiment", "Set", "Type"))
+
+
+def build_rows(
+    config: dict,
+    previous_review: list[dict[str, str]] | None = None,
+) -> tuple[list[dict[str, str]], dict[str, int]]:
     image_root = Path(config["image_root"])
     existing = read_images_csv(Path(config["images_csv"]))
     sources = discover_sources(image_root)
@@ -49,15 +64,23 @@ def build_rows(config: dict) -> tuple[list[dict[str, str]], dict[str, int]]:
     for row in existing:
         existing_by_name[row.get("Filename", "")].append(row)
 
+    draft_by_key: dict[tuple[str, str], dict[str, str]] = {}
+    for row in previous_review or []:
+        key = (row.get("Folder", ""), row.get("Filename", ""))
+        if all(key):
+            draft_by_key[key] = row
+
     source_counts = Counter(path.name for path in sources)
     source_names = set(source_counts)
     rows: list[dict[str, str]] = []
 
     for source in sources:
         matches = existing_by_name.get(source.name, [])
+        draft = draft_by_key.get((source.parent.name, source.name), {})
+
         if source_counts[source.name] > 1:
             status = "DUPLICATE_SOURCE_BASENAME"
-            metadata = matches[0] if len(matches) == 1 else {}
+            metadata = matches[0] if len(matches) == 1 else draft
         elif len(matches) == 1:
             status = "EXISTING"
             metadata = matches[0]
@@ -65,8 +88,8 @@ def build_rows(config: dict) -> tuple[list[dict[str, str]], dict[str, int]]:
             status = "DUPLICATE_IMAGES_CSV_ROW"
             metadata = matches[0]
         else:
-            status = "NEW_SOURCE_NEEDS_METADATA"
-            metadata = {}
+            metadata = draft
+            status = "DRAFT_METADATA_READY" if complete_metadata(draft) else "NEW_SOURCE_NEEDS_METADATA"
 
         rows.append(
             {
@@ -114,17 +137,24 @@ def main() -> int:
     parser.add_argument("--output", type=Path, default=DEFAULT_REVIEW)
     args = parser.parse_args()
 
-    rows, counts = build_rows(load_config(args.config))
+    previous = read_csv_rows(args.output)
+    rows, counts = build_rows(load_config(args.config), previous)
     write_review(args.output, rows)
 
     print(f"Metadata reconciliation written: {args.output}")
     print(f"Rows: {len(rows)}")
     for status in sorted(counts):
         print(f"{status}: {counts[status]}")
-    print("Original images.csv was not changed.")
+    print("Existing images.csv remains authoritative and was not changed.")
+    print("Manual draft metadata in this reconciliation file is preserved across rescans.")
 
-    needs_review = any(status != "EXISTING" for status in counts)
-    return 1 if needs_review else 0
+    blocking = {
+        "NEW_SOURCE_NEEDS_METADATA",
+        "DUPLICATE_SOURCE_BASENAME",
+        "DUPLICATE_IMAGES_CSV_ROW",
+        "CSV_ROW_SOURCE_NOT_FOUND",
+    }
+    return 1 if any(status in blocking for status in counts) else 0
 
 
 if __name__ == "__main__":
