@@ -84,7 +84,10 @@ def validate_csvs(config: dict) -> None:
 def validate_source_readiness_if_configured(config: dict) -> None:
     if not str(config.get("image_root", "")).strip():
         return
-    lines, problems, pending_rows = build_batch_report(config)
+    lines, problems, pending_rows = build_batch_report(
+        config,
+        require_full_column_geometry=False,
+    )
     if problems:
         raise SystemExit(
             "Source/crop preflight found blocking issues before Pillow output:\n" + "\n".join(lines)
@@ -92,7 +95,7 @@ def validate_source_readiness_if_configured(config: dict) -> None:
     if pending_rows:
         raise SystemExit(
             f"Source/crop preflight shows {len(pending_rows)} plate(s) still needing crop generation/rebuild. "
-            "Run/finish the Fiji crop batch before producing final Pillow outputs.\n\n" + "\n".join(lines)
+            "Run/finish crop generation before producing final Pillow outputs.\n\n" + "\n".join(lines)
         )
 
 
