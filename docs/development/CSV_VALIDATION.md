@@ -11,6 +11,7 @@ Checks include:
 - non-empty strain names;
 - unique condition order/type entries;
 - unique source filenames;
+- source filenames with no surrounding whitespace, because the reused Fiji batch macro matches the raw CSV filename field before later trimming/metadata handling;
 - every `images.csv` Experiment/Set exists in `grid.csv`;
 - every image `Type` exists in `condition_order.csv`;
 - comma-bearing `Experiment`, `Set`, `Type` and `Strain` values that the reused ImageJ macros cannot safely parse with simple comma splitting;
@@ -20,6 +21,6 @@ Checks include:
 
 `Strain` is different: the established Fiji crop exporter already sanitizes filename-unsafe strain characters through `safeName()`, so the validator does not unnecessarily prohibit them there.
 
-Comma-containing source filenames remain supported. The existing production ImageJ macro already has explicit handling for quoted filenames containing commas, so the validator deliberately does not reject that case.
+Comma-containing source filenames remain supported. The existing production ImageJ macro already has explicit handling for quoted filenames containing commas, so the validator deliberately does not reject that case; only unsafe surrounding whitespace is blocked.
 
 The controller **Validate CSVs** button uses this validator, and both batch routes run it automatically before Fiji starts. The synthetic fixtures are kept semantically valid so they can serve as a known-good example.
