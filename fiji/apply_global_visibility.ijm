@@ -1,6 +1,7 @@
 // Apply one global display range derived from accepted grid geometry.
 // Source pixels remain untouched. RGB inputs use a disposable 8-bit QC duplicate
 // because ImageJ setMinAndMax() modifies RGB pixel data.
+// Optional macro argument: band=50;black_offset=3;high_percentile=99.5
 
 requires("1.53g");
 
@@ -23,15 +24,22 @@ if (expectedTitle == "" || expectedWidth < 1 || expectedHeight < 1)
 if (expectedTitle != sourceTitle || expectedWidth != sourceWidth || expectedHeight != sourceHeight)
     exit("The saved alignment belongs to a different image. Re-align the current image before applying visibility.");
 
-Dialog.create("Global visibility");
-Dialog.addNumber("Outside-grid band (px)", 50);
-Dialog.addNumber("Black-point offset", 3);
-Dialog.addNumber("Inside-grid high percentile", 99.5, 1);
-Dialog.show();
+arg = getArgument();
+if (lengthOf(arg) > 0) {
+    band = parseFloat(argValue(arg, "band", "50"));
+    blackOffset = parseFloat(argValue(arg, "black_offset", "3"));
+    highPercent = parseFloat(argValue(arg, "high_percentile", "99.5")) / 100;
+} else {
+    Dialog.create("Global visibility");
+    Dialog.addNumber("Outside-grid band (px)", 50);
+    Dialog.addNumber("Black-point offset", 3);
+    Dialog.addNumber("Inside-grid high percentile", 99.5, 1);
+    Dialog.show();
 
-band = Dialog.getNumber();
-blackOffset = Dialog.getNumber();
-highPercent = Dialog.getNumber() / 100;
+    band = Dialog.getNumber();
+    blackOffset = Dialog.getNumber();
+    highPercent = Dialog.getNumber() / 100;
+}
 
 if (band < 1)
     exit("Background band must be at least 1 px.");
@@ -147,6 +155,17 @@ function readAlignmentValue(path, key, fallback) {
         line = replace(lines[i], "\r", "");
         if (startsWith(line, prefix))
             return substring(line, lengthOf(prefix));
+    }
+    return fallback;
+}
+
+function argValue(arg, key, fallback) {
+    parts = split(arg, ";");
+    prefix = key + "=";
+    for (i = 0; i < parts.length; i++) {
+        part = String.trim(parts[i]);
+        if (startsWith(part, prefix))
+            return substring(part, lengthOf(prefix));
     }
     return fallback;
 }
