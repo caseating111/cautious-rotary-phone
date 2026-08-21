@@ -237,7 +237,13 @@ function readPresetValue(key, fallback) {
     if (!File.exists(presetFile))
         return fallback;
 
-    return parseFloat(readSavedValue(presetFile, key, fallback));
+    saved = readSavedValue(presetFile, key, "");
+    if (saved == "")
+        return fallback;
+    value = parseFloat(saved);
+    if (isNaN(value) || value <= 0)
+        return fallback;
+    return value;
 }
 
 function readSavedValue(path, key, fallback) {
