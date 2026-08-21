@@ -29,7 +29,7 @@ def validate_output_layout(image_root: str | Path, crop_output: str | Path) -> N
         )
 
 
-def load_config(path: Path) -> dict:
+def load_config(path: Path, require_fiji_handoff_paths: bool = True) -> dict:
     if not path.is_file():
         raise SystemExit(f"Config not found: {path}")
     data = json.loads(path.read_text(encoding="utf-8"))
@@ -38,11 +38,12 @@ def load_config(path: Path) -> dict:
     if missing:
         raise SystemExit("Missing config values: " + ", ".join(missing))
     validate_output_layout(data["image_root"], data["crop_output"])
-    for key in ("grid_csv", "crop_output"):
-        if ";" in str(data[key]):
-            raise SystemExit(
-                f"Configured {key} contains a semicolon, which conflicts with the composed Fiji macro-argument delimiter: {data[key]}"
-            )
+    if require_fiji_handoff_paths:
+        for key in ("grid_csv", "crop_output"):
+            if ";" in str(data[key]):
+                raise SystemExit(
+                    f"Configured {key} contains a semicolon, which conflicts with the composed Fiji macro-argument delimiter: {data[key]}"
+                )
     try:
         data["crop_width"] = int(data.get("crop_width", 130))
         data["crop_height"] = int(data.get("crop_height", 546))
@@ -345,11 +346,20 @@ def main() -> int:
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
     parser.add_argument("--report", type=Path, default=DEFAULT_REPORT)
     parser.add_argument("--pending-images-csv", type=Path, default=DEFAULT_PENDING_CSV)
+    parser.add_argument(
+        "--no-fiji-handoff-path-rules",
+        action="store_true",
+        help="skip only semicolon path restrictions used by the composed Fiji macro handoff",
+    )
     args = parser.parse_args()
 
-    config = load_config(args.config)
+    require_fiji_handoff_paths = not args.no_fiji_handoff_path_rules
+    config = load_config(args.config, require_fiji_handoff_paths=require_fiji_handoff_paths)
     validate_project_csvs(config)
-    lines, problems, pending_rows = build_report(config)
+    lines, problems, pending_rows = build_report(
+        config,
+        require_fiji_handoff_paths=require_fiji_handoff_paths,
+    )
     text = "\n".join(lines) + "\n"
     print(text, end="")
     args.report.parent.mkdir(parents=True, exist_ok=True)
