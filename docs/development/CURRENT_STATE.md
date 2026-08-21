@@ -50,24 +50,26 @@ Routine implementation goes directly onto `workflow-dev`. Do **not** create a ne
 ### Batch preflight / resume
 - `tools/preflight_batch.py` mirrors production immediate-subfolder, basename metadata and exact output-name semantics.
 - Standalone preflight runs the authoritative project CSV validator first.
-- `crop_output` must be outside `image_root`; derived crops are not allowed inside the production source-image tree.
-- `build_report(config, require_full_column_geometry=True)` keeps the Fiji-specific `GridCols >= 2` rule by default. Shared consumers such as Pillow can call it with `False` to reuse source/crop freshness and mapping checks without inheriting a full-column-only geometry restriction. This preserves valid one-column non-Fiji/Pillow workflows.
+- `crop_output` must be outside `image_root`; the guard is now enforced inside shared `build_report()` itself as well as CLI config loading, so direct/shared consumers cannot bypass source/crop tree separation.
+- `build_report()` has two explicit route-specific switches: `require_full_column_geometry=True` keeps the Fiji-specific `GridCols >= 2` rule, and `require_fiji_handoff_paths=True` keeps the semicolon source-folder restriction used by the Fiji macro argument handoff. Shared consumers can disable only those Fiji-specific constraints while still reusing all source/crop freshness, collision and mapping checks.
 - It reports discovered/mapped/unmapped images, duplicate source basenames, stale metadata rows, missing grid definitions and expected/current/pending crop counts.
 - It blocks same-path output collisions and duplicate logical crop names across different output folders, preventing downstream Pillow first-match ambiguity.
-- Semicolon-bearing `grid_csv`/`crop_output` paths and immediate source-folder names are rejected before Fiji handoff.
+- Semicolon-bearing `grid_csv`/`crop_output` paths and immediate source-folder names remain rejected on the normal Fiji batch route.
 - An expected crop counts as current only when it exists, is not older than its source image, is readable by Pillow, and its dimensions match configured crop width/height in either orientation.
 - Existing derived crops older than the source are listed under **STALE EXPECTED CROPS — WILL REBUILD**. Unreadable/corrupt or wrong-size expected PNGs are listed under **INCOMPATIBLE EXPECTED CROPS — WILL REBUILD**. In both cases the plate returns to pending instead of being silently skipped.
 - Existing PNGs under `crop_output` outside the current expected set are listed as **UNEXPECTED CROP PNGS — NON-BLOCKING**.
 - Partially complete plates are listed as **PARTIALLY COMPLETE PLATES — NON-BLOCKING**. Resume intentionally remains plate-level; rerunning may replace existing expected crops instead of introducing fragile per-crop resume logic.
 - It writes `~/.cautious-rotary-phone/last_preflight.txt` and pending-only `pending_images.csv`; complete/current plates are skipped naturally.
-- `tests/test_preflight_full_column_constraints.py` now proves both modes: a one-column project is blocked for full-column Fiji and accepted by shared non-Fiji preflight when its crops are current.
+- `tests/test_preflight_full_column_constraints.py` proves route separation: a one-column project is blocked for full-column Fiji but accepted by shared non-Fiji preflight when current; a semicolon source folder is blocked for Fiji handoff but accepted by shared non-Fiji preflight. `tests/test_preflight_shared_entry.py` protects source/crop tree separation for all callers.
 
 ### Metadata reconciliation
 - `tools/reconcile_images_csv.py` scans production source folders, preserves existing authoritative metadata, leaves new metadata blank rather than guessed, and preserves manual draft metadata across rescans.
 - Duplicate source basenames, duplicate metadata rows and stale metadata rows are explicitly flagged.
 - `tools/finalize_images_reconciliation.py` creates a separate `images_candidate.csv` only when current source rows are complete, basenames are unique and the project validator accepts the candidate.
-- Authoritative `images.csv` is never overwritten automatically.
-- `tools/metadata_review_gui.py` keeps reconcile/edit/finalize/open actions outside the main processing GUI; the controller has one launcher button.
+- Finalization now validates the edited review's `(Folder, Filename)` source set against the current immediate source folders **without rewriting the review file**. New/removed source files make the review stale and block finalization with a targeted message. This preserves manual edits and avoids requiring a write to an Excel-open review just to check freshness.
+- `tools/metadata_review_gui.py` now offers **Validate + use candidate as images.csv**. This is an explicit user action, never automatic: it runs the non-mutating finalizer/current-source check, asks for confirmation, creates an adjacent unique backup of an existing authoritative `images.csv`, stages the candidate beside the destination, and swaps it into place atomically. Candidate/destination self-copy is rejected.
+- Existing **Finalize validated candidate** remains non-destructive and does not replace the authoritative file.
+- `tests/test_metadata_review_source_set.py` covers matching/new/removed source sets; `tests/test_metadata_candidate_adoption.py` covers backup creation, repeated backups, missing destination, self-adoption rejection and file replacement behavior.
 
 ### Existing Pillow output reuse
 - `tools/run_existing_pillow_from_config.py` exposes the four existing matrix/all-strain/individual-label scripts through saved controller paths without rewriting their composition logic.
@@ -75,9 +77,9 @@ Routine implementation goes directly onto `workflow-dev`. Do **not** create a ne
 - Pillow output jobs run the same authoritative project CSV validator used by Fiji before adapter generation or crop mutation.
 - `matrix_output` must be outside `crop_output`, preventing recursive legacy scans from ingesting their own generated matrices.
 - The wrapper builds/validates its configured legacy script before any crop-orientation mutation.
-- It derives the legacy logical prefixes **and exact current exporter filenames**. More than one prefix match is blocking. A lone prefix-compatible crop with an old/wrong strain suffix is also blocking instead of being silently accepted by the legacy `startswith()` lookup.
+- It derives the legacy logical prefixes **and exact current exporter filenames**. More than one prefix match is blocking. A lone prefix-compatible crop with an old/wrong strain suffix is also blocking instead of being silently accepted by the legacy `startswith()` lookup. Python `safe_name()` was checked against the actual Fiji exporter `safeName()` transformation.
 - Missing expected logical crop cells are blocking by default. Intentional partial output requires explicit CLI `--allow-missing`; that opt-in may omit cells but still cannot substitute stale prefix-compatible files.
-- In normal controller use, where `image_root` is configured, the Pillow wrapper reuses established source/crop preflight with `require_full_column_geometry=False`. It therefore blocks changed/newer source images, corrupt/wrong-size crops, unfinished plates and mapping problems while preserving one-column Pillow use.
+- In normal controller use, where `image_root` is configured, the Pillow wrapper reuses shared source/crop preflight with both `require_full_column_geometry=False` and `require_fiji_handoff_paths=False`. It therefore blocks changed/newer source images, corrupt/wrong-size crops, unfinished plates, source/crop tree mistakes and mapping/collision problems, while not inheriting Fiji-only one-column or semicolon-folder restrictions.
 - Only current exact logical crop matches are passed to orientation normalization. Unrelated images are ignored; incompatible current crop dimensions fail before matrix generation.
 - Temporary configured copies force `ROTATE_IMAGES_90_CCW = False`, removing dependence on legacy one-shot rotation markers.
 - Failed legacy jobs remove only newly created empty output folders and retain non-empty partial output for inspection.
@@ -100,10 +102,10 @@ Routine implementation goes directly onto `workflow-dev`. Do **not** create a ne
 - `environment.yml` remains minimal (`python>=3.11`, `pillow`).
 
 ### Automated regression checks
-- `.github/workflows/python-glue-tests.yml` runs compileall plus the Python unittest suite on pushes to `workflow-dev` and pull requests, installing Pillow explicitly.
+- `.github/workflows/python-glue-tests.yml` runs compileall plus `python -m unittest discover -s tests -v` on pushes to `workflow-dev` and pull requests, installing Pillow explicitly, so all newly added `test_*.py` files are automatically included.
 - Stock ImageJ `-batch` and Maven ImageJ were investigated for IJM CI; no headless macro CI was added because the interactive helpers could not be proven cleanly without another unvalidated runtime path.
-- Current regression coverage includes preflight/resume/freshness/dimensions, shared/full-column constraint modes, CSV validation, source adapters, Fiji launcher construction, ROI discovery/idempotent patching, output navigation, controller handoffs, batch interaction, alignment macro contract, Pillow source readiness and real synthetic end-to-end matrix generation.
-- The GitHub connector's combined-status endpoint has returned no status contexts for direct branch commits; do not infer a passing/failing Actions result from that absence.
+- Current regression coverage includes preflight/resume/freshness/dimensions, route-specific/shared preflight constraints, CSV validation, source adapters, Fiji launcher construction, ROI discovery/idempotent patching, output navigation, controller handoffs, batch interaction, alignment macro contract, metadata source-set/adoption behavior, Pillow source readiness and real synthetic end-to-end matrix generation.
+- The GitHub connector's combined-status endpoint returns no contexts for these direct branch commits, and its workflow-run helper only exposes pull-request-triggered runs. Do not infer a passing/failing Actions result for direct `workflow-dev` pushes from those endpoints.
 
 ## Branch cleanup status
 - Development remains on `workflow-dev`; no routine branch was created.
