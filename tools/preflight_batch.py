@@ -127,6 +127,16 @@ def expected_output_names(meta: dict[str, str], grid_rows: list[dict[str, str]])
     return names
 
 
+def expected_output_prefixes(meta: dict[str, str], grid_rows: list[dict[str, str]]) -> list[str]:
+    prefixes: list[str] = []
+    for row in sorted(grid_rows, key=lambda item: int(item["Column"])):
+        column = int(row["Column"])
+        base = f"{meta['Experiment']}_{meta['Set']}_{meta['Type']}_{column:02d}"
+        prefixes.append(f"{base}_Top_".lower())
+        prefixes.append(f"{base}_Low_".lower())
+    return prefixes
+
+
 def expected_crop_issue(path: Path, source_mtime: int, crop_width: int, crop_height: int) -> str | None:
     if not path.is_file():
         return "missing"
@@ -201,6 +211,7 @@ def build_report(
     grid_missing: list[str] = []
     output_claims: dict[Path, list[Path]] = defaultdict(list)
     logical_name_claims: dict[str, list[Path]] = defaultdict(list)
+    current_prefixes: set[str] = set()
 
     for source in sources:
         metadata_rows = metadata_by_name.get(source.name, [])
@@ -215,6 +226,7 @@ def build_report(
 
         mapped_images += 1
         names = expected_output_names(meta, grid_rows)
+        current_prefixes.update(expected_output_prefixes(meta, grid_rows))
         expected_crops += len(names)
         output_dir = crop_root / source.parent.name
         image_missing = 0
@@ -265,11 +277,18 @@ def build_report(
                 downstream_ambiguities.append(f"{name} <- {sources_text}")
 
     expected_paths = {path.resolve() for path in output_claims}
+    superseded_prefix_crops: list[str] = []
     unexpected_crop_pngs: list[str] = []
     if crop_root.is_dir():
         for path in sorted(crop_root.rglob("*.png")):
-            if path.is_file() and path.resolve() not in expected_paths:
-                unexpected_crop_pngs.append(str(path.relative_to(crop_root)))
+            if not path.is_file() or path.resolve() in expected_paths:
+                continue
+            relative = str(path.relative_to(crop_root))
+            stem = path.stem.lower()
+            if any(stem.startswith(prefix) for prefix in current_prefixes):
+                superseded_prefix_crops.append(relative)
+            else:
+                unexpected_crop_pngs.append(relative)
 
     lines = [
         "BATCH PREFLIGHT",
@@ -324,9 +343,17 @@ def build_report(
         )
         lines.extend(f"- {item}" for item in partial_images)
 
+    if superseded_prefix_crops:
+        lines.extend(["", f"SUPERSEDED PREFIX CROPS — NON-BLOCKING ({len(superseded_prefix_crops)})"])
+        lines.append(
+            "These files match a current logical crop prefix but not a current exact exporter filename (for example, an old strain suffix). "
+            "They may remain in crop_output: final Pillow jobs stage only exact current filenames and ignore these files."
+        )
+        lines.extend(f"- {item}" for item in superseded_prefix_crops)
+
     if unexpected_crop_pngs:
-        lines.extend(["", f"UNEXPECTED CROP PNGS — NON-BLOCKING ({len(unexpected_crop_pngs)})"])
-        lines.append("These files are not part of the current metadata-defined crop set; review/remove them if they are stale.")
+        lines.extend(["", f"OTHER UNEXPECTED CROP PNGS — NON-BLOCKING ({len(unexpected_crop_pngs)})"])
+        lines.append("These PNGs do not match the current crop contract; review them if their origin is unclear.")
         lines.extend(f"- {item}" for item in unexpected_crop_pngs)
 
     lines.extend(["", "STATUS: CHECK ITEMS ABOVE BEFORE BATCH ALIGNMENT" if problems else "STATUS: READY FOR BATCH ALIGNMENT"])
