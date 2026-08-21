@@ -10,6 +10,9 @@ Checks include:
 - unique condition order/type entries;
 - unique source filenames;
 - every `images.csv` Experiment/Set exists in `grid.csv`;
-- every image `Type` exists in `condition_order.csv`.
+- every image `Type` exists in `condition_order.csv`;
+- comma-bearing `Experiment`, `Set`, `Type` and `Strain` values that the reused ImageJ macros cannot safely parse with their simple comma-splitting logic.
+
+Comma-containing source filenames remain supported. The existing production ImageJ macro already has explicit handling for quoted filenames containing commas, so the validator deliberately does not reject that case.
 
 The controller **Validate CSVs** button uses this validator, and the full-column batch launcher runs it automatically before Fiji starts. The synthetic fixtures are kept semantically valid so they can serve as a known-good example.
