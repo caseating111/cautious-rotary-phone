@@ -38,17 +38,21 @@ Routine implementation goes directly onto `workflow-dev`. Do **not** create a ne
 - Saved crop width/height and alignment tolerance are consumed only where metadata already supplies the grid column count.
 - `--prepare-only` performs CSV validation, preflight, pending-image generation, exact source-marker checks and configured macro construction without launching Fiji.
 - Batch preparation verifies the production macro, alignment macro, crop helper, validator and preflight helper exist before doing work. Actual launch also verifies the configured Fiji executable first, while `--prepare-only` deliberately remains independent of a local Fiji installation.
-- `tests/test_source_adapters.py` covers the distinction between preparation-only runtime requirements and actual-launch Fiji requirements.
+- Configured `grid_csv` and `crop_output` paths containing semicolons are rejected because the crop-helper handoff uses semicolon-delimited macro arguments.
+- `tests/test_source_adapters.py` covers preparation-only versus actual-launch runtime requirements.
 
 ### Batch preflight / resume
 - `tools/preflight_batch.py` mirrors production immediate-subfolder, basename metadata and exact output-name semantics.
+- Standalone preflight now runs the authoritative project CSV validator first. Because the controller already preflights before starting AHK, malformed metadata is caught before hotkeys start without rewriting the large GUI.
 - It reports discovered/mapped/unmapped images, duplicate source basenames, stale metadata rows, missing grid definitions and expected/existing/missing crop counts.
 - It blocks exact same-path output collisions before Fiji can overwrite a plate.
 - It also blocks duplicate logical crop names across different output folders because the reused Pillow matrix scripts recursively search by filename prefix and otherwise warn then choose the first match.
+- Semicolon-bearing `grid_csv`/`crop_output` paths and immediate source-folder names are rejected before Fiji handoff because those values can enter semicolon-delimited macro arguments.
 - Existing PNGs under `crop_output` that are not part of the current metadata-defined expected crop set are listed as **UNEXPECTED CROP PNGS — NON-BLOCKING**. This exposes likely stale outputs earlier without preventing valid processing merely because unrelated/old files exist.
+- Partially complete plates are listed as **PARTIALLY COMPLETE PLATES — NON-BLOCKING** with their existing/missing crop counts. Resume intentionally remains plate-level; rerunning such a plate may replace its already-existing expected derived crops rather than introducing fragile per-crop resume logic.
 - It writes `~/.cautious-rotary-phone/last_preflight.txt` and pending-only `pending_images.csv`.
-- The composed batch uses pending-only metadata, so completed plates are naturally skipped on rerun. Partially complete plates remain pending as a whole plate; no fragile per-crop resume path is introduced.
-- `tests/test_preflight_batch.py` covers missing, complete, stale non-blocking PNG reporting, duplicate-basename, same-folder collision, cross-folder downstream ambiguity and distinct-condition non-ambiguity cases.
+- Completed plates are naturally skipped on rerun.
+- `tests/test_preflight_batch.py` covers semantic-validation failure, missing/complete/partial states, stale non-blocking PNG reporting, semicolon-unsafe source folders, duplicate basenames, same-folder collisions, cross-folder downstream ambiguity and distinct-condition non-ambiguity.
 
 ### Metadata reconciliation
 - `tools/reconcile_images_csv.py` scans production source folders, preserves existing authoritative metadata, leaves new metadata blank rather than guessed, and preserves manual draft metadata across rescans.
@@ -60,11 +64,14 @@ Routine implementation goes directly onto `workflow-dev`. Do **not** create a ne
 ### Existing Pillow output reuse
 - `tools/run_existing_pillow_from_config.py` exposes the four existing matrix/all-strain/individual-label scripts through saved controller paths without rewriting their composition logic.
 - All four aliases are regression-checked for the shared path-block adapter.
-- The wrapper now builds/validates its temporary configured legacy script before performing any crop-orientation mutation. If the old script's expected path/rotation markers drift, the run fails before touching derived crop pixels.
+- Pillow output jobs now run the same authoritative project CSV validator used by Fiji before adapter generation or crop mutation.
+- The wrapper builds/validates its temporary configured legacy script before performing any crop-orientation mutation. If the old script's expected path/rotation markers drift, the run fails before touching derived crop pixels.
 - Before output generation, the wrapper derives the same logical crop prefixes used by the existing scripts from `grid.csv` + `images.csv` and blocks any prefix with multiple real file matches. This catches stale/legacy duplicates before the old scripts can silently choose the first match.
 - Only current logical crop matches are passed to orientation normalization. Unrelated images under `crop_output` are ignored.
 - Current crop inputs matching configured unrotated dimensions are rotated once with Pillow; already-rotated crops are skipped. Current logical crops with incompatible dimensions fail before matrix generation.
 - Temporary configured copies force `ROTATE_IMAGES_90_CCW = False`, removing dependence on the legacy one-shot `.rotated_90ccw.done` behavior.
+- Existing legacy scripts create their unique output directory early. If one fails, the wrapper now removes only newly created empty output directories and retains non-empty partial output for inspection instead of deleting potentially useful evidence.
+- `tests/test_source_adapters.py` covers wrapper CSV validation; `tests/test_output_navigation.py` covers empty-failure cleanup versus retained non-empty partial output.
 
 ### CSV validation
 - `tools/validate_project_csvs.py` checks required headers, grid completeness/duplicates, consistent GridCols, unique source filenames, image->grid references and condition-order coverage.
@@ -81,7 +88,7 @@ Routine implementation goes directly onto `workflow-dev`. Do **not** create a ne
 - Controller window is titled `Image workflow controller`.
 - `tools/run_fiji_macro_from_config.py` is a thin visibility launcher using ImageJ's macro argument mechanism and supports dry-run command inspection.
 - `tests/test_fiji_launcher.py` verifies config-to-macro argument construction without requiring Fiji on the test runner.
-- `environment.yml` remains minimal (`python`, `pillow`).
+- `environment.yml` remains minimal (`python>=3.11`, `pillow`).
 
 ### Automated regression checks
 - `.github/workflows/python-glue-tests.yml` runs the Python unittest suite on pushes to `workflow-dev` and pull requests.
@@ -103,7 +110,7 @@ Historical milestone branches are not needed for routine continuation. Do not cr
 - ImageJ documentation/source confirms wide straight-line profiles perform pixel averaging natively and `Array.findMaxima(array, tolerance)` returns peak positions ordered by descending strength. The current route therefore composes mature ImageJ profile + peak functionality rather than bespoke colony detection.
 - BAR's established `Find Peaks` command remains the first fallback if native maxima selection proves weak on representative plates. It is macro-callable and supports minimum peak amplitude/distance and flat-topped peaks.
 - Intensity Profile Tools remains a lower-priority interactive profile alternative.
-- Do not build a custom colony detector or spacing optimizer before representative real-plate QC demonstrates a concrete need.
+- Do not build or integrate a second detector preemptively; representative real-plate QC must first demonstrate a concrete failure of the native route.
 - ImageJ supports installed macro keyboard shortcuts, but AHK remains preferable for the current modal-dialog flow because the image window is not always focused. Do not move workflow logic into AHK.
 
 ## Highest-value next routes
