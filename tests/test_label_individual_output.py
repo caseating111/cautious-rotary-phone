@@ -35,6 +35,12 @@ class LabelIndividualOutputTests(unittest.TestCase):
         self.assertIn("IMAGES_CSV.open(", text)
         self.assertIn("labels[filename.lower()] = strain", text)
 
+    def test_partial_label_output_returns_failure_to_shared_wrapper(self) -> None:
+        text = SCRIPT.read_text(encoding="utf-8")
+
+        self.assertIn("return 1 if skipped else 0", text)
+        self.assertIn("raise SystemExit(main())", text)
+
 
 if __name__ == "__main__":
     unittest.main()
