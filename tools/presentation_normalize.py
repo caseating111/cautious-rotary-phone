@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from collections import defaultdict
 from pathlib import Path
 
@@ -87,7 +88,7 @@ def display_map(image: Image.Image, black: float, high: float) -> Image.Image:
     if working.mode == "L":
         lut = []
         for value in range(256):
-            mapped = round((value - black) * scale)
+            mapped = math.floor(((value - black) * scale) + 0.5)
             lut.append(max(0, min(255, mapped)))
         return working.point(lut)
 
