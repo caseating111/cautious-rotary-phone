@@ -116,26 +116,49 @@ def read_csv_rows(path: Path) -> list[dict[str, str]]:
         ]
 
 
-def expected_crop_prefixes(grid_path: Path, images_path: Path) -> set[str]:
+def safe_name(value: str) -> str:
+    replacements = {
+        "/": "-",
+        "\\": "-",
+        ":": "-",
+        "*": "-",
+        "?": "",
+        '"': "",
+        "<": "(",
+        ">": ")",
+        "|": "-",
+    }
+    for old, new in replacements.items():
+        value = value.replace(old, new)
+    return value
+
+
+def expected_crop_contract(grid_path: Path, images_path: Path) -> dict[str, str]:
     grid = read_csv_rows(grid_path)
     images = read_csv_rows(images_path)
-    columns_by_grid: dict[tuple[str, str], set[int]] = defaultdict(set)
+    columns_by_grid: dict[tuple[str, str], dict[int, str]] = defaultdict(dict)
     for row in grid:
         try:
             column = int(row.get("Column", ""))
         except ValueError as exc:
             raise SystemExit(f"Invalid grid column in {grid_path}: {row.get('Column', '')!r}") from exc
-        columns_by_grid[(row.get("Experiment", ""), row.get("Set", ""))].add(column)
+        columns_by_grid[(row.get("Experiment", ""), row.get("Set", ""))][column] = row.get("Strain", "")
 
-    prefixes: set[str] = set()
+    contract: dict[str, str] = {}
     for row in images:
         exp = row.get("Experiment", "")
         set_name = row.get("Set", "")
         type_name = row.get("Type", "")
-        for column in columns_by_grid.get((exp, set_name), set()):
+        for column, strain in columns_by_grid.get((exp, set_name), {}).items():
             for state in ("Top", "Low"):
-                prefixes.add(f"{exp}_{set_name}_{type_name}_{column:02d}_{state}_".lower())
-    return prefixes
+                prefix = f"{exp}_{set_name}_{type_name}_{column:02d}_{state}_".lower()
+                exact_name = f"{exp}_{set_name}_{type_name}_{column:02d}_{state}_{safe_name(strain)}.png"
+                contract[prefix] = exact_name
+    return contract
+
+
+def expected_crop_prefixes(grid_path: Path, images_path: Path) -> set[str]:
+    return set(expected_crop_contract(grid_path, images_path))
 
 
 def validate_unique_crop_matches(
@@ -152,17 +175,22 @@ def validate_unique_crop_matches(
         for path in root.rglob("*")
         if path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS
     )
-    prefixes = expected_crop_prefixes(grid_path, images_path)
+    contract = expected_crop_contract(grid_path, images_path)
     ambiguous: list[tuple[str, list[Path]]] = []
+    stale_mismatch: list[tuple[str, str, Path]] = []
     missing: list[str] = []
     selected: list[Path] = []
 
-    for prefix in sorted(prefixes):
+    for prefix, exact_name in sorted(contract.items()):
         matches = [path for path in files if path.stem.lower().startswith(prefix)]
         if len(matches) > 1:
             ambiguous.append((prefix, matches))
         elif len(matches) == 1:
-            selected.append(matches[0])
+            match = matches[0]
+            if match.name.lower() != exact_name.lower():
+                stale_mismatch.append((prefix, exact_name, match))
+            else:
+                selected.append(match)
         else:
             missing.append(prefix)
 
@@ -176,6 +204,19 @@ def validate_unique_crop_matches(
             lines.extend(f"  - {path.relative_to(root)}" for path in matches)
         if len(ambiguous) > 20:
             lines.append(f"... plus {len(ambiguous) - 20} more ambiguous logical cells")
+        raise SystemExit("\n".join(lines))
+
+    if stale_mismatch:
+        lines = [
+            "Stale crop filename mismatch: a legacy prefix match exists, but it is not the exact filename the current exporter/metadata require.",
+            "The reused Pillow scripts would otherwise accept the stale file by prefix, so remove/archive it or rerun crop generation.",
+        ]
+        for prefix, expected, match in stale_mismatch[:20]:
+            lines.append(f"{prefix}*")
+            lines.append(f"  expected: {expected}")
+            lines.append(f"  found:    {match.relative_to(root)}")
+        if len(stale_mismatch) > 20:
+            lines.append(f"... plus {len(stale_mismatch) - 20} more stale filename mismatches")
         raise SystemExit("\n".join(lines))
 
     if missing and not allow_missing:
