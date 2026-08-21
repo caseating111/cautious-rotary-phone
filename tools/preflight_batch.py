@@ -146,6 +146,7 @@ def expected_crop_issue(path: Path, source_mtime: int, crop_width: int, crop_hei
 def build_report(
     config: dict,
     require_full_column_geometry: bool = True,
+    require_fiji_handoff_paths: bool = True,
 ) -> tuple[list[str], bool, list[dict[str, str]]]:
     image_root = Path(config["image_root"])
     crop_root = Path(config["crop_output"])
@@ -156,7 +157,9 @@ def build_report(
     sources = discover_sources(image_root)
 
     source_folders = sorted(path for path in image_root.iterdir() if path.is_dir())
-    delimiter_unsafe_folders = [path.name for path in source_folders if ";" in path.name]
+    delimiter_unsafe_folders = []
+    if require_fiji_handoff_paths:
+        delimiter_unsafe_folders = [path.name for path in source_folders if ";" in path.name]
 
     grid_by_key: dict[tuple[str, str], list[dict[str, str]]] = defaultdict(list)
     for row in grid:
