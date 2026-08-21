@@ -21,11 +21,13 @@ class ProjectLayoutControllerContractTests(unittest.TestCase):
         self.assertIn("Image files are not modified or copied", text)
         self.assertIn("ATTEMPT1", text)
 
-    def test_windows_launchers_call_conda_so_fallbacks_still_run(self) -> None:
+    def test_windows_launchers_call_conda_and_try_anaconda_base_before_system_python(self) -> None:
         controller = START_CONTROLLER.read_text(encoding="utf-8").lower()
         custom = START_CUSTOM.read_text(encoding="utf-8").lower()
         self.assertIn("call conda run", controller)
         self.assertIn("call conda run", custom)
+        self.assertIn("-n base python tools\\workflow_controller_extended.py", controller)
+        self.assertIn("-n base python tools\\custom_matrix_gui_recorded.py", custom)
         self.assertNotIn("\n    conda run --no-capture-output", controller)
         self.assertNotIn("\n    conda run --no-capture-output", custom)
 
