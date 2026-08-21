@@ -1,0 +1,10 @@
+{
+  "fiji_executable": "C:/Fiji.app/ImageJ-win64.exe",
+  "ahk_executable": "C:/Program Files/AutoHotkey/v2/AutoHotkey64.exe",
+  "image_root": "C:/PlateProject/images",
+  "crop_output": "C:/PlateProject/crops",
+  "matrix_output": "C:/PlateProject/matrices",
+  "grid_csv": "C:/PlateProject/grid.csv",
+  "images_csv": "C:/PlateProject/images.csv",
+  "condition_order_csv": "C:/PlateProject/condition_order.csv"
+}
