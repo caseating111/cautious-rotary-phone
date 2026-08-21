@@ -1,4 +1,4 @@
-// Full-column alignment using native ImageJ profile + peak tools.
+// Full-column alignment using native ImageJ peak tools plus explicit row averaging.
 // Manual first/last column placement remains authoritative.
 // Optional macro argument: cols=10;rows=8;tolerance=0.08
 
@@ -53,7 +53,7 @@ while (accepted == 0) {
     }
 
     getSelectionBounds(lx, ly, lw, lh);
-    leftProfile = getProfile();
+    leftProfile = getVerticalAverageProfile(lx, ly, lw, lh);
     leftPeaks = findExpectedPeaks(leftProfile, gridRows, toleranceFraction);
     if (leftPeaks.length < gridRows) {
         showMessage("First-column profile", "Could not resolve " + gridRows + " row peaks. Retry with a better whole-column ROI or lower tolerance.");
@@ -78,7 +78,7 @@ while (accepted == 0) {
     }
 
     getSelectionBounds(rx, ry, rw, rh);
-    rightProfile = getProfile();
+    rightProfile = getVerticalAverageProfile(rx, ry, rw, rh);
     rightPeaks = findExpectedPeaks(rightProfile, gridRows, toleranceFraction);
     if (rightPeaks.length < gridRows) {
         showMessage("Last-column profile", "Could not resolve " + gridRows + " row peaks. Retry with a better whole-column ROI or lower tolerance.");
@@ -116,6 +116,20 @@ function isTallRectangle() {
         return 0;
     getSelectionBounds(x, y, w, h);
     return w > 0 && h > w;
+}
+
+// ImageJ getProfile() uses the normal horizontal rectangular profile unless Alt
+// is down. The workflow needs row peaks down a tall column, so average each ROI
+// row explicitly. getValue() also returns intensity for RGB compatibility.
+function getVerticalAverageProfile(x, y, w, h) {
+    profile = newArray(h);
+    for (yy = 0; yy < h; yy++) {
+        sum = 0;
+        for (xx = 0; xx < w; xx++)
+            sum += getValue(x + xx, y + yy);
+        profile[yy] = sum / w;
+    }
+    return profile;
 }
 
 function findExpectedPeaks(profile, expected, fraction) {
