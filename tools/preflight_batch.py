@@ -32,7 +32,12 @@ def validate_output_layout(image_root: str | Path, crop_output: str | Path) -> N
 def load_config(path: Path, require_fiji_handoff_paths: bool = True) -> dict:
     if not path.is_file():
         raise SystemExit(f"Config not found: {path}")
-    data = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise SystemExit(f"Could not read config.json: {exc}") from exc
+    if not isinstance(data, dict):
+        raise SystemExit("config.json must contain a JSON object of named settings.")
     required = ["image_root", "crop_output", "grid_csv", "images_csv", "condition_order_csv"]
     missing = [key for key in required if not str(data.get(key, "")).strip()]
     if missing:
