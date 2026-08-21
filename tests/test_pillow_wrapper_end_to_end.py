@@ -16,7 +16,7 @@ WRAPPER = REPO_ROOT / "tools" / "run_existing_pillow_from_config.py"
 
 
 class PillowWrapperEndToEndTests(unittest.TestCase):
-    def test_complete_synthetic_project_builds_matrices_through_wrapper(self) -> None:
+    def test_complete_synthetic_project_stages_exact_crops_without_mutating_real_inputs(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             home = root / "home"
@@ -24,10 +24,12 @@ class PillowWrapperEndToEndTests(unittest.TestCase):
             source_folder = image_root / "setA"
             crop_root = root / "crops"
             crop_folder = crop_root / "setA"
+            stale_folder = crop_root / "old"
             matrix_root = root / "matrices"
             app_dir = home / ".cautious-rotary-phone"
             source_folder.mkdir(parents=True)
             crop_folder.mkdir(parents=True)
+            stale_folder.mkdir(parents=True)
             matrix_root.mkdir()
             app_dir.mkdir(parents=True)
 
@@ -51,8 +53,9 @@ class PillowWrapperEndToEndTests(unittest.TestCase):
             )
             conditions_csv.write_text("Order,Type\n1,YPDA\n", encoding="utf-8")
 
-            # Configured unrotated size is 20x48; provide already-ready 48x20 crops.
-            # Make them explicitly newer than the source so source/crop preflight accepts them.
+            # Configured unrotated size is 20x48. Keep the real crops unrotated;
+            # the wrapper should rotate only disposable staged copies.
+            real_crops: list[Path] = []
             for index, (column, strain, state) in enumerate(
                 (
                     (1, "WT", "Top"),
@@ -63,8 +66,14 @@ class PillowWrapperEndToEndTests(unittest.TestCase):
                 1,
             ):
                 path = crop_folder / f"E1_A_YPDA_{column:02d}_{state}_{strain}.png"
-                Image.new("L", (48, 20), 30 + column).save(path)
+                Image.new("L", (20, 48), 30 + column).save(path)
                 os.utime(path, ns=(source_mtime + index, source_mtime + index))
+                real_crops.append(path)
+
+            # This old prefix-compatible file would confuse the untouched legacy
+            # startswith() lookup if the wrapper pointed it at crop_root directly.
+            stale = stale_folder / "E1_A_YPDA_01_Top_OLD.png"
+            Image.new("L", (48, 20), 99).save(stale)
 
             (app_dir / "config.json").write_text(
                 json.dumps(
@@ -92,7 +101,12 @@ class PillowWrapperEndToEndTests(unittest.TestCase):
                 env=env,
             )
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-            self.assertIn("Crop orientation: rotated 0, already ready 4", result.stdout)
+            self.assertIn("Ignoring 1 stale prefix-compatible crop file(s)", result.stdout)
+            self.assertIn("Crop orientation: rotated 4, already ready 0", result.stdout)
+
+            for path in real_crops:
+                with Image.open(path) as image:
+                    self.assertEqual(image.size, (20, 48))
 
             outputs = sorted(path for path in matrix_root.iterdir() if path.is_dir())
             self.assertEqual(len(outputs), 1)
