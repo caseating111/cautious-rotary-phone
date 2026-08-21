@@ -132,6 +132,7 @@ def build_report(config: dict) -> tuple[list[str], bool, list[dict[str, str]]]:
     missing_crops = 0
     complete_images = 0
     pending_rows: list[dict[str, str]] = []
+    partial_images: list[str] = []
     grid_missing: list[str] = []
     output_claims: dict[Path, list[Path]] = defaultdict(list)
     logical_name_claims: dict[str, list[Path]] = defaultdict(list)
@@ -152,18 +153,24 @@ def build_report(config: dict) -> tuple[list[str], bool, list[dict[str, str]]]:
         expected_crops += len(names)
         output_dir = crop_root / source.parent.name
         image_missing = 0
+        image_existing = 0
         for name in names:
             output_path = output_dir / name
             output_claims[output_path].append(source)
             logical_name_claims[name.lower()].append(source)
             if output_path.is_file():
                 existing_crops += 1
+                image_existing += 1
             else:
                 missing_crops += 1
                 image_missing += 1
 
         if image_missing:
             pending_rows.append({field: meta.get(field, "") for field in IMAGE_FIELDS})
+            if image_existing:
+                partial_images.append(
+                    f"{source.relative_to(image_root)}: {image_existing} existing, {image_missing} missing"
+                )
         else:
             complete_images += 1
 
@@ -220,6 +227,13 @@ def build_report(config: dict) -> tuple[list[str], bool, list[dict[str, str]]]:
         problems = True
         lines.extend(["", f"{title} ({len(items)})"])
         lines.extend(f"- {item}" for item in items)
+
+    if partial_images:
+        lines.extend(["", f"PARTIALLY COMPLETE PLATES — NON-BLOCKING ({len(partial_images)})"])
+        lines.append(
+            "Resume is intentionally plate-level: these plates will be realigned/re-exported as a whole, so their existing expected derived crops may be replaced."
+        )
+        lines.extend(f"- {item}" for item in partial_images)
 
     if unexpected_crop_pngs:
         lines.extend(["", f"UNEXPECTED CROP PNGS — NON-BLOCKING ({len(unexpected_crop_pngs)})"])
