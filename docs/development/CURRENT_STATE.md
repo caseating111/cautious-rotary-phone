@@ -81,18 +81,19 @@ Real `crop_output` files are not rotated or rewritten. `matrix_output` must be o
 The old unsafe `tools/run_matrices_from_config.py` direct route is removed and guarded against reintroduction.
 
 ### Labelled-individual repairs
-`existing scripts clean/folder per strain all indiv strains labelled.py` keeps its established Pillow rendering but has three narrow handoff repairs:
+`existing scripts clean/folder per strain all indiv strains labelled.py` keeps its established Pillow rendering but has narrow handoff/reliability repairs:
 
 1. It already created a unique `MATRIX_OUTPUT` but accidentally wrote strain folders beside it under `MATRIX_ROOT`; outputs now go under the intended unique folder.
-2. The shared staged adapter expects an explicit rotation setting. The label job now declares `ROTATE_IMAGES_90_CCW = False` but has no internal rotation function; staged orientation remains wrapper-owned.
+2. The shared staged adapter expects an explicit rotation setting. The label job declares `ROTATE_IMAGES_90_CCW = False` but has no internal rotation function; staged orientation remains wrapper-owned.
 3. Normal controller/staged use no longer reparses Experiment/Set from generated filenames. It constructs the exact current filename -> strain map from authoritative `grid.csv` + `images.csv`. The old underscore-fragile filename parser remains fallback-only for direct legacy inputs outside that current map.
+4. Any skipped/failed labelled crop now returns nonzero. The wrapper therefore retains a non-empty partial output for inspection instead of reporting it as successful completion.
 
 Regression coverage:
-- `tests/test_label_individual_output.py`: unique output root, adapter rotation contract, metadata-first lookup before legacy fallback.
+- `tests/test_label_individual_output.py`: unique output root, adapter rotation contract, metadata-first lookup before legacy fallback, and nonzero partial-output status.
 - `tests/test_label_individual_end_to_end.py`: underscore-bearing Experiment/Set/Type metadata, exact staged crops, zero skips, one output tree, expected strain subfolders, and unchanged real crop dimensions.
-- the pre-existing all-alias adapter test now also has a valid `label-individual` rotation-setting contract to configure.
+- the pre-existing all-alias adapter test has a valid `label-individual` rotation-setting contract to configure.
 
-The other three Pillow jobs were audited and already use their unique top-level output folders and structured metadata-based crop lookup correctly.
+All four controller Pillow choices now have representative synthetic end-to-end routes in the suite: standard matrices, both all-strains variants, and individual labels. The all-strains/standard routes also assert staged rotation leaves real crops unchanged.
 
 ### Deferred legacy semantics/polish
 `docs/development/DEFERRED_LEGACY_OUTPUT_QUESTIONS.md` records two non-blocking legacy issues that should not drive speculative rewrites:
