@@ -130,6 +130,9 @@ def initialize_project(image_root: Path, prefix: str) -> ProjectLayout:
         source.rename(layout.image_root)
     except OSError as exc:
         _cleanup_empty_project(layout)
-        raise SystemExit(f"Could not create project layout: {exc}") from exc
+        raise SystemExit(
+            "Could not create project layout with the intended directory move. "
+            f"No fallback copy was attempted; the source remains at {source}. Error: {exc}"
+        ) from exc
 
     return layout
