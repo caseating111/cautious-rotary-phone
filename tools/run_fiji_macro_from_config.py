@@ -15,7 +15,12 @@ VISIBILITY_MACRO = REPO_ROOT / "fiji" / "apply_global_visibility.ijm"
 def load_config(path: Path) -> dict:
     if not path.is_file():
         raise SystemExit(f"Config not found: {path}")
-    data = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise SystemExit(f"Could not read config.json: {exc}") from exc
+    if not isinstance(data, dict):
+        raise SystemExit("config.json must contain a JSON object of named settings.")
     fiji = str(data.get("fiji_executable", "")).strip()
     if not fiji:
         raise SystemExit("Fiji executable is not configured.")
