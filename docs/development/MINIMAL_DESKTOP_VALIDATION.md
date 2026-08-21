@@ -10,7 +10,7 @@ Purpose: validate the remaining interactive Fiji uncertainty with the smallest u
 ## One representative plate
 Use one ordinary representative plate first, not a deliberately difficult edge case.
 
-Use **Run one-plate full-column proof (first pending image only)** in the extended controller instead of starting the normal full batch. This proof route first runs the same authoritative `--prepare-only` path, copies only the first pending metadata row into a separate proof CSV, patches only the generated proof macro's `imagesFile` path, and launches that copy. It does not modify the real pending list or production configured batch macro, so a successful first plate cannot accidentally roll straight into plate two.
+Use **Run one-plate full-column proof (first pending image only)** in the extended controller instead of starting the normal full batch. This proof route first runs the same authoritative `--prepare-only` path, so the normal complete pending list and normal configured production macro are refreshed exactly as they would be for a real batch. It then copies only the first pending metadata row into a **separate** proof CSV, patches only a **separate** proof macro's `imagesFile` path, and launches that proof copy. The production pending list is not truncated/replaced by the one-row proof list, so a successful first plate cannot accidentally roll straight into plate two.
 
 If the first pending image is not a sensible representative plate, the same thin helper supports an explicit exact filename from the command line:
 
