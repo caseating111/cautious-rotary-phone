@@ -1,31 +1,28 @@
 from __future__ import annotations
 
-import argparse
 import csv
 import json
+import shutil
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
-
-try:
-    from tools import run_existing_pillow_from_config as pillow_adapter
-except ModuleNotFoundError:
-    import run_existing_pillow_from_config as pillow_adapter
 
 APP_DIR = Path.home() / ".cautious-rotary-phone"
 LAST_SELECTION_FILE = APP_DIR / "last_matrix_selection.json"
+REPO_ROOT = Path(__file__).resolve().parents[1]
+MATRIX_SCRIPT = REPO_ROOT / "existing scripts clean" / "make_matrices.py"
 
 
 def read_rows(path: Path) -> tuple[list[str], list[dict[str, str]]]:
+    if not path.is_file():
+        raise SystemExit(f"CSV not found: {path}")
     with path.open("r", encoding="utf-8-sig", newline="") as handle:
         reader = csv.DictReader(handle)
-        if not reader.fieldnames:
-            raise SystemExit(f"CSV has no header: {path}")
-        return list(reader.fieldnames), [dict(row) for row in reader]
+        return list(reader.fieldnames or []), [dict(row) for row in reader]
 
 
 def write_rows(path: Path, fieldnames: list[str], rows: list[dict[str, str]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
         writer.writeheader()
@@ -33,22 +30,21 @@ def write_rows(path: Path, fieldnames: list[str], rows: list[dict[str, str]]) ->
 
 
 def normalize_selection(selection: dict) -> dict:
-    if not isinstance(selection, dict):
-        raise SystemExit("Selection recipe must be a JSON object.")
-    groups = selection.get("groups", [])
-    conditions = selection.get("conditions", [])
-    states = selection.get("states", ["Top", "Low"])
+    groups = selection.get("groups")
+    conditions = selection.get("conditions")
+    states = selection.get("states")
     if not isinstance(groups, list) or not groups:
-        raise SystemExit("Selection recipe needs at least one experiment/set group.")
+        raise SystemExit("Selection recipe has no experiment/set groups.")
     if not isinstance(conditions, list) or not conditions:
-        raise SystemExit("Selection recipe needs at least one condition/type.")
+        raise SystemExit("Selection recipe has no conditions.")
     if not isinstance(states, list) or not states:
-        raise SystemExit("Selection recipe needs at least one state (Top or Low).")
+        raise SystemExit("Selection recipe has no states.")
+
     clean_states = []
     for state in states:
-        value = str(state).strip().title()
+        value = str(state).strip()
         if value not in {"Top", "Low"}:
-            raise SystemExit(f"Unsupported matrix state: {state!r}")
+            raise SystemExit(f"Unsupported matrix state: {value!r}")
         if value not in clean_states:
             clean_states.append(value)
 
@@ -59,11 +55,13 @@ def normalize_selection(selection: dict) -> dict:
             raise SystemExit("Each selected group must be an object.")
         exp = str(group.get("experiment", "")).strip()
         set_name = str(group.get("set", "")).strip()
-        columns_raw = group.get("columns", [])
-        if not exp or not set_name or not isinstance(columns_raw, list) or not columns_raw:
-            raise SystemExit("Each selected group needs experiment, set and at least one column.")
+        raw_columns = group.get("columns")
+        if not exp or not set_name:
+            raise SystemExit("Selected groups require experiment and set names.")
+        if not isinstance(raw_columns, list) or not raw_columns:
+            raise SystemExit(f"Selected group {exp}/{set_name} has no grid columns.")
         columns = []
-        for raw in columns_raw:
+        for raw in raw_columns:
             try:
                 column = int(raw)
             except (TypeError, ValueError) as exc:
@@ -95,7 +93,7 @@ def normalize_selection(selection: dict) -> dict:
 
 
 def save_last_selection(selection: dict) -> None:
-    APP_DIR.mkdir(parents=True, exist_ok=True)
+    LAST_SELECTION_FILE.parent.mkdir(parents=True, exist_ok=True)
     LAST_SELECTION_FILE.write_text(json.dumps(normalize_selection(selection), indent=2) + "\n", encoding="utf-8")
 
 
@@ -115,65 +113,72 @@ def filter_project_csvs(config: dict, selection: dict, destination: Path) -> dic
     actual_columns: dict[tuple[str, str], set[int]] = {}
     for row in grid_rows:
         key = ((row.get("Experiment") or "").strip().casefold(), (row.get("Set") or "").strip().casefold())
-        if key not in columns_by_group:
+        wanted = columns_by_group.get(key)
+        if wanted is None:
             continue
         try:
             column = int((row.get("Column") or "").strip())
         except ValueError:
             continue
-        if column in columns_by_group[key]:
-            filtered_grid.append(row)
-            actual_columns.setdefault(key, set()).add(column)
+        if column not in wanted:
+            continue
+        filtered_grid.append(row)
+        actual_columns.setdefault(key, set()).add(column)
 
-    missing_columns = []
     for group in selection["groups"]:
         key = (group["experiment"].casefold(), group["set"].casefold())
-        for column in group["columns"]:
-            if column not in actual_columns.get(key, set()):
-                missing_columns.append(f"{group['experiment']}/{group['set']} column {column}")
-    if missing_columns:
-        raise SystemExit("Selected grid columns are not present in grid.csv:\n" + "\n".join(missing_columns))
+        missing = sorted(set(group["columns"]) - actual_columns.get(key, set()))
+        if missing:
+            raise SystemExit(
+                f"Selected grid columns are unavailable for {group['experiment']}/{group['set']}: {missing}"
+            )
 
     filtered_images = [
         row
         for row in image_rows
-        if (
-            ((row.get("Experiment") or "").strip().casefold(), (row.get("Set") or "").strip().casefold())
-            in columns_by_group
-            and (row.get("Type") or "").strip().casefold() in condition_keys
-        )
+        if ((row.get("Experiment") or "").strip().casefold(), (row.get("Set") or "").strip().casefold()) in columns_by_group
+        and (row.get("Type") or "").strip().casefold() in condition_keys
     ]
-    if not filtered_images:
-        raise SystemExit("No images.csv rows match the selected experiment/set groups and conditions.")
-
     filtered_conditions = [
         row for row in condition_rows if (row.get("Type") or "").strip().casefold() in condition_keys
     ]
-    present_conditions = {(row.get("Type") or "").strip().casefold() for row in filtered_conditions}
-    missing_conditions = [value for value in selection["conditions"] if value.casefold() not in present_conditions]
-    if missing_conditions:
-        raise SystemExit("Selected conditions are not present in condition_order.csv: " + ", ".join(missing_conditions))
+
+    if not filtered_grid:
+        raise SystemExit("Selection produced no grid rows.")
+    if not filtered_images:
+        raise SystemExit("Selection produced no image rows.")
+    if not filtered_conditions:
+        raise SystemExit("Selection produced no condition rows.")
 
     destination.mkdir(parents=True, exist_ok=True)
-    grid_path = destination / "grid.csv"
-    images_path = destination / "images.csv"
-    conditions_path = destination / "condition_order.csv"
-    write_rows(grid_path, grid_fields, filtered_grid)
-    write_rows(images_path, image_fields, filtered_images)
-    write_rows(conditions_path, condition_fields, filtered_conditions)
-    return {"grid_csv": grid_path, "images_csv": images_path, "condition_order_csv": conditions_path}
+    paths = {
+        "grid_csv": destination / "grid.csv",
+        "images_csv": destination / "images.csv",
+        "condition_order_csv": destination / "condition_order.csv",
+    }
+    write_rows(paths["grid_csv"], grid_fields, filtered_grid)
+    write_rows(paths["images_csv"], image_fields, filtered_images)
+    write_rows(paths["condition_order_csv"], condition_fields, filtered_conditions)
+    return paths
 
 
-def patch_matrix_states(configured_script: Path, states: list[str]) -> None:
-    text = configured_script.read_text(encoding="utf-8")
+def patch_matrix_states(source: str, states: list[str]) -> str:
     old = 'STATES_TO_BUILD = ["Top", "Low"]'
-    if text.count(old) != 1:
-        raise SystemExit("Configured matrix script no longer has the expected STATES_TO_BUILD setting.")
-    text = text.replace(old, f"STATES_TO_BUILD = {states!r}", 1)
-    configured_script.write_text(text, encoding="utf-8")
+    new = "STATES_TO_BUILD = " + repr(states)
+    if source.count(old) != 1:
+        raise SystemExit("Established matrix script state setting changed; refusing to guess where to patch.")
+    return source.replace(old, new, 1)
 
 
-def expected_matrix_names(selection: dict) -> set[str]:
+def stage_matrix_script(destination: Path, states: list[str]) -> Path:
+    if not MATRIX_SCRIPT.is_file():
+        raise SystemExit(f"Established matrix script not found: {MATRIX_SCRIPT}")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(patch_matrix_states(MATRIX_SCRIPT.read_text(encoding="utf-8"), states), encoding="utf-8")
+    return destination
+
+
+def expected_output_names(selection: dict) -> set[str]:
     clean = normalize_selection(selection)
     return {
         f"{group['experiment']}_{group['set']}_{state}_MATRIX.png"
@@ -182,86 +187,24 @@ def expected_matrix_names(selection: dict) -> set[str]:
     }
 
 
-def validate_matrix_outputs(output: Path, selection: dict) -> None:
-    expected = expected_matrix_names(selection)
-    actual_keys = {
-        path.name.casefold()
-        for path in output.glob("*.png")
-        if path.is_file()
-    }
-    missing = sorted(name for name in expected if name.casefold() not in actual_keys)
+def verify_expected_outputs(output_folder: Path, selection: dict) -> None:
+    expected = expected_output_names(selection)
+    actual = {path.name for path in output_folder.glob("*.png") if path.is_file() and path.stat().st_size > 0}
+    missing = sorted(expected - actual)
     if missing:
-        raise SystemExit(
-            "Custom matrix generator returned success but did not create every selected matrix:\n"
-            + "\n".join(f"  - {name}" for name in missing)
-            + f"\nPartial output was left for inspection: {output}"
-        )
+        raise SystemExit("Focused matrix output is incomplete; missing: " + ", ".join(missing))
 
 
-def run_selection(selection: dict, no_open_output: bool = False) -> Path:
-    selection = normalize_selection(selection)
-    config = pillow_adapter.load_config()
-    # Validate the authoritative complete project before deriving a sparse temporary view.
-    # The standard project validator intentionally requires contiguous 1..GridCols rows,
-    # while a focused comparison deliberately keeps only selected original column IDs.
-    pillow_adapter.validate_csvs(config)
-
-    APP_DIR.mkdir(parents=True, exist_ok=True)
-    output_root = pillow_adapter.ensure_matrix_output_root(config)
-    before = pillow_adapter.child_directories(output_root)
-
-    with tempfile.TemporaryDirectory(prefix="custom-matrix-", dir=APP_DIR) as temp:
-        temp_root = Path(temp)
-        csv_root = temp_root / "csv"
-        filtered = filter_project_csvs(config, selection, csv_root)
-        custom_config = dict(config)
-        custom_config.update({key: str(path) for key, path in filtered.items()})
-
-        selected_crops = pillow_adapter.validate_unique_crop_matches(
-            Path(config["crop_output"]),
-            filtered["grid_csv"], filtered["images_csv"],
-            allow_missing=False,
-        )
-        staged_root = temp_root / "crops"
-        staged_crops = pillow_adapter.stage_selected_crops(selected_crops, staged_root)
-        pillow_adapter.normalize_crop_orientation(
-            staged_root,
-            config["crop_width"],
-            config["crop_height"],
-            paths=staged_crops,
-            strict=True,
-        )
-        configured = pillow_adapter.configured_copy("matrices", custom_config, image_root=staged_root)
-        patch_matrix_states(configured, selection["states"])
-        result = subprocess.run([sys.executable, str(configured)], check=False)
-
-    after = pillow_adapter.child_directories(output_root)
+def run_matrix_script(script: Path, cwd: Path | None = None) -> None:
+    result = subprocess.run([sys.executable, str(script)], cwd=cwd, check=False)
     if result.returncode != 0:
-        pillow_adapter.cleanup_empty_new_directories(before, after)
-        raise SystemExit(result.returncode)
-    output = pillow_adapter.newest_new_directory(before, after)
-    if output is None or not pillow_adapter.directory_has_content(output):
-        raise SystemExit("Custom matrix job returned success but produced no non-empty output folder.")
-    validate_matrix_outputs(output, selection)
-    save_last_selection(selection)
-    pillow_adapter.record_output(output)
-    if not no_open_output:
-        pillow_adapter.open_output(output)
-    return output
+        raise SystemExit(f"Established matrix renderer failed with exit code {result.returncode}.")
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Build a focused matrix from existing validated crops.")
-    parser.add_argument("selection_json", type=Path)
-    parser.add_argument("--no-open-output", action="store_true")
-    args = parser.parse_args()
-    try:
-        selection = json.loads(args.selection_json.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        raise SystemExit(f"Could not read selection recipe: {exc}") from exc
-    output = run_selection(selection, no_open_output=args.no_open_output)
-    print(f"Custom matrix output: {output}")
-
-
-if __name__ == "__main__":
-    main()
+def copy_selected_crops(selected: list[Path], destination: Path) -> None:
+    destination.mkdir(parents=True, exist_ok=True)
+    for source in selected:
+        target = destination / source.name
+        if target.exists():
+            raise SystemExit(f"Duplicate staged crop filename: {target.name}")
+        shutil.copy2(source, target)
