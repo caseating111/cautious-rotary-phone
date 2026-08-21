@@ -15,15 +15,15 @@ BATCH_WRAPPER = REPO_ROOT / "tools" / "run_full_column_batch_from_config.py"
 
 
 class BatchPrepareEndToEndTests(unittest.TestCase):
-    def write_project(self, root: Path, grid_cols: int) -> tuple[Path, Path]:
+    def write_project(self, root: Path, grid_cols: int) -> tuple[Path, Path, Path]:
         home = root / "home"
         app_dir = home / ".cautious-rotary-phone"
         image_root = root / "images"
         source_folder = image_root / "setA"
-        crop_root = root / "crops"
+        crop_root = root / "derived" / "crops"
         app_dir.mkdir(parents=True)
         source_folder.mkdir(parents=True)
-        crop_root.mkdir()
+        # crop_root is deliberately absent: successful preparation should create it.
         (source_folder / "plate1.jpg").write_bytes(b"synthetic source placeholder")
 
         grid_csv = root / "grid.csv"
@@ -57,7 +57,7 @@ class BatchPrepareEndToEndTests(unittest.TestCase):
             ),
             encoding="utf-8",
         )
-        return home, app_dir
+        return home, app_dir, crop_root
 
     def run_prepare(self, home: Path, *extra: str) -> subprocess.CompletedProcess[str]:
         env = os.environ.copy()
@@ -72,11 +72,13 @@ class BatchPrepareEndToEndTests(unittest.TestCase):
 
     def test_prepare_only_builds_real_composed_macro_without_fiji(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
-            home, app_dir = self.write_project(Path(temp), grid_cols=2)
+            home, app_dir, crop_root = self.write_project(Path(temp), grid_cols=2)
+            self.assertFalse(crop_root.exists())
             result = self.run_prepare(home)
 
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertIn("Prepared composed batch for 1 pending image(s)", result.stdout)
+            self.assertTrue(crop_root.is_dir())
 
             pending = app_dir / "pending_images.csv"
             self.assertTrue(pending.is_file())
@@ -96,11 +98,13 @@ class BatchPrepareEndToEndTests(unittest.TestCase):
 
     def test_prepare_only_builds_preserved_four_point_fallback_without_fiji(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
-            home, app_dir = self.write_project(Path(temp), grid_cols=10)
+            home, app_dir, crop_root = self.write_project(Path(temp), grid_cols=10)
+            self.assertFalse(crop_root.exists())
             result = self.run_prepare(home, "--legacy")
 
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertIn("Prepared four-point fallback batch for 1 pending image(s)", result.stdout)
+            self.assertTrue(crop_root.is_dir())
 
             pending = app_dir / "pending_images.csv"
             self.assertTrue(pending.is_file())
