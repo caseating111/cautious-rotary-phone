@@ -277,6 +277,8 @@ def build_report(
                 downstream_ambiguities.append(f"{name} <- {sources_text}")
 
     expected_paths = {path.resolve() for path in output_claims}
+    expected_exact_names = set(logical_name_claims)
+    misplaced_exact_crops: list[str] = []
     superseded_prefix_crops: list[str] = []
     unexpected_crop_pngs: list[str] = []
     if crop_root.is_dir():
@@ -284,8 +286,11 @@ def build_report(
             if not path.is_file() or path.resolve() in expected_paths:
                 continue
             relative = str(path.relative_to(crop_root))
+            name = path.name.lower()
             stem = path.stem.lower()
-            if any(stem.startswith(prefix) for prefix in current_prefixes):
+            if name in expected_exact_names:
+                misplaced_exact_crops.append(relative)
+            elif any(stem.startswith(prefix) for prefix in current_prefixes):
                 superseded_prefix_crops.append(relative)
             else:
                 unexpected_crop_pngs.append(relative)
@@ -312,6 +317,7 @@ def build_report(
         ("MAPPED IMAGES WITH NO GRID DEFINITION", sorted(set(grid_missing))),
         ("OUTPUT FILENAME COLLISIONS", output_collisions),
         ("DOWNSTREAM CROP-NAME AMBIGUITIES", downstream_ambiguities),
+        ("EXACT CURRENT CROP IN UNEXPECTED FOLDER", misplaced_exact_crops),
     ]
 
     problems = False
@@ -320,6 +326,10 @@ def build_report(
             continue
         problems = True
         lines.extend(["", f"{title} ({len(items)})"])
+        if title == "EXACT CURRENT CROP IN UNEXPECTED FOLDER":
+            lines.append(
+                "Move/remove these misplaced exact-name crops before rerunning. Otherwise the rerun would create a second exact current filename and final Pillow staging would correctly reject the duplicate."
+            )
         lines.extend(f"- {item}" for item in items)
 
     if stale_expected_crops:
