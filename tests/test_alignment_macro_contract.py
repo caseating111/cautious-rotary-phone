@@ -27,6 +27,23 @@ class AlignmentMacroContractTests(unittest.TestCase):
         self.assertIn("Array.findMaxima", text)
         self.assertIn("getProfile()", text)
 
+    def test_previous_span_only_prepositions_last_roi_before_manual_confirmation(self) -> None:
+        text = ALIGNMENT_MACRO.read_text(encoding="utf-8")
+        first_bounds_at = text.index("getSelectionBounds(lx, ly, lw, lh);")
+        span_seed_at = text.index("suggestedX = lx + previousColumnSpan;", first_bounds_at)
+        move_at = text.index("makeRectangle(suggestedX, ly, lw, lh);", span_seed_at)
+        last_wait_at = text.index('"2 / 2 — Last column"', move_at)
+        right_bounds_at = text.index("getSelectionBounds(rx, ry, rw, rh);", last_wait_at)
+
+        self.assertIn("readPreviousColumnSpan(sourceWidth, sourceHeight)", text)
+        self.assertIn("previousRightX <= previousLeftX", text)
+        self.assertLess(first_bounds_at, span_seed_at)
+        self.assertLess(span_seed_at, move_at)
+        self.assertLess(move_at, last_wait_at)
+        self.assertLess(last_wait_at, right_bounds_at)
+        self.assertIn("Fine-tune it for this plate; it is NOT accepted automatically.", text)
+        self.assertIn("Press OK (or Z) when positioned.", text[last_wait_at:right_bounds_at])
+
     def test_alignment_is_persisted_only_after_explicit_qc_accept(self) -> None:
         text = ALIGNMENT_MACRO.read_text(encoding="utf-8")
         qc_at = text.index('Dialog.create("Alignment QC")')
