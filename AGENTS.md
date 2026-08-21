@@ -1,6 +1,6 @@
 # Agent control
 
-This repository develops a practical Fiji + Python/Pillow workflow for experiment-aware plate-image alignment, cropping, display/QC, annotation, matrices and later quantitative scoring.
+This repository exists to make a real image-processing/experimental workflow faster, easier, less tiring and easier to validate. **The software is not the product. The processed images, crops, matrices, annotations, measurements and reduced user workload are the product.** Scripts, macros, plugins, GUI controls and glue code are only means of getting there.
 
 Repository state, executable checks, actual script behaviour and accepted data contracts outrank chat-history reconstructions.
 
@@ -11,13 +11,32 @@ Before any substantial implementation decision, read and follow `docs/developmen
 That policy is binding. In particular:
 - assume the user is operating under a practical time constraint unless explicitly told otherwise;
 - optimize total user time-to-reliable-result, including setup, testing, debugging, regression risk and validation, not just coding time;
+- treat coding as an implementation tool, never as the deliverable or default objective;
 - prefer mature/tested/published tools and composed workflows over fresh bespoke code;
-- an approximate or partially manual route is acceptable if it removes most of the burden;
+- an approximate, patched, multi-tool or partially manual route is acceptable if it removes most of the burden;
 - prove a small end-to-end route before expanding a speculative architecture;
 - repeated patch/test failures trigger reassessment of the approach rather than automatic escalation;
-- substantial bespoke code requires clear evidence that mature-tool composition, patching, wrappers, manual steps and thin glue cannot provide a practical result.
+- substantial bespoke code requires clear evidence that mature-tool composition, patching, wrappers, built-in macro/scripting systems, manual steps and thin glue cannot provide a practical result.
 
 Do not assume code written in one session is likely to outperform or be more reliable than established software that has been tested, maintained, used scientifically, or published over months or years.
+
+## End-product-first rule
+
+This is a hard rule.
+
+Do not optimize for producing a sophisticated application, large codebase, elegant architecture, reusable framework or impressive automation. Optimize for helping the user get the actual experimental/image outputs they need with substantially less effort.
+
+Before building anything, ask in this order:
+
+1. **Can I find an existing tool/plugin/package/program that already does this or most of this?**
+2. **If it is not an exact fit, can I make it fit using its own macro/plugin/scripting/configuration system?**
+3. **Can I patch, wrap, configure or adapt it rather than replace it?**
+4. **Can several existing tools divide the job between them?**
+5. **Can a small manual step provide the missing judgement/validation cheaply?**
+6. **Can a macro, AHK helper, Pillow step, CSV translator, file handoff, coordinate conversion or GUI wrapper bridge the remaining gap?**
+7. **Only then: what is the smallest amount of original code genuinely required?**
+
+The question is not primarily "can I code this?". The questions are "does this already exist?", "can an approximate existing solution be adapted?", and "can multiple mature components be made to work together?".
 
 ## Core product posture
 
@@ -31,7 +50,7 @@ Fiji is the interactive scientific-image environment. Python/Pillow handles repe
 
 For every substantial capability, use this decision order:
 
-`END FUNCTION -> EXISTING FIJI/IMAGEJ FEATURE OR TRUSTED PLUGIN -> MATURE DOMAIN TOOL/PACKAGE -> COMPOSE MULTIPLE EXISTING TOOLS -> PATCH/CONFIGURE/WRAP EXISTING TOOL -> THIN ADAPTER/BRIDGE -> SMALL CUSTOM IMPLEMENTATION FOR THE TRUE GAP -> BESPOKE REPLACEMENT ONLY AS LAST RESORT`
+`END FUNCTION -> EXISTING FIJI/IMAGEJ FEATURE OR TRUSTED PLUGIN -> OTHER MATURE PROGRAM/TOOL -> MATURE DOMAIN PACKAGE -> USE TOOL'S BUILT-IN MACRO/SCRIPTING/API -> COMPOSE MULTIPLE EXISTING TOOLS -> PATCH/CONFIGURE/WRAP EXISTING TOOL -> MANUAL VALIDATION/REFERENCE STEP -> THIN ADAPTER/BRIDGE -> SMALL CUSTOM IMPLEMENTATION FOR THE TRUE GAP -> BESPOKE REPLACEMENT ONLY AS LAST RESORT`
 
 ## Mandatory composition-first rule
 
@@ -43,9 +62,9 @@ Prefer combinations of mature tools even when the route is somewhat cobbled toge
 
 `Tool/plugin A solves ~60% + Tool/plugin B solves ~30% + manual step/glue/adapter solves ~10% = preferred route`
 
-Likewise, if an established plugin approximately performs the required function but needs manual point clicks, ROI repositioning, intermediate files, coordinate translation, CSV conversion, AHK assistance, Pillow post-processing, a macro wrapper, a patch, or another apparently hacky bridge, that is **not** a reason to reject it.
+Likewise, if an established plugin approximately performs the required function but needs manual point clicks, ROI repositioning, intermediate files, coordinate translation, CSV conversion, AHK assistance, Pillow post-processing, a macro wrapper, its own scripting system, a small patch, or another apparently hacky bridge, that is **not** a reason to reject it.
 
-Do not interpret multiple programs, intermediate files, manual references, wrappers, macros, patched plugins, or thin glue as architectural failure. "Messy internally but simple for the user" is acceptable when it is reliable and maintainable enough.
+Do not interpret multiple programs, intermediate files, manual references, wrappers, macros, patched plugins, or thin glue as architectural failure. "Messy internally but simple for the user" is acceptable when it is reliable enough.
 
 A mature tool that solves 60-90% of the problem has a strong presumption in its favour. The missing portion should first be addressed by configuration, composition, patching, scripting, glue, manual interaction, preprocessing/postprocessing, or another mature tool.
 
@@ -54,12 +73,14 @@ Do **not** respond to "this exact feature is not implemented in this exact way" 
 Before writing substantial bespoke functionality, the agent must perform a second-pass reuse check using alternate terminology and decomposed subproblems. Specifically ask:
 
 1. Can an existing Fiji/ImageJ feature or plugin do any substantial portion?
-2. Can two or more existing tools together cover most of it?
-3. Can an approximate plugin be configured, patched, wrapped or complemented rather than replaced?
-4. Can a small manual step preserve validation while removing most of the time cost?
-5. Can a thin adapter, macro, file exchange, coordinate translation, CSV translation or GUI wrapper close the remaining gap?
-6. Can the GUI hide the multi-tool complexity so the user still has one simple control surface?
-7. If the answer still appears to be no, search/check once more before authorizing substantial custom code.
+2. Can another mature desktop/scientific/image tool do it?
+3. Can two or more existing tools together cover most of it?
+4. Does a close-fit tool expose macros, scripts, plugins, commands, APIs, presets or automation that can make it fit?
+5. Can an approximate plugin be configured, patched, wrapped or complemented rather than replaced?
+6. Can a small manual step preserve validation while removing most of the time cost?
+7. Can a thin adapter, macro, file exchange, coordinate translation, CSV translation or GUI wrapper close the remaining gap?
+8. Can the GUI hide the multi-tool complexity so the user still has one simple control surface?
+9. If the answer still appears to be no, search/check once more before authorizing substantial custom code.
 
 Only after those checks may bespoke implementation be considered, and then it must be limited to the smallest genuinely uncovered gap.
 
@@ -82,9 +103,25 @@ Success should be measured by outcomes such as:
 - fewer manual file/CSV translations;
 - clearer QC and easier retry;
 - preserved source data and validation;
-- fewer fragile scripts the user must repeatedly test.
+- fewer fragile scripts the user must repeatedly test;
+- finished image outputs produced sooner and with less effort.
 
 The "best" technical solution is not necessarily the most elegant or most automated one. A good-enough, robust, partially manual composition is often the intended solution.
+
+## Testing-budget rule
+
+The user has already experienced a testing/debugging burden that exceeded the original manual work. **Do not allow that pattern to repeat.**
+
+User testing time is scarce and expensive. Do not casually hand the user successive speculative builds to debug for you.
+
+Before requesting manual testing:
+- perform all checks possible without the user;
+- keep the tested change narrow;
+- prefer testing a proven external tool or small integration slice over a large new architecture;
+- state exactly what needs validation and why;
+- avoid bundling unrelated experimental changes.
+
+If repeated user testing is required, treat that as evidence that the route itself may be poor. Apply the stop-loss policy rather than automatically generating another patched version.
 
 ## GUI role
 
@@ -169,15 +206,17 @@ Generated crop names may encode useful metadata for human readability, but scrip
 - Validate CSV/config inputs and fail/skip clearly rather than corrupting a batch.
 - Avoid destructive in-place processing by default.
 - Make routine implementation/refactor/dependency choices autonomously when evidence is clear.
+- Autonomously propose useful new workflow improvements when they plausibly reduce user effort or improve validation, but run every proposal through the same practical reuse-first policy before implementing it.
 - A completed subtask is a transition point, not a reason to redesign unrelated parts.
 - If a composed route needs a few manual steps but achieves a major time-cost reduction, implement it rather than continuing to chase total automation.
 - If a mature plugin/package is close but not exact, prefer adapting or patching it over replacing it unless there is concrete evidence that adaptation is less reliable or more costly.
 - Do not expand a speculative architecture until a small representative end-to-end route has actually worked.
 - Treat repeated fragile patches or repeated user retesting as evidence that the implementation route may be wrong.
+- Never mistake "more code completed" for "more progress". Progress means getting the user's real workflow closer to a reliable, low-effort result.
 
 ## Research/reuse requirement
 
-When considering a new capability, explicitly search the mature ecosystem before implementing it from first principles. Examples include Fiji/ImageJ update sites/plugins, Bio-Formats/ImageJ facilities, ROI Manager tooling, registration/grid/segmentation plugins, established Python imaging/scientific libraries and Pillow facilities.
+When considering a new capability, explicitly search the mature ecosystem before implementing it from first principles. Examples include Fiji/ImageJ update sites/plugins, Bio-Formats/ImageJ facilities, ROI Manager tooling, registration/grid/segmentation plugins, established Python imaging/scientific libraries, Pillow facilities, command-line utilities and other established desktop tools.
 
 Research should be driven by the desired function and decomposed subfunctions, not by exact wording. For example, if a requested "one-click ROI" tool nearly fits the need, investigate wrappers, ROI resizing, saved selections, macros, plugin patching, companion tools or follow-on transformations before deciding that a custom replacement is preferable.
 
