@@ -3,6 +3,38 @@
 
 SetTitleMatchMode(2)
 
+PlacementDialogTitle(title)
+{
+    return (
+        InStr(title, "1 / 2") ||
+        InStr(title, "2 / 2") ||
+        InStr(title, "1 / 4") ||
+        InStr(title, "2 / 4") ||
+        InStr(title, "3 / 4") ||
+        InStr(title, "4 / 4")
+    )
+}
+
+; Reuse the original four-point helper's shell-hook behavior: move a placement
+; dialog once when Windows creates it. This does not activate or confirm it.
+DllCall("RegisterShellHookWindow", "ptr", A_ScriptHwnd)
+SHELLHOOK := DllCall("RegisterWindowMessage", "str", "SHELLHOOK")
+OnMessage(SHELLHOOK, ShellMessage)
+
+ShellMessage(wParam, lParam, msg, hwnd)
+{
+    ; HSHELL_WINDOWCREATED = 1
+    if (wParam != 1)
+        return
+
+    try title := WinGetTitle("ahk_id " lParam)
+    catch
+        return
+
+    if PlacementDialogTitle(title)
+        try WinMove(10, 10, , , "ahk_id " lParam)
+}
+
 AlignmentDialogExists()
 {
     for title in [
