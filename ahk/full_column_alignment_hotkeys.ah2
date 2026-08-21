@@ -5,7 +5,11 @@ SetTitleMatchMode(2)
 
 AlignmentDialogExists()
 {
-    for title in ["1 / 2", "2 / 2", "Alignment QC", "ALL DONE"]
+    for title in [
+        "1 / 2", "2 / 2", "Alignment QC",
+        "1 / 4", "2 / 4", "3 / 4", "4 / 4",
+        "ALL DONE"
+    ]
     {
         if WinExist(title)
             return true
@@ -14,12 +18,16 @@ AlignmentDialogExists()
 }
 
 ; Z is only intercepted while one of the workflow's Fiji dialogs exists.
-; It advances first/last-column placement, accepts QC, and dismisses ALL DONE
-; before closing this helper.
+; It advances either the full-column or preserved four-point route, accepts QC,
+; and dismisses ALL DONE before closing this helper.
 #HotIf AlignmentDialogExists()
 z::
 {
-    for title in ["1 / 2", "2 / 2", "Alignment QC", "ALL DONE"]
+    for title in [
+        "1 / 2", "2 / 2", "Alignment QC",
+        "1 / 4", "2 / 4", "3 / 4", "4 / 4",
+        "ALL DONE"
+    ]
     {
         if hwnd := WinExist(title)
         {
@@ -34,7 +42,7 @@ z::
 }
 #HotIf
 
-; X is only intercepted while Alignment QC exists.
+; X is only intercepted while Alignment QC exists on the full-column route.
 ; The Fiji choice defaults to Accept; Down selects Retry, Enter confirms.
 #HotIf WinExist("Alignment QC")
 x::
