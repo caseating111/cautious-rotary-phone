@@ -75,6 +75,36 @@ class PreflightBatchTests(unittest.TestCase):
         self.assertTrue(problems)
         self.assertIn("DUPLICATE SOURCE BASENAMES (1)", lines)
 
+    def test_two_images_cannot_claim_same_output_names_in_one_folder(self) -> None:
+        (self.source_folder / "plate2.jpg").write_bytes(b"synthetic placeholder")
+        self.images_csv.write_text(
+            "Filename,Experiment,Set,Type\n"
+            "plate1.jpg,E1,A,YPDA\n"
+            "plate2.jpg,E1,A,YPDA\n",
+            encoding="utf-8",
+        )
+
+        lines, problems, _ = build_report(self.config)
+        self.assertTrue(problems)
+        self.assertIn("OUTPUT FILENAME COLLISIONS (4)", lines)
+        self.assertTrue(any("plate1.jpg" in line and "plate2.jpg" in line for line in lines))
+
+    def test_same_metadata_in_different_source_folders_has_separate_outputs(self) -> None:
+        second_folder = self.image_root / "setB"
+        second_folder.mkdir()
+        (second_folder / "plate2.jpg").write_bytes(b"synthetic placeholder")
+        self.images_csv.write_text(
+            "Filename,Experiment,Set,Type\n"
+            "plate1.jpg,E1,A,YPDA\n"
+            "plate2.jpg,E1,A,YPDA\n",
+            encoding="utf-8",
+        )
+
+        lines, problems, pending = build_report(self.config)
+        self.assertFalse(problems)
+        self.assertEqual(sorted(row["Filename"] for row in pending), ["plate1.jpg", "plate2.jpg"])
+        self.assertNotIn("OUTPUT FILENAME COLLISIONS (4)", lines)
+
 
 if __name__ == "__main__":
     unittest.main()
