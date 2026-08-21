@@ -57,6 +57,10 @@ IMAGE_EXTENSIONS = {
     ".tiff"
 }
 
+# Shared adapter compatibility setting. This script never rotates internally;
+# the wrapper supplies already-normalized disposable staged inputs.
+ROTATE_IMAGES_90_CCW = False
+
 
 # ------------------------------------------------------------
 # LABEL APPEARANCE
