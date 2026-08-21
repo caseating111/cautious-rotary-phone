@@ -9,8 +9,12 @@ from pathlib import Path
 
 try:
     from tools import run_existing_pillow_from_config as pillow_adapter
+    from tools.custom_matrix_preview import PreviewResult
+    from tools.standard_pillow_preview import patch_first_state
 except ModuleNotFoundError:
     import run_existing_pillow_from_config as pillow_adapter
+    from custom_matrix_preview import PreviewResult
+    from standard_pillow_preview import patch_first_state
 
 
 PREFERENCE_FILE = pillow_adapter.APP_DIR / "preferred_wt_source.json"
@@ -88,6 +92,55 @@ def patch_preferred_control(configured_script: Path, experiment: str, set_name: 
     if text.count(old) != 1:
         raise SystemExit("Deduplicated all-strains script no longer has the expected E2/A preference block.")
     configured_script.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+
+def build_preview(experiment: str, set_name: str) -> PreviewResult:
+    config = pillow_adapter.load_config()
+    pillow_adapter.validate_csvs(config)
+    pillow_adapter.validate_source_readiness_if_configured(config)
+    validate_control_source(config, experiment, set_name)
+
+    selected_crops = pillow_adapter.validate_unique_crop_matches(
+        Path(config["crop_output"]),
+        Path(config["grid_csv"]),
+        Path(config["images_csv"]),
+        allow_missing=False,
+    )
+    if not selected_crops:
+        raise SystemExit("No validated crops are available to preview.")
+
+    pillow_adapter.APP_DIR.mkdir(parents=True, exist_ok=True)
+    temp = tempfile.TemporaryDirectory(prefix="dedup-control-preview-", dir=pillow_adapter.APP_DIR)
+    root = Path(temp.name)
+    try:
+        staged_root = root / "crops"
+        staged = pillow_adapter.stage_selected_crops(selected_crops, staged_root)
+        pillow_adapter.normalize_crop_orientation(
+            staged_root,
+            config["crop_width"],
+            config["crop_height"],
+            paths=staged,
+            strict=True,
+        )
+        preview_config = dict(config)
+        preview_config["matrix_output"] = str(root / "output")
+        configured = pillow_adapter.configured_copy("all-strains-dedup", preview_config, image_root=staged_root)
+        patch_preferred_control(configured, experiment.strip(), set_name.strip())
+        patch_first_state(configured)
+        result = subprocess.run([sys.executable, str(configured)], check=False)
+        if result.returncode != 0:
+            raise SystemExit("Representative deduplicated all-strains preview failed.")
+
+        images = sorted(
+            path for path in Path(preview_config["matrix_output"]).rglob("*")
+            if path.is_file() and path.suffix.lower() in pillow_adapter.IMAGE_EXTENSIONS
+        )
+        if len(images) != 1:
+            raise SystemExit(f"Expected one representative deduplicated preview image, found {len(images)}.")
+        return PreviewResult(temp, images[0])
+    except BaseException:
+        temp.cleanup()
+        raise
 
 
 def run(experiment: str, set_name: str, no_open_output: bool = False) -> Path:
