@@ -6,11 +6,13 @@ from tkinter import messagebox, ttk
 
 try:
     from tools import run_existing_pillow_from_config as pillow_adapter
+    from tools import run_one_plate_validation as one_plate_validation
     from tools import standard_pillow_preview
     from tools.output_processing_records import write_output_records
     from tools.workflow_controller import Controller, PILLOW_JOBS
 except ModuleNotFoundError:
     import run_existing_pillow_from_config as pillow_adapter
+    import run_one_plate_validation as one_plate_validation
     import standard_pillow_preview
     from output_processing_records import write_output_records
     from workflow_controller import Controller, PILLOW_JOBS
@@ -52,6 +54,12 @@ class ExtendedController(Controller):
             variable=self.preview_standard_outputs,
         ).grid(row=20, column=0, columnspan=3, sticky="w", padx=5, pady=(3, 6))
 
+        ttk.Button(
+            self,
+            text="Run one-plate full-column proof (first pending image only)",
+            command=self.run_one_plate_validation,
+        ).grid(row=21, column=0, columnspan=3, sticky="ew", padx=5, pady=(0, 6))
+
     def open_processing_logs(self) -> None:
         raw = self.vars["matrix_output"].get().strip()
         folder = Path(raw) / "Processing Logs" if raw else None
@@ -62,6 +70,39 @@ class ExtendedController(Controller):
             )
             return
         self.open_existing_path(folder, "Processing Logs")
+
+    def run_one_plate_validation(self) -> None:
+        if not self.save():
+            return
+
+        self.status.set("Preparing authoritative pending list and one-plate proof…")
+        self.update_idletasks()
+        ahk_was_running = bool(self.ahk_process and self.ahk_process.poll() is None)
+        ahk = Path(self.vars["ahk_executable"].get().strip())
+        started_ahk_here = False
+        if ahk.is_file() and not ahk_was_running:
+            self.start_ahk()
+            started_ahk_here = bool(self.ahk_process and self.ahk_process.poll() is None)
+
+        try:
+            selected = one_plate_validation.run()
+        except SystemExit as exc:
+            if started_ahk_here:
+                self.stop_ahk()
+            messagebox.showerror("One-plate validation", str(exc))
+            self.status.set("One-plate proof was not launched; production pending metadata was not changed.")
+            return
+
+        filename = selected.get("Filename", "")
+        context = "/".join(
+            value for value in (selected.get("Experiment", ""), selected.get("Set", ""), selected.get("Type", "")) if value
+        )
+        self.status.set(f"One-plate full-column proof launched: {filename} | {context}")
+        messagebox.showinfo(
+            "One-plate validation",
+            f"Launched exactly one pending source:\n{filename}\n\nContext: {context or 'not specified'}\n\n"
+            "The normal pending list and production batch macro were left unchanged.",
+        )
 
     def standard_output_count(self, alias: str, config: dict) -> int:
         crop_count = None
