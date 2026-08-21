@@ -58,6 +58,7 @@ class LabelIndividualEndToEndTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
+            real_crops: list[Path] = []
             for index, (column, strain, state) in enumerate(
                 (
                     (1, "WT", "Top"),
@@ -72,6 +73,7 @@ class LabelIndividualEndToEndTests(unittest.TestCase):
                 )
                 Image.new("L", (20, 48), 30 + column).save(path)
                 os.utime(path, ns=(source_mtime + index, source_mtime + index))
+                real_crops.append(path)
 
             (app_dir / "config.json").write_text(
                 json.dumps(
@@ -102,6 +104,11 @@ class LabelIndividualEndToEndTests(unittest.TestCase):
             self.assertIn("Crop orientation: rotated 4, already ready 0", result.stdout)
             self.assertIn("Labelled: 4", result.stdout)
             self.assertIn("Skipped: 0", result.stdout)
+
+            # Labelling/rotation happens on staging copies only.
+            for path in real_crops:
+                with Image.open(path) as real_crop:
+                    self.assertEqual(real_crop.size, (20, 48))
 
             outputs = sorted(path for path in matrix_root.iterdir() if path.is_dir())
             self.assertEqual(len(outputs), 1)
