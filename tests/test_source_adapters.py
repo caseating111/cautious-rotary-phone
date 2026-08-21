@@ -189,6 +189,23 @@ class SourceAdapterTests(unittest.TestCase):
                         self.assertIn("ROTATE_IMAGES_90_CCW = False", text)
                         self.assertNotIn('Path(r"path here")', text)
 
+    def test_configured_pillow_copy_can_point_at_staged_input_root(self) -> None:
+        config = {
+            "crop_output": "C:/project/crops",
+            "matrix_output": "C:/project/matrices",
+            "grid_csv": "C:/project/grid.csv",
+            "images_csv": "C:/project/images.csv",
+            "condition_order_csv": "C:/project/condition_order.csv",
+        }
+        with tempfile.TemporaryDirectory() as temp:
+            app = Path(temp) / "app"
+            stage = Path(temp) / "stage"
+            with patch.object(pillow_adapter, "APP_DIR", app):
+                configured = pillow_adapter.configured_copy("matrices", config, image_root=stage)
+            text = configured.read_text(encoding="utf-8")
+            self.assertIn(f"IMAGE_ROOT = Path({str(stage)!r})", text)
+            self.assertNotIn("IMAGE_ROOT = Path('C:/project/crops')", text)
+
     def test_crop_orientation_normalization_only_rotates_portrait_crops_once(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -209,6 +226,25 @@ class SourceAdapterTests(unittest.TestCase):
             second = pillow_adapter.normalize_crop_orientation(root, 130, 546)
             self.assertEqual(second, (0, 2, 1))
 
+    def test_staging_then_rotation_leaves_real_crop_untouched(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            real = root / "crops" / "E1_A_YPDA_01_Top_WT.png"
+            stage = root / "stage"
+            real.parent.mkdir()
+            Image.new("L", (130, 546), 10).save(real)
+
+            staged = pillow_adapter.stage_selected_crops([real], stage)
+            result = pillow_adapter.normalize_crop_orientation(
+                stage, 130, 546, paths=staged, strict=True
+            )
+
+            self.assertEqual(result, (1, 0, 0))
+            with Image.open(real) as image:
+                self.assertEqual(image.size, (130, 546))
+            with Image.open(staged[0]) as image:
+                self.assertEqual(image.size, (546, 130))
+
     def test_scoped_orientation_rejects_bad_current_crop_but_ignores_unrelated_png(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -228,7 +264,7 @@ class SourceAdapterTests(unittest.TestCase):
             )
             self.assertEqual(result, (0, 0, 0))
 
-    def test_pillow_input_guard_rejects_multiple_files_for_one_logical_cell(self) -> None:
+    def test_pillow_input_selection_prefers_exact_current_file_over_stale_prefix_match(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             crop_root = root / "crops"
@@ -246,16 +282,46 @@ class SourceAdapterTests(unittest.TestCase):
                 "plate1.jpg,E1,A,YPDA\n",
                 encoding="utf-8",
             )
-            Image.new("L", (546, 130), 10).save(crop_root / "old" / "E1_A_YPDA_01_Top_old.png")
-            Image.new("L", (546, 130), 20).save(crop_root / "current" / "E1_A_YPDA_01_Top_WT.png")
+            stale = crop_root / "old" / "E1_A_YPDA_01_Top_old.png"
+            current = crop_root / "current" / "E1_A_YPDA_01_Top_WT.png"
+            Image.new("L", (546, 130), 10).save(stale)
+            Image.new("L", (546, 130), 20).save(current)
+
+            selected = pillow_adapter.validate_unique_crop_matches(
+                crop_root, grid_csv, images_csv, allow_missing=True
+            )
+
+            self.assertEqual(selected, [current])
+            self.assertNotIn(stale, selected)
+
+    def test_pillow_input_guard_rejects_duplicate_exact_current_filename(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            crop_root = root / "crops"
+            (crop_root / "a").mkdir(parents=True)
+            (crop_root / "b").mkdir()
+            grid_csv = root / "grid.csv"
+            images_csv = root / "images.csv"
+            grid_csv.write_text(
+                "Experiment,Set,GridCols,Column,Strain\n"
+                "E1,A,1,1,WT\n",
+                encoding="utf-8",
+            )
+            images_csv.write_text(
+                "Filename,Experiment,Set,Type\n"
+                "plate1.jpg,E1,A,YPDA\n",
+                encoding="utf-8",
+            )
+            for folder in ("a", "b"):
+                Image.new("L", (546, 130), 10).save(
+                    crop_root / folder / "E1_A_YPDA_01_Top_WT.png"
+                )
 
             with self.assertRaises(SystemExit) as caught:
-                pillow_adapter.validate_unique_crop_matches(crop_root, grid_csv, images_csv)
-
-            message = str(caught.exception)
-            self.assertIn("Ambiguous crop inputs", message)
-            self.assertIn("old/E1_A_YPDA_01_Top_old.png", message)
-            self.assertIn("current/E1_A_YPDA_01_Top_WT.png", message)
+                pillow_adapter.validate_unique_crop_matches(
+                    crop_root, grid_csv, images_csv, allow_missing=True
+                )
+            self.assertIn("Duplicate exact crop inputs", str(caught.exception))
 
     def test_pillow_input_guard_rejects_lone_stale_strain_suffix(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -285,7 +351,7 @@ class SourceAdapterTests(unittest.TestCase):
             message = str(caught.exception)
             self.assertIn("Stale crop filename mismatch", message)
             self.assertIn("expected: E1_A_YPDA_01_Top_WT_NEW.png", message)
-            self.assertIn("found:    E1_A_YPDA_01_Top_WT_OLD.png", message)
+            self.assertIn("stale:    E1_A_YPDA_01_Top_WT_OLD.png", message)
 
     def test_pillow_input_guard_returns_only_current_logical_matches(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
