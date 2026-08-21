@@ -88,7 +88,14 @@ def selected_inventory(config: dict, selection: dict) -> list[CropInventoryItem]
                 path_text = ""
 
                 if not matches:
-                    status = "missing"
+                    if image_root is not None and len(source_matches) != 1:
+                        status = "source ambiguous" if source_matches else "source missing"
+                        detail = (
+                            f"crop missing; expected one source image named {source_name}; "
+                            f"found {len(source_matches)}"
+                        )
+                    else:
+                        status = "missing"
                 elif len(matches) > 1:
                     status = "duplicate"
                     detail = "; ".join(str(path.relative_to(crop_root)) for path in matches[:5])
@@ -161,6 +168,14 @@ def presentation_range_issues(config: dict, items: list[CropInventoryItem]) -> t
     return ready, issues
 
 
+def source_plates_to_rerun(items: list[CropInventoryItem]) -> list[str]:
+    fixable = {"missing", "stale", "incompatible"}
+    return sorted(
+        {item.source_filename for item in items if item.status in fixable and item.source_filename},
+        key=str.casefold,
+    )
+
+
 def inventory_summary(items: list[CropInventoryItem]) -> str:
     counts: dict[str, int] = defaultdict(int)
     for item in items:
@@ -169,6 +184,12 @@ def inventory_summary(items: list[CropInventoryItem]) -> str:
     lines = [f"Selected crop cells: {len(items)}", f"Current: {current}"]
     for status in sorted(counts):
         lines.append(f"{status.title()}: {counts[status]}")
+
+    rerun_sources = source_plates_to_rerun(items)
+    if rerun_sources:
+        lines.extend(["", f"Source plates to rerun ({len(rerun_sources)}):"])
+        lines.extend(f"- {name}" for name in rerun_sources)
+
     problems = [item for item in items if item.status != "current"]
     if problems:
         lines.extend(["", "Items needing attention:"])
