@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import csv
 import json
 import subprocess
@@ -163,13 +164,26 @@ def build_macro(config: dict) -> Path:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--prepare-only",
+        action="store_true",
+        help="validate/preflight and build the configured Fiji macro without launching Fiji",
+    )
+    args = parser.parse_args()
+
     config = load_config()
     validate_csvs(config)
-    run_preflight()
+    pending = run_preflight()
+    macro = build_macro(config)
+
+    if args.prepare_only:
+        print(f"Prepared composed batch for {pending} pending image(s): {macro}")
+        return
+
     fiji = Path(config["fiji_executable"])
     if not fiji.is_file():
         raise SystemExit(f"Fiji executable not found: {fiji}")
-    macro = build_macro(config)
     subprocess.Popen([str(fiji), "-macro", str(macro)])
 
 
