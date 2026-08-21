@@ -52,7 +52,8 @@ class MisplacedExactCropPreflightTests(unittest.TestCase):
             self.assertTrue(problems)
             self.assertEqual([row["Filename"] for row in pending], ["plate1.jpg"])
             self.assertIn("EXACT CURRENT CROP IN UNEXPECTED FOLDER (1)", lines)
-            self.assertIn("- old/E1_A_YPDA_01_Top_WT.png", lines)
+            normalized_lines = [line.replace("\\", "/") for line in lines]
+            self.assertIn("- old/E1_A_YPDA_01_Top_WT.png", normalized_lines)
             self.assertTrue(any("final Pillow staging would correctly reject the duplicate" in line for line in lines))
 
 
