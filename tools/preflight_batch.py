@@ -26,6 +26,11 @@ def load_config(path: Path) -> dict:
     missing = [key for key in required if not str(data.get(key, "")).strip()]
     if missing:
         raise SystemExit("Missing config values: " + ", ".join(missing))
+    for key in ("grid_csv", "crop_output"):
+        if ";" in str(data[key]):
+            raise SystemExit(
+                f"Configured {key} contains a semicolon, which conflicts with the composed Fiji macro-argument delimiter: {data[key]}"
+            )
     return data
 
 
@@ -108,6 +113,9 @@ def build_report(config: dict) -> tuple[list[str], bool, list[dict[str, str]]]:
     grid = read_csv(Path(config["grid_csv"]))
     images = read_csv(Path(config["images_csv"]))
     sources = discover_sources(image_root)
+
+    source_folders = sorted(path for path in image_root.iterdir() if path.is_dir())
+    delimiter_unsafe_folders = [path.name for path in source_folders if ";" in path.name]
 
     grid_by_key: dict[tuple[str, str], list[dict[str, str]]] = defaultdict(list)
     for row in grid:
@@ -200,7 +208,7 @@ def build_report(config: dict) -> tuple[list[str], bool, list[dict[str, str]]]:
 
     lines = [
         "BATCH PREFLIGHT",
-        f"Source folders: {len([p for p in image_root.iterdir() if p.is_dir()])}",
+        f"Source folders: {len(source_folders)}",
         f"Source images discovered: {len(sources)}",
         f"Mapped source images ready: {mapped_images}",
         f"Already complete images: {complete_images}",
@@ -211,6 +219,7 @@ def build_report(config: dict) -> tuple[list[str], bool, list[dict[str, str]]]:
     ]
 
     sections = [
+        ("SOURCE FOLDERS UNSAFE FOR FIJI ARGUMENT HANDOFF", delimiter_unsafe_folders),
         ("UNMAPPED SOURCE IMAGES", [str(path.relative_to(image_root)) for path in unmapped_sources]),
         ("CSV ROWS WITH NO DISCOVERED SOURCE FILE", csv_missing_files),
         ("DUPLICATE SOURCE BASENAMES", duplicate_source_names),
