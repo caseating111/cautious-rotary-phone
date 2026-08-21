@@ -19,6 +19,14 @@ class LabelIndividualOutputTests(unittest.TestCase):
         self.assertNotIn("MATRIX_ROOT", output_block)
         self.assertIn('f"{MATRIX_OUTPUT}"', text)
 
+    def test_labelled_individual_job_declares_no_internal_rotation_for_shared_adapter(self) -> None:
+        text = SCRIPT.read_text(encoding="utf-8")
+
+        self.assertEqual(text.count("ROTATE_IMAGES_90_CCW = False"), 1)
+        self.assertNotIn("ROTATE_IMAGES_90_CCW = True", text)
+        self.assertNotIn("def rotate_everything", text)
+        self.assertIn("wrapper supplies already-normalized disposable staged inputs", text)
+
 
 if __name__ == "__main__":
     unittest.main()
