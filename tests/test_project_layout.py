@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import errno
 import tempfile
 import unittest
 from datetime import date
 from pathlib import Path
+from unittest.mock import patch
 
 from tools.project_layout import (
     default_prefix,
@@ -97,6 +99,24 @@ class ProjectLayoutTests(unittest.TestCase):
             self.assertIn("refusing to merge", str(caught.exception))
             self.assertTrue(source.is_dir())
             self.assertEqual((target / "keep.txt").read_text(encoding="utf-8"), "existing")
+
+    def test_rename_failure_does_not_fall_back_to_copy_or_leave_empty_project(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            parent = Path(temp)
+            source = parent / "MyImages"
+            source.mkdir()
+            original = source / "plate1.jpg"
+            original.write_bytes(b"source-stays-put")
+            target = planned_layout(source, "21.08.26").project_root
+
+            with patch.object(Path, "rename", side_effect=OSError(errno.EXDEV, "cross-device rename")):
+                with self.assertRaises(SystemExit) as caught:
+                    initialize_project(source, "21.08.26")
+
+            self.assertIn("Could not create project layout", str(caught.exception))
+            self.assertTrue(source.is_dir())
+            self.assertEqual(original.read_bytes(), b"source-stays-put")
+            self.assertFalse(target.exists())
 
 
 if __name__ == "__main__":
