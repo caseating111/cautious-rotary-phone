@@ -6,5 +6,11 @@
   "matrix_output": "C:/PlateProject/matrices",
   "grid_csv": "C:/PlateProject/grid.csv",
   "images_csv": "C:/PlateProject/images.csv",
-  "condition_order_csv": "C:/PlateProject/condition_order.csv"
+  "condition_order_csv": "C:/PlateProject/condition_order.csv",
+  "alignment_tolerance": "0.08",
+  "crop_width": "130",
+  "crop_height": "546",
+  "visibility_band": "50",
+  "visibility_black_offset": "3",
+  "visibility_high_percentile": "99.5"
 }
