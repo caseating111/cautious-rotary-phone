@@ -8,10 +8,10 @@ from PIL import Image
 
 try:
     from tools import custom_matrix_selection as custom
-    from tools.preflight_batch import expected_output_names
+    from tools.preflight_batch import discover_sources, expected_output_names
 except ModuleNotFoundError:
     import custom_matrix_selection as custom
-    from preflight_batch import expected_output_names
+    from preflight_batch import discover_sources, expected_output_names
 
 
 def safe_file_name(value: str) -> str:
@@ -57,13 +57,22 @@ def find_range_file(range_dir: Path, source_filename: str) -> Path:
     )
 
 
-def load_range(range_dir: Path, source_filename: str) -> tuple[float, float]:
+def load_range(
+    range_dir: Path,
+    source_filename: str,
+    source_path: Path | None = None,
+) -> tuple[float, float]:
     path = find_range_file(range_dir, source_filename)
     values = read_key_values(path)
     archived_name = values.get("source_filename", "")
     if archived_name and archived_name.casefold() != source_filename.casefold():
         raise SystemExit(
             f"Display range identity mismatch: requested {source_filename}, archive says {archived_name}."
+        )
+    if source_path is not None and path.stat().st_mtime_ns < source_path.stat().st_mtime_ns:
+        raise SystemExit(
+            f"Archived Fiji display range is older than the current source image: {source_filename}. "
+            "Run Global visibility once on the current source plate, or use Raw display mode."
         )
     try:
         black = float(values["black_point"])
@@ -121,13 +130,24 @@ def crop_source_map(grid_csv: Path, images_csv: Path) -> dict[str, str]:
     return mapping
 
 
+def source_paths_by_name(image_root: Path | None) -> dict[str, list[Path]]:
+    if image_root is None:
+        return {}
+    sources: dict[str, list[Path]] = defaultdict(list)
+    for source in discover_sources(image_root):
+        sources[source.name.casefold()].append(source)
+    return dict(sources)
+
+
 def normalize_staged_crops(
     staged_paths: list[Path],
     grid_csv: Path,
     images_csv: Path,
     range_dir: Path,
+    image_root: Path | None = None,
 ) -> int:
     mapping = crop_source_map(grid_csv, images_csv)
+    sources = source_paths_by_name(image_root)
     cache: dict[str, tuple[float, float]] = {}
     normalized = 0
     for path in staged_paths:
@@ -136,7 +156,16 @@ def normalize_staged_crops(
             raise SystemExit(f"Could not map staged crop back to a source plate: {path.name}")
         key = source_filename.casefold()
         if key not in cache:
-            cache[key] = load_range(range_dir, source_filename)
+            source_path = None
+            if image_root is not None:
+                matches = sources.get(key, [])
+                if len(matches) != 1:
+                    raise SystemExit(
+                        f"Expected one current source image named {source_filename} before presentation normalization; "
+                        f"found {len(matches)}."
+                    )
+                source_path = matches[0]
+            cache[key] = load_range(range_dir, source_filename, source_path=source_path)
         black, high = cache[key]
         try:
             with Image.open(path) as image:
