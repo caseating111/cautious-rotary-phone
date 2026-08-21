@@ -22,9 +22,10 @@ Routine implementation goes directly onto `workflow-dev`. Do **not** create a ne
 - Batch Experiment/Set/Type context is passed into the already-required first-column `waitForUser` dialog. The separate per-plate `Next plate` acknowledgement was removed, saving one click/keypress per image without removing alignment oversight.
 - After an accepted alignment, the first-column whole-column reference rectangle is persisted. On a later image with matching dimensions it can be pre-positioned as a **starting suggestion only**. The user must still move/resize it, position the last column, and accept full-grid QC; previous geometry is never automatically accepted.
 - ROI preset reads fall back safely when the saved preset value is missing, NaN or non-positive.
+- The ROI preset GUI now uses the configured Fiji executable to search the Fiji installation for `Roi 1-Click Tools.ijm`, preferring the normal `macros/toolsets/` location and recursively searching only as fallback. A unique discovered toolset is patched directly; missing/ambiguous installs keep the original file-picker route. This reduces first-run setup without replacing the published plugin.
 - Accepted alignment persists ImageJ `image.directory` and `image.filename` when available, plus title/dimensions. Crop export and visibility reject stale geometry from another same-named/same-sized real file; older/synthetic alignment files retain title+dimension fallback.
 - `ahk/full_column_alignment_hotkeys.ah2` remains small global-hotkey convenience only. It watches only the remaining dialogs (`1 / 2`, `2 / 2`, `Alignment QC`, `ALL DONE`); obsolete `Next plate` handling was removed.
-- `tests/test_alignment_macro_contract.py` protects the manual-authority/seed/native-profile contract without speculative headless Fiji CI.
+- `tests/test_alignment_macro_contract.py` protects the manual-authority/seed/native-profile contract without speculative headless Fiji CI. `tests/test_roi_preset_discovery.py` covers configured-Fiji toolset discovery without Fiji itself.
 
 ### Visibility / crop handoff
 - `fiji/apply_global_visibility.ijm`: robust outside-grid background + inside-grid high percentile -> one whole-image display range while preserving quantitative source pixels.
@@ -43,7 +44,7 @@ Routine implementation goes directly onto `workflow-dev`. Do **not** create a ne
 - Batch preparation verifies the production macro, alignment macro, crop helper, validator and preflight helper exist. Actual standalone launch verifies Fiji only when launch is requested.
 - Configured `grid_csv` and `crop_output` paths containing semicolons are rejected because the crop-helper handoff uses semicolon-delimited macro arguments.
 - The composed route no longer opens a modal `Next plate` message. Plate identity is shown in Fiji status and in the already-required first-column prompt.
-- `tests/test_batch_interaction.py` protects the reduced-click interaction/context handoff; `tests/test_source_adapters.py` covers Fiji-free preparation versus actual launch requirements.
+- `tests/test_batch_interaction.py` protects the reduced-click interaction/context handoff; `tests/test_source_adapters.py` covers Fiji-free preparation versus actual launch requirements. `tests/test_batch_prepare_end_to_end.py` proves the real noninteractive validator -> preflight -> production-macro patching route on synthetic data without Fiji.
 
 ### Batch preflight / resume
 - `tools/preflight_batch.py` mirrors production immediate-subfolder, basename metadata and exact output-name semantics.
@@ -73,12 +74,13 @@ Routine implementation goes directly onto `workflow-dev`. Do **not** create a ne
 - Pillow output jobs run the same authoritative project CSV validator used by Fiji before adapter generation or crop mutation.
 - `matrix_output` must be outside `crop_output`, preventing recursive legacy scans from ingesting their own generated matrices.
 - The wrapper builds/validates its configured legacy script before any crop-orientation mutation.
-- It derives the exact logical crop prefixes used by the legacy scripts. More than one real match is blocking rather than allowing first-match behavior.
-- **Missing expected logical crop cells are blocking by default**, preventing final matrices from silently rendering blank cells because crop generation was incomplete. Intentional partial output is available only through explicit CLI `--allow-missing`; controller output remains strict.
-- Only current logical crop matches are passed to orientation normalization. Unrelated images are ignored; incompatible current crop dimensions fail before matrix generation.
+- It derives the legacy logical prefixes **and the exact current exporter filenames**. More than one prefix match is blocking. A lone old prefix-compatible crop with the wrong strain suffix is also blocking instead of being silently accepted by the legacy script's broader `startswith()` lookup.
+- **Missing expected logical crop cells are blocking by default**, preventing final matrices from silently rendering blank cells because crop generation was incomplete. Intentional partial output is available only through explicit CLI `--allow-missing`; that opt-in may omit cells but still cannot substitute stale prefix-compatible files.
+- In normal controller use, where `image_root` is configured, the Pillow wrapper now reuses the established batch preflight before final output. A changed/newer source image, corrupt/wrong-size current crop, unfinished plate or blocking source/crop mapping therefore stops matrix generation automatically. Standalone Pillow-only configs without `image_root` retain the independent route.
+- Only current exact logical crop matches are passed to orientation normalization. Unrelated images are ignored; incompatible current crop dimensions fail before matrix generation.
 - Temporary configured copies force `ROTATE_IMAGES_90_CCW = False`, removing dependence on legacy one-shot rotation markers.
 - Failed legacy jobs remove only newly created empty output folders and retain non-empty partial output for inspection.
-- `tests/test_pillow_input_completeness.py` covers strict completeness and explicit partial-output opt-in; existing adapter/navigation tests cover ambiguity, orientation, output-tree separation and failure cleanup.
+- `tests/test_pillow_input_completeness.py` covers strict completeness and explicit partial-output opt-in. `tests/test_pillow_source_readiness.py` covers source-preflight reuse. `tests/test_pillow_wrapper_end_to_end.py` now proves a complete synthetic source -> current crops -> preflight -> wrapper -> actual legacy matrix route. Existing source-adapter/navigation tests cover stale suffixes, ambiguity, orientation, output-tree separation and failure cleanup.
 
 ### CSV validation
 - `tools/validate_project_csvs.py` checks required headers, grid completeness/duplicates, consistent GridCols, unique source filenames, image->grid references and condition-order coverage.
@@ -101,7 +103,7 @@ Routine implementation goes directly onto `workflow-dev`. Do **not** create a ne
 ### Automated regression checks
 - `.github/workflows/python-glue-tests.yml` runs compileall plus the Python unittest suite on pushes to `workflow-dev` and pull requests, installing Pillow explicitly.
 - Stock ImageJ `-batch` and Maven ImageJ were investigated for IJM CI; no headless macro CI was added because the interactive helpers could not be proven cleanly without introducing another unvalidated runtime path.
-- Current regression coverage includes preflight/resume/freshness/dimensions, full-column constraints, CSV validation, source adapters, Fiji launcher construction, output navigation, controller handoffs, batch interaction, alignment macro contract and Pillow input completeness.
+- Current regression coverage includes preflight/resume/freshness/dimensions, full-column constraints, CSV validation, source adapters, Fiji launcher construction, ROI toolset discovery, output navigation, controller handoffs, batch interaction, alignment macro contract, Pillow input completeness/source readiness and real synthetic end-to-end matrix generation.
 - The GitHub connector's combined-status endpoint has returned no status contexts for direct branch commits; do not infer a passing/failing Actions result from that absence.
 
 ## Branch cleanup status
@@ -127,5 +129,5 @@ Historical milestone branches are not needed for routine continuation. Do not cr
 1. Use `--prepare-only` with real configured metadata before requesting interactive Fiji validation.
 2. Validate the smallest representative desktop first/last-column route, including the previous-reference seed; preserve four-point fallback.
 3. If native peak selection is weak, test BAR Find Peaks before custom detection work.
-4. Continue deterministic output/handoff checks that prevent stale, incomplete or ambiguous results without requiring user testing.
+4. Continue only deterministic, user-time-reducing setup/output handoff improvements that can be proven without repeated manual testing; avoid further architecture growth.
 5. Keep metadata inference conservative unless real data demonstrates a stable, verifiable pattern.
