@@ -33,6 +33,24 @@ class DedupControlPreviewContractTests(unittest.TestCase):
         self.assertLess(preview_at, run_at)
         self.assertIn("Preview rejected. Full deduplicated output was not generated.", block[preview_at:run_at])
 
+    def test_successful_dedup_output_records_control_source_and_full_selection(self) -> None:
+        text = RUNNER.read_text(encoding="utf-8")
+        run_at = text.index("def run(")
+        block = text[run_at:]
+        output_check = block.index("if output is None or not pillow_adapter.directory_has_content(output):")
+        records = block.index("write_output_records(", output_check)
+        self.assertGreater(records, output_check)
+        record_block = block[records:block.index("print(", records)]
+        self.assertIn('output_type="all strains (deduplicated controls)"', record_block)
+        self.assertIn("selection=full_project_selection(config)", record_block)
+        self.assertIn('control_source={"experiment": experiment.strip(), "set": set_name.strip()}', record_block)
+
+    def test_gui_surfaces_human_log_but_leaves_machine_recipe_in_backend_area(self) -> None:
+        text = GUI.read_text(encoding="utf-8")
+        self.assertIn("record_paths", text)
+        self.assertIn("Processing Log:\\n{human_log}", text)
+        self.assertIn("machine recipe was saved separately under _workflow", text)
+
 
 if __name__ == "__main__":
     unittest.main()
