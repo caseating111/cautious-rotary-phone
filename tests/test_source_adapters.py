@@ -175,17 +175,21 @@ class SourceAdapterTests(unittest.TestCase):
             "images_csv": "C:/project/images.csv",
             "condition_order_csv": "C:/project/condition_order.csv",
         }
+        expected_lines = {
+            "IMAGE_ROOT": f"IMAGE_ROOT = Path({str(Path(config['crop_output']))!r})",
+            "GRID_CSV": f"GRID_CSV = Path({str(Path(config['grid_csv']))!r})",
+            "IMAGES_CSV": f"IMAGES_CSV = Path({str(Path(config['images_csv']))!r})",
+            "CONDITION_ORDER_CSV": f"CONDITION_ORDER_CSV = Path({str(Path(config['condition_order_csv']))!r})",
+            "MATRIX_ROOT": f"MATRIX_ROOT = Path({str(Path(config['matrix_output']))!r})",
+        }
         with tempfile.TemporaryDirectory() as temp:
             with patch.object(pillow_adapter, "APP_DIR", Path(temp)):
                 for alias in pillow_adapter.SCRIPTS:
                     with self.subTest(alias=alias):
                         configured = pillow_adapter.configured_copy(alias, config)
                         text = configured.read_text(encoding="utf-8")
-                        self.assertIn("IMAGE_ROOT = Path('C:/project/crops')", text)
-                        self.assertIn("GRID_CSV = Path('C:/project/grid.csv')", text)
-                        self.assertIn("IMAGES_CSV = Path('C:/project/images.csv')", text)
-                        self.assertIn("CONDITION_ORDER_CSV = Path('C:/project/condition_order.csv')", text)
-                        self.assertIn("MATRIX_ROOT = Path('C:/project/matrices')", text)
+                        for line in expected_lines.values():
+                            self.assertIn(line, text)
                         self.assertIn("ROTATE_IMAGES_90_CCW = False", text)
                         self.assertNotIn('Path(r"path here")', text)
 
@@ -204,7 +208,8 @@ class SourceAdapterTests(unittest.TestCase):
                 configured = pillow_adapter.configured_copy("matrices", config, image_root=stage)
             text = configured.read_text(encoding="utf-8")
             self.assertIn(f"IMAGE_ROOT = Path({str(stage)!r})", text)
-            self.assertNotIn("IMAGE_ROOT = Path('C:/project/crops')", text)
+            configured_crop = f"IMAGE_ROOT = Path({str(Path(config['crop_output']))!r})"
+            self.assertNotIn(configured_crop, text)
 
     def test_crop_orientation_normalization_only_rotates_portrait_crops_once(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
