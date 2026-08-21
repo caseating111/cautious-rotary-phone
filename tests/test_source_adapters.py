@@ -87,6 +87,16 @@ class SourceAdapterTests(unittest.TestCase):
                     pillow_adapter.validate_csvs(config)
             self.assertIn("synthetic invalid metadata", str(caught.exception))
 
+    def test_matrix_output_cannot_live_inside_recursive_crop_input_tree(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            crop_root = root / "crops"
+            with self.assertRaises(SystemExit) as caught:
+                pillow_adapter.validate_output_layout(crop_root, crop_root / "matrices")
+            self.assertIn("Matrix output must be outside crop_output", str(caught.exception))
+
+            pillow_adapter.validate_output_layout(crop_root, root / "matrices")
+
     def test_all_pillow_aliases_only_replace_shared_path_block(self) -> None:
         config = {
             "crop_output": "C:/project/crops",
