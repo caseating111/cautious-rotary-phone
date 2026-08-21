@@ -3,6 +3,8 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import subprocess
+import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 
@@ -10,6 +12,8 @@ APP_DIR = Path.home() / ".cautious-rotary-phone"
 DEFAULT_CONFIG = APP_DIR / "config.json"
 DEFAULT_REPORT = APP_DIR / "last_preflight.txt"
 DEFAULT_PENDING_CSV = APP_DIR / "pending_images.csv"
+REPO_ROOT = Path(__file__).resolve().parents[1]
+VALIDATOR = REPO_ROOT / "tools" / "validate_project_csvs.py"
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".tif", ".tiff"}
 IMAGE_FIELDS = ["Filename", "Experiment", "Set", "Type"]
 
@@ -18,11 +22,31 @@ def load_config(path: Path) -> dict:
     if not path.is_file():
         raise SystemExit(f"Config not found: {path}")
     data = json.loads(path.read_text(encoding="utf-8"))
-    required = ["image_root", "crop_output", "grid_csv", "images_csv"]
+    required = ["image_root", "crop_output", "grid_csv", "images_csv", "condition_order_csv"]
     missing = [key for key in required if not str(data.get(key, "")).strip()]
     if missing:
         raise SystemExit("Missing config values: " + ", ".join(missing))
     return data
+
+
+def validate_project_csvs(config: dict) -> None:
+    if not VALIDATOR.is_file():
+        raise SystemExit(f"CSV validator not found: {VALIDATOR}")
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(VALIDATOR),
+            str(config["grid_csv"]),
+            str(config["images_csv"]),
+            str(config["condition_order_csv"]),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        output = (result.stdout + result.stderr).strip()
+        raise SystemExit(output or "CSV validation failed before batch preflight.")
 
 
 def read_csv(path: Path) -> list[dict[str, str]]:
@@ -221,7 +245,9 @@ def main() -> int:
     parser.add_argument("--pending-images-csv", type=Path, default=DEFAULT_PENDING_CSV)
     args = parser.parse_args()
 
-    lines, problems, pending_rows = build_report(load_config(args.config))
+    config = load_config(args.config)
+    validate_project_csvs(config)
+    lines, problems, pending_rows = build_report(config)
     text = "\n".join(lines) + "\n"
     print(text, end="")
     args.report.parent.mkdir(parents=True, exist_ok=True)
