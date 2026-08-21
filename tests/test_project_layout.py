@@ -5,7 +5,13 @@ import unittest
 from datetime import date
 from pathlib import Path
 
-from tools.project_layout import default_prefix, initialize_project, planned_layout, validate_prefix
+from tools.project_layout import (
+    default_prefix,
+    initialize_project,
+    planned_layout,
+    rebase_moved_path,
+    validate_prefix,
+)
 
 
 class ProjectLayoutTests(unittest.TestCase):
@@ -33,6 +39,20 @@ class ProjectLayoutTests(unittest.TestCase):
             self.assertTrue(layout.crop_output.is_dir())
             self.assertTrue(layout.matrix_output.is_dir())
             self.assertTrue(layout.metadata_dir.is_dir())
+
+    def test_paths_inside_moved_source_are_rebased_but_external_paths_are_not(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            old = root / "MyImages"
+            new = root / "Project" / "Raw" / "MyImages"
+            internal = old / "metadata" / "grid.csv"
+            external = root / "shared" / "grid.csv"
+
+            self.assertEqual(
+                rebase_moved_path(internal, old, new),
+                (new / "metadata" / "grid.csv").resolve(),
+            )
+            self.assertEqual(rebase_moved_path(external, old, new), external.resolve())
 
     def test_existing_raw_layout_is_idempotent(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
