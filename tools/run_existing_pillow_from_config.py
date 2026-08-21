@@ -54,6 +54,23 @@ def validate_output_layout(
             )
 
 
+def ensure_matrix_output_root(config: dict) -> Path:
+    root = Path(config["matrix_output"])
+    try:
+        root.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise SystemExit(f"Could not create matrix output folder {root}: {exc}") from exc
+    if not root.is_dir():
+        raise SystemExit(f"Configured matrix_output is not a directory: {root}")
+
+    try:
+        with tempfile.TemporaryDirectory(prefix=".workflow-write-test-", dir=root) as probe_dir:
+            Path(probe_dir, "probe.txt").write_text("ok\n", encoding="utf-8")
+    except OSError as exc:
+        raise SystemExit(f"Matrix output folder is not writable: {root}: {exc}") from exc
+    return root
+
+
 def load_config() -> dict:
     if not CONFIG_FILE.is_file():
         raise SystemExit(f"Config not found: {CONFIG_FILE}")
@@ -439,7 +456,7 @@ def main() -> None:
     )
 
     APP_DIR.mkdir(parents=True, exist_ok=True)
-    output_root = Path(config["matrix_output"])
+    output_root = ensure_matrix_output_root(config)
     before = child_directories(output_root)
 
     with tempfile.TemporaryDirectory(prefix="pillow-input-", dir=APP_DIR) as temp:
