@@ -382,6 +382,10 @@ def newest_new_directory(before: set[Path], after: set[Path]) -> Path | None:
     return max(created, key=lambda path: path.stat().st_mtime_ns)
 
 
+def directory_has_content(path: Path) -> bool:
+    return path.is_dir() and any(path.iterdir())
+
+
 def cleanup_empty_new_directories(before: set[Path], after: set[Path]) -> tuple[list[Path], list[Path]]:
     removed: list[Path] = []
     retained: list[Path] = []
@@ -455,13 +459,21 @@ def main() -> None:
 
     if result.returncode == 0:
         output = newest_new_directory(before, after)
-        if output is not None:
-            record_output(output)
-            print(f"New output folder: {output}")
-            if not args.no_open_output:
-                open_output(output)
-        else:
-            print("No new output folder detected.")
+        if output is None:
+            print("Pillow job returned success but created no new output folder.")
+            raise SystemExit(1)
+        if not directory_has_content(output):
+            try:
+                output.rmdir()
+            except OSError:
+                pass
+            print(f"Pillow job returned success but its new output folder is empty: {output}")
+            raise SystemExit(1)
+
+        record_output(output)
+        print(f"New output folder: {output}")
+        if not args.no_open_output:
+            open_output(output)
     else:
         removed, retained = cleanup_empty_new_directories(before, after)
         for path in removed:
