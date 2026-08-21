@@ -106,10 +106,10 @@ def find_roi_click_tools(fiji_root: Path | None) -> list[Path]:
     return sorted(set(path.resolve() for path in fiji_root.rglob(TOOLSET_NAME) if path.is_file()))
 
 
-def patch_roi_click_tools(path: Path) -> Path:
+def patch_roi_click_tools(path: Path) -> Path | None:
     text = path.read_text(encoding="utf-8")
     if "function loadActiveRectPreset()" in text and PATCH_CALL in text:
-        raise ValueError("ROI 1-Click Tools is already preset-aware.")
+        return None
     if HELPER_MARKER not in text or TOOL_MARKER not in text:
         raise ValueError("This does not look like the expected ROI 1-Click Tools macro source.")
 
@@ -236,6 +236,15 @@ class App(tk.Tk):
         except (OSError, ValueError) as exc:
             messagebox.showerror("Patch failed", str(exc))
             return
+
+        if backup is None:
+            messagebox.showinfo(
+                "Already patched",
+                f"ROI 1-Click Tools is already preset-aware.\n\nToolset: {selected}",
+            )
+            self.status.set(f"ROI 1-Click Tools already patched: {selected}")
+            return
+
         messagebox.showinfo(
             "Patched",
             "ROI 1-Click Tools will now read the active rectangle preset before each rectangle click.\n\n"
