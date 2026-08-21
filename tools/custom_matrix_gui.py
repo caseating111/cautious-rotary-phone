@@ -73,6 +73,11 @@ class CustomMatrixBuilder(tk.Tk):
             controls.pack(fill="x")
             ttk.Button(controls, text="All", width=6, command=lambda key=exp_set: self.set_group(key, True)).pack(side="left", padx=2, pady=2)
             ttk.Button(controls, text="None", width=6, command=lambda key=exp_set: self.set_group(key, False)).pack(side="left", padx=2, pady=2)
+            ttk.Button(
+                controls,
+                text="Only this set",
+                command=lambda key=exp_set: self.select_only_group(key),
+            ).pack(side="left", padx=(8, 2), pady=2)
             vars_for_group = []
             cells = ttk.Frame(frame)
             cells.pack(fill="x", padx=4, pady=3)
@@ -85,10 +90,16 @@ class CustomMatrixBuilder(tk.Tk):
 
         condition_frame = ttk.LabelFrame(self.body, text="Conditions / types")
         condition_frame.pack(fill="x", padx=4, pady=5)
+        condition_controls = ttk.Frame(condition_frame)
+        condition_controls.pack(fill="x", padx=2, pady=(2, 0))
+        ttk.Button(condition_controls, text="All", width=6, command=lambda: self.set_conditions(True)).pack(side="left", padx=2)
+        ttk.Button(condition_controls, text="None", width=6, command=lambda: self.set_conditions(False)).pack(side="left", padx=2)
+        condition_cells = ttk.Frame(condition_frame)
+        condition_cells.pack(fill="x", padx=2, pady=2)
         for index, condition in enumerate(conditions):
             var = tk.BooleanVar(value=True)
             self.condition_vars[condition] = var
-            ttk.Checkbutton(condition_frame, text=condition, variable=var).grid(row=index // 5, column=index % 5, sticky="w", padx=6, pady=3)
+            ttk.Checkbutton(condition_cells, text=condition, variable=var).grid(row=index // 5, column=index % 5, sticky="w", padx=6, pady=3)
 
         state_frame = ttk.LabelFrame(self.body, text="Crop state")
         state_frame.pack(fill="x", padx=4, pady=5)
@@ -104,11 +115,20 @@ class CustomMatrixBuilder(tk.Tk):
         for _column, _strain, var in self.group_vars[key]:
             var.set(value)
 
+    def select_only_group(self, key: tuple[str, str]) -> None:
+        for group_key in self.group_vars:
+            self.set_group(group_key, group_key == key)
+        exp, set_name = key
+        self.status.set(f"Selected only {exp} / {set_name}; conditions and Top/Low were left unchanged.")
+
+    def set_conditions(self, value: bool) -> None:
+        for var in self.condition_vars.values():
+            var.set(value)
+
     def set_all(self, value: bool) -> None:
         for key in self.group_vars:
             self.set_group(key, value)
-        for var in self.condition_vars.values():
-            var.set(value)
+        self.set_conditions(value)
         for var in self.state_vars.values():
             var.set(value)
 
