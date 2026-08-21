@@ -27,6 +27,12 @@ class AlignmentMacroContractTests(unittest.TestCase):
         self.assertIn("Array.findMaxima", text)
         self.assertIn("getProfile()", text)
 
+    def test_numeric_roi_helper_is_compared_explicitly_in_boolean_contexts(self) -> None:
+        text = ALIGNMENT_MACRO.read_text(encoding="utf-8")
+        self.assertEqual(text.count("if (isTallRectangle() == 0)"), 2)
+        self.assertNotIn("!isTallRectangle()", text)
+        self.assertIn('return "accepted";', text)
+
     def test_profile_fallback_uses_native_roi_statistics_not_custom_pixel_reads(self) -> None:
         text = ALIGNMENT_MACRO.read_text(encoding="utf-8")
         fallback_at = text.index("function getVerticalAverageProfileFallback")
