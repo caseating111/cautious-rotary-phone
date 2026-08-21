@@ -120,6 +120,22 @@ def patch_preferred_control(configured_script: Path, experiment: str, set_name: 
     configured_script.write_text(text.replace(old, new, 1), encoding="utf-8")
 
 
+def validate_dedup_outputs(output: Path) -> None:
+    expected = {"WT_EXP2A_ALL_Top.png", "WT_EXP2A_ALL_Low.png"}
+    actual = {
+        path.name.casefold()
+        for path in output.glob("*.png")
+        if path.is_file()
+    }
+    missing = sorted(name for name in expected if name.casefold() not in actual)
+    if missing:
+        raise SystemExit(
+            "Deduplicated all-strains generator returned success but did not create both expected Top/Low outputs:\n"
+            + "\n".join(f"  - {name}" for name in missing)
+            + f"\nPartial output was left for inspection: {output}"
+        )
+
+
 def build_preview(experiment: str, set_name: str) -> PreviewResult:
     config = pillow_adapter.load_config()
     pillow_adapter.validate_csvs(config)
@@ -207,6 +223,7 @@ def run(experiment: str, set_name: str, no_open_output: bool = False) -> Path:
     output = pillow_adapter.newest_new_directory(before, after)
     if output is None or not pillow_adapter.directory_has_content(output):
         raise SystemExit("Deduplicated all-strains job returned success but produced no non-empty output folder.")
+    validate_dedup_outputs(output)
     pillow_adapter.record_output(output)
     save_preferred_source(experiment, set_name)
     required_crops = len(
