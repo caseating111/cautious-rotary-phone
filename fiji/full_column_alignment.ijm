@@ -40,6 +40,7 @@ if (toleranceFraction <= 0)
 roiW = readPresetValue("width", 108);
 roiH = readPresetValue("height", 108);
 accepted = 0;
+seededReference = seedPreviousReferenceROI(sourceWidth, sourceHeight);
 
 while (accepted == 0) {
     Overlay.remove;
@@ -47,6 +48,12 @@ while (accepted == 0) {
     contextText = "";
     if (context != "")
         contextText = "Plate: " + context + "\n\n";
+    if (seededReference) {
+        contextText = contextText +
+            "Previous accepted whole-column box is pre-positioned as a starting point.\n" +
+            "Move/resize it for this plate; it is NOT accepted automatically.\n\n";
+        seededReference = 0;
+    }
 
     waitForUser(
         "1 / 2 — First column",
@@ -112,7 +119,7 @@ while (accepted == 0) {
 
     if (action == "Accept") {
         accepted = 1;
-        saveLastAlignment(sourceTitle, sourceWidth, sourceHeight, sourceDirectory, sourceFilename, leftX, rightX, leftRows, rightRows, gridCols, gridRows, roiW, roiH);
+        saveLastAlignment(sourceTitle, sourceWidth, sourceHeight, sourceDirectory, sourceFilename, lx, ly, lw, lh, leftX, rightX, leftRows, rightRows, gridCols, gridRows, roiW, roiH);
     } else {
         Overlay.remove;
     }
@@ -125,6 +132,29 @@ function isTallRectangle() {
         return 0;
     getSelectionBounds(x, y, w, h);
     return w > 0 && h > w;
+}
+
+function seedPreviousReferenceROI(width, height) {
+    path = getDirectory("home") + ".cautious-rotary-phone" + File.separator + "last_alignment.txt";
+    if (!File.exists(path))
+        return 0;
+
+    previousWidth = parseInt(readSavedValue(path, "source_width", "-1"));
+    previousHeight = parseInt(readSavedValue(path, "source_height", "-1"));
+    if (previousWidth != width || previousHeight != height)
+        return 0;
+
+    x = parseFloat(readSavedValue(path, "reference_roi_x", "-1"));
+    y = parseFloat(readSavedValue(path, "reference_roi_y", "-1"));
+    w = parseFloat(readSavedValue(path, "reference_roi_width", "-1"));
+    h = parseFloat(readSavedValue(path, "reference_roi_height", "-1"));
+    if (x < 0 || y < 0 || w <= 0 || h <= w)
+        return 0;
+    if (x + w > width || y + h > height)
+        return 0;
+
+    makeRectangle(x, y, w, h);
+    return 1;
 }
 
 // ImageJ natively averages wide straight-line profiles. Convert the user's tall
@@ -207,19 +237,23 @@ function readPresetValue(key, fallback) {
     if (!File.exists(presetFile))
         return fallback;
 
-    text = File.openAsString(presetFile);
+    return parseFloat(readSavedValue(presetFile, key, fallback));
+}
+
+function readSavedValue(path, key, fallback) {
+    text = File.openAsString(path);
     lines = split(text, "\n");
     prefix = key + "=";
 
     for (i = 0; i < lines.length; i++) {
         line = replace(lines[i], "\r", "");
         if (startsWith(line, prefix))
-            return parseFloat(substring(line, lengthOf(prefix)));
+            return substring(line, lengthOf(prefix));
     }
     return fallback;
 }
 
-function saveLastAlignment(sourceTitle, sourceWidth, sourceHeight, sourceDirectory, sourceFilename, leftX, rightX, leftRows, rightRows, cols, rows, boxW, boxH) {
+function saveLastAlignment(sourceTitle, sourceWidth, sourceHeight, sourceDirectory, sourceFilename, referenceX, referenceY, referenceW, referenceH, leftX, rightX, leftRows, rightRows, cols, rows, boxW, boxH) {
     dir = getDirectory("home") + ".cautious-rotary-phone" + File.separator;
     if (!File.exists(dir))
         File.makeDirectory(dir);
@@ -229,6 +263,10 @@ function saveLastAlignment(sourceTitle, sourceWidth, sourceHeight, sourceDirecto
            "source_height=" + sourceHeight + "\n" +
            "source_directory=" + sourceDirectory + "\n" +
            "source_filename=" + sourceFilename + "\n" +
+           "reference_roi_x=" + referenceX + "\n" +
+           "reference_roi_y=" + referenceY + "\n" +
+           "reference_roi_width=" + referenceW + "\n" +
+           "reference_roi_height=" + referenceH + "\n" +
            "grid_cols=" + cols + "\n" +
            "grid_rows=" + rows + "\n" +
            "roi_width=" + boxW + "\n" +
