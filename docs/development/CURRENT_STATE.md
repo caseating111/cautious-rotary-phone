@@ -27,6 +27,7 @@ A task/commit/checkpoint is not a reason to create another branch. If work is sa
 - `fiji/apply_global_visibility.ijm`: robust outside-grid background + inside-grid high percentile -> one whole-image display range while preserving quantitative source pixels.
 - It can consume saved visibility settings through ImageJ macro arguments; direct no-argument launch retains the original dialog.
 - `fiji/export_crops_from_alignment.ijm`: accepted alignment -> established Top/Low crop naming and geometry.
+- Crop export now validates every intended Top/Low rectangle against source-image bounds before writing the first PNG. A bad edge crop therefore aborts cleanly instead of leaving a misleading partial output set. Non-positive crop dimensions and zero matching grid rows are rejected as well. Existing crop geometry and naming are unchanged.
 
 ### Existing production batch composition
 - `tools/run_full_column_batch_from_config.py` reuses the existing production Fiji batch macro's folder/CSV/image loop.
@@ -76,7 +77,7 @@ Many historical milestone branches are already fully represented by `workflow-de
 ## Pending manual validation (not a stop condition)
 - Desktop Fiji interaction for ROI preset patch and whole-column placement/QC.
 - Visual confirmation of vertical row-average peak selection on representative real plates.
-- End-to-end composed batch on representative images.
+- End-to-end composed batch on representative images, including the new pre-export bounds guard.
 - Confirm the installed Fiji desktop launcher accepts a fourth command-line macro argument for the config-driven visibility shortcut; direct dialog launch remains fallback.
 
 ## Research notes / stop-loss
@@ -87,7 +88,7 @@ Many historical milestone branches are already fully represented by `workflow-de
 
 ## Highest-value next routes
 1. Validate the smallest real desktop end-to-end route when user testing becomes available; keep the old four-point fallback intact.
-2. Add only cheap output-safety guards where they prevent partial/wrong crop sets (especially crop-bound checks before export), without changing established crop geometry.
+2. Add only cheap output-safety guards where they prevent wrong outputs without changing established geometry or naming.
 3. If native peak selection fails representative plates, test BAR Find Peaks as the first mature replacement; do not build a custom colony detector first.
 4. Reduce repeated batch navigation/cleanup only where it composes with existing output folders and does not obscure files.
 5. Keep metadata inference conservative unless real data demonstrates a stable, verifiable pattern worth exploiting.
