@@ -69,6 +69,7 @@ def run_job(selection: dict, no_open_output: bool = False) -> Path:
     if output is None or not pillow_adapter.directory_has_content(output):
         raise SystemExit("Presentation custom-matrix job returned success but produced no non-empty output folder.")
 
+    custom.save_last_selection(selection)
     pillow_adapter.record_output(output)
     rendered_count = len(contract) * len(selection["states"]) // 2
     write_output_records(
