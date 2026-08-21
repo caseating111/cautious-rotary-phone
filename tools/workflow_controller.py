@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import json
+import math
 import os
 import subprocess
 import sys
@@ -228,14 +229,29 @@ class Controller(tk.Tk):
 
         def save_and_close() -> None:
             try:
-                if float(self.vars["alignment_tolerance"].get()) <= 0:
-                    raise ValueError("Alignment tolerance must be positive.")
-                if int(self.vars["crop_width"].get()) <= 0 or int(self.vars["crop_height"].get()) <= 0:
-                    raise ValueError("Crop dimensions must be positive integers.")
-                if float(self.vars["visibility_band"].get()) < 1:
-                    raise ValueError("Visibility band must be at least 1.")
-                float(self.vars["visibility_black_offset"].get())
+                alignment_tolerance = float(self.vars["alignment_tolerance"].get())
+                crop_width = int(self.vars["crop_width"].get())
+                crop_height = int(self.vars["crop_height"].get())
+                visibility_band = float(self.vars["visibility_band"].get())
+                visibility_black_offset = float(self.vars["visibility_black_offset"].get())
                 percentile = float(self.vars["visibility_high_percentile"].get())
+
+                if not all(
+                    math.isfinite(value)
+                    for value in (
+                        alignment_tolerance,
+                        visibility_band,
+                        visibility_black_offset,
+                        percentile,
+                    )
+                ):
+                    raise ValueError("Processing settings must be finite numbers.")
+                if alignment_tolerance <= 0:
+                    raise ValueError("Alignment tolerance must be positive.")
+                if crop_width <= 0 or crop_height <= 0:
+                    raise ValueError("Crop dimensions must be positive integers.")
+                if visibility_band < 1:
+                    raise ValueError("Visibility band must be at least 1.")
                 if percentile <= 0 or percentile > 100:
                     raise ValueError("Visibility percentile must be >0 and <=100.")
             except ValueError as exc:
