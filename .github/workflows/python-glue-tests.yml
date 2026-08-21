@@ -11,11 +11,15 @@ permissions:
 jobs:
   unittest:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.14"]
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
-          python-version: "3.11"
+          python-version: ${{ matrix.python-version }}
       - name: Install runtime test dependency
         run: python -m pip install --disable-pip-version-check pillow
       - name: Compile-check Python glue
