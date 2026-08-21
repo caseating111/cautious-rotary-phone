@@ -41,14 +41,12 @@ IMAGES_CSV = Path(r"path here")
 CONDITION_ORDER_CSV = Path(r"path here")
 
 MATRIX_ROOT = Path(r"path here")
-# ALL strains with duplicate WTs removed
 MATRIX_OUTPUT = make_unique_folder(
     MATRIX_ROOT,
     "Labelled Individual Images"
 )
 
 
-# Image types
 IMAGE_EXTENSIONS = {
     ".png",
     ".jpg",
@@ -75,11 +73,11 @@ BACKGROUND_COLOUR = "white"
 
 # Recommended:
 # adds a separate white label area instead of covering colonies.
-LABEL_POSITION = "top" 
+LABEL_POSITION = "top"
 
 # Padding around label
 LABEL_PADDING = 8
- 
+
 
 # ============================================================
 # FONT
@@ -100,12 +98,9 @@ except Exception:
 
 # ============================================================
 # READ grid.csv
-#
-# Experiment,Set,GridCols,Column,Strain
 # ============================================================
 
 def read_grid():
-
     mapping = {}
 
     with GRID_CSV.open(
@@ -113,177 +108,22 @@ def read_grid():
         encoding="utf-8-sig",
         newline=""
     ) as f:
-
         reader = csv.DictReader(f)
 
         for row in reader:
-
             exp = row["Experiment"].strip()
             set_name = row["Set"].strip()
-            column = int(
-                row["Column"].strip()
-            )
+            column = int(row["Column"].strip())
             strain = row["Strain"].strip()
-
-            mapping[
-                (
-                    exp,
-                    set_name,
-                    column
-                )
-            ] = strain
+            mapping[(exp, set_name, column)] = strain
 
     return mapping
 
 
 # ============================================================
-# PARSE CROP FILENAME
-#
-# Expected examples:
-#
-# E1_0_YPDA_01_Low_WT Y.png
-# E2_A_SALT_06_Top_MUTANT.png
-#
-# We only need:
-# Experiment / Set / Column
+# SAFE NAMES
 # ============================================================
 
-def parse_crop_filename(path):
-
-    stem = path.stem
-
-    # First:
-    # Experiment
-    #
-    # Second:
-    # Set
-    #
-    # Everything later can contain arbitrary condition text,
-    # but the column is the 2-digit number immediately before
-    # _Top_ or _Low_.
-
-    first_parts = stem.split("_", 2)
-
-    if len(first_parts) < 3:
-        return None
-
-    exp = first_parts[0]
-    set_name = first_parts[1]
-
-    match = re.search(
-        r"_(\d+)_"
-        r"(?:Top|Low)_",
-        stem,
-        flags=re.IGNORECASE
-    )
-
-    if not match:
-        return None
-
-    column = int(
-        match.group(1)
-    )
-
-    return (
-        exp,
-        set_name,
-        column
-    )
-
-
-# ============================================================
-# DRAW LABEL
-# ============================================================
-def add_strain_label(image, strain):
-
-    image = image.convert("RGB")
-
-    w, h = image.size
-
-    # White label band on the LEFT side
-    canvas = Image.new(
-        "RGB",
-        (
-            w + ROW_LABEL_WIDTH,
-            h
-        ),
-        BACKGROUND_COLOUR
-    )
-
-    # Put image to the right of the label area
-    canvas.paste(
-        image,
-        (
-            ROW_LABEL_WIDTH,
-            0
-        )
-    )
-
-    draw = ImageDraw.Draw(canvas)
-
-    box = draw.textbbox(
-        (0, 0),
-        strain,
-        font=FONT
-    )
-
-    text_w = box[2] - box[0]
-    text_h = box[3] - box[1]
-
-    # Same style as matrix strain labels:
-    # horizontally and vertically centred in the side band
-    x = (
-        ROW_LABEL_WIDTH
-        - text_w
-    ) / 2
-
-    y = (
-        h
-        - text_h
-    ) / 2
-
-    draw.text(
-        (x, y),
-        strain,
-        fill=TEXT_COLOUR,
-        font=FONT
-    )
-
-    return canvas
-
-# ============================================================
-# SAVE IMAGE
-# ============================================================
-
-def save_image(image, output_path):
-
-    output_path.parent.mkdir(
-        parents=True,
-        exist_ok=True
-    )
-
-    suffix = output_path.suffix.lower()
-
-    if suffix in {
-        ".jpg",
-        ".jpeg"
-    }:
-
-        image.save(
-            output_path,
-            quality=95
-        )
-
-    else:
-
-        image.save(
-            output_path
-        )
-
-
-# ============================================================
-# MAIN
-# ============================================================
 def safe_folder_name(name):
     name = name.strip()
 
@@ -304,123 +144,192 @@ def safe_folder_name(name):
 
     return name
 
-def main():
 
+# ============================================================
+# AUTHORITATIVE EXACT FILENAME -> STRAIN MAP
+#
+# Normal controller/staged use should not reparse metadata from generated
+# filenames. Build the current exporter filenames from grid.csv + images.csv
+# instead. This also supports Experiment/Set/Type values containing underscores.
+# ============================================================
+
+def read_exact_filename_labels(grid):
+    labels = {}
+
+    with IMAGES_CSV.open(
+        "r",
+        encoding="utf-8-sig",
+        newline=""
+    ) as f:
+        reader = csv.DictReader(f)
+
+        for image_row in reader:
+            exp = image_row["Experiment"].strip()
+            set_name = image_row["Set"].strip()
+            type_name = image_row["Type"].strip()
+
+            for (grid_exp, grid_set, column), strain in grid.items():
+                if grid_exp != exp or grid_set != set_name:
+                    continue
+
+                safe_strain = safe_folder_name(strain)
+                for state in ("Top", "Low"):
+                    filename = (
+                        f"{exp}_{set_name}_{type_name}_"
+                        f"{column:02d}_{state}_{safe_strain}.png"
+                    )
+                    labels[filename.lower()] = strain
+
+    return labels
+
+
+# ============================================================
+# LEGACY FILENAME PARSER FALLBACK
+#
+# Retained only for direct/manual use with old inputs that are not represented
+# by the current exact metadata map. Normal staged controller inputs use the
+# authoritative exact map above.
+# ============================================================
+
+def parse_crop_filename(path):
+    stem = path.stem
+    first_parts = stem.split("_", 2)
+
+    if len(first_parts) < 3:
+        return None
+
+    exp = first_parts[0]
+    set_name = first_parts[1]
+
+    match = re.search(
+        r"_(\d+)_"
+        r"(?:Top|Low)_",
+        stem,
+        flags=re.IGNORECASE
+    )
+
+    if not match:
+        return None
+
+    column = int(match.group(1))
+    return exp, set_name, column
+
+
+# ============================================================
+# DRAW LABEL
+# ============================================================
+
+def add_strain_label(image, strain):
+    image = image.convert("RGB")
+    w, h = image.size
+
+    # Separate white band avoids drawing over colony pixels.
+    canvas = Image.new(
+        "RGB",
+        (w + ROW_LABEL_WIDTH, h),
+        BACKGROUND_COLOUR
+    )
+    canvas.paste(image, (ROW_LABEL_WIDTH, 0))
+
+    draw = ImageDraw.Draw(canvas)
+    box = draw.textbbox((0, 0), strain, font=FONT)
+    text_w = box[2] - box[0]
+    text_h = box[3] - box[1]
+
+    x = (ROW_LABEL_WIDTH - text_w) / 2
+    y = (h - text_h) / 2
+
+    draw.text(
+        (x, y),
+        strain,
+        fill=TEXT_COLOUR,
+        font=FONT
+    )
+
+    return canvas
+
+
+# ============================================================
+# SAVE IMAGE
+# ============================================================
+
+def save_image(image, output_path):
+    output_path.parent.mkdir(
+        parents=True,
+        exist_ok=True
+    )
+
+    suffix = output_path.suffix.lower()
+
+    if suffix in {".jpg", ".jpeg"}:
+        image.save(output_path, quality=95)
+    else:
+        image.save(output_path)
+
+
+# ============================================================
+# MAIN
+# ============================================================
+
+def main():
     grid = read_grid()
+    exact_labels = read_exact_filename_labels(grid)
 
     files = [
         p
         for p in IMAGE_ROOT.rglob("*")
-        if (
-            p.is_file()
-            and p.suffix.lower()
-            in IMAGE_EXTENSIONS
-        )
+        if p.is_file() and p.suffix.lower() in IMAGE_EXTENSIONS
     ]
 
     labelled = 0
     skipped = 0
 
-    print(
-        f"Found {len(files)} images."
-    )
+    print(f"Found {len(files)} images.")
 
-    for i, path in enumerate(
-        files,
-        1
-    ):
-
-        parsed = parse_crop_filename(
-            path
-        )
-
-        if parsed is None:
-
-            print(
-                "SKIPPED — filename "
-                f"not recognised: {path.name}"
-            )
-
-            skipped += 1
-            continue
-
-        exp, set_name, column = parsed
-
-        key = (
-            exp,
-            set_name,
-            column
-        )
-
-        strain = grid.get(key)
+    for i, path in enumerate(files, 1):
+        strain = exact_labels.get(path.name.lower())
 
         if strain is None:
+            parsed = parse_crop_filename(path)
+            if parsed is None:
+                print(
+                    "SKIPPED — filename not recognised and not in current metadata map: "
+                    f"{path.name}"
+                )
+                skipped += 1
+                continue
 
-            print(
-                "SKIPPED — no grid.csv "
-                f"mapping for {key}: "
-                f"{path.name}"
-            )
+            exp, set_name, column = parsed
+            strain = grid.get((exp, set_name, column))
 
-            skipped += 1
-            continue
+            if strain is None:
+                print(
+                    "SKIPPED — no grid.csv mapping for legacy-parsed crop "
+                    f"{(exp, set_name, column)}: {path.name}"
+                )
+                skipped += 1
+                continue
 
-        # Preserve path beneath IMAGE_ROOT
-        # Put each strain into its own subfolder
         strain_folder = safe_folder_name(strain)
+        output_path = MATRIX_OUTPUT / strain_folder / path.name
 
-        output_path = (
-            MATRIX_OUTPUT
-            / strain_folder
-            / path.name
-        )
         try:
-
             with Image.open(path) as im:
-
-                labelled_image = (
-                    add_strain_label(
-                        im,
-                        strain
-                    )
-                )
-
-                save_image(
-                    labelled_image,
-                    output_path
-                )
+                labelled_image = add_strain_label(im, strain)
+                save_image(labelled_image, output_path)
 
             labelled += 1
-
-            print(
-                f"[{i}/{len(files)}] "
-                f"{strain}: {path.name}"
-            )
+            print(f"[{i}/{len(files)}] {strain}: {path.name}")
 
         except Exception as e:
-
-            print(
-                f"FAILED: {path}"
-            )
+            print(f"FAILED: {path}")
             print(e)
-
             skipped += 1
 
-
     print("\nDONE")
-
-    print(
-        f"Labelled: {labelled}"
-    )
-
-    print(
-        f"Skipped: {skipped}"
-    )
-
-    print(
-        "\nOutput folder:\n"
-        f"{MATRIX_OUTPUT}"
-    )
+    print(f"Labelled: {labelled}")
+    print(f"Skipped: {skipped}")
+    print("\nOutput folder:\n" f"{MATRIX_OUTPUT}")
 
 
 if __name__ == "__main__":
