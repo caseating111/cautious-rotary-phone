@@ -37,6 +37,16 @@ def rows(path: Path, required: list[str]) -> list[dict[str, str]]:
         return [{k: (v or "").strip() for k, v in row.items()} for row in reader]
 
 
+def raw_field_whitespace_rows(path: Path, field: str) -> list[int]:
+    with path.open("r", encoding="utf-8-sig", newline="") as handle:
+        reader = csv.DictReader(handle)
+        return [
+            line_no
+            for line_no, row in enumerate(reader, 2)
+            if (raw := (row.get(field) or "")) != raw.strip()
+        ]
+
+
 def imagej_line_unsafe(
     problems: list[str],
     file_name: str,
@@ -94,6 +104,12 @@ def validate(grid_path: Path, images_path: Path, conditions_path: Path) -> list[
         conditions = rows(conditions_path, HEADERS["conditions"])
     except ValueError as exc:
         return [str(exc)]
+
+    for line_no in raw_field_whitespace_rows(images_path, "Filename"):
+        problems.append(
+            f"images.csv row {line_no}: Filename contains surrounding whitespace; "
+            "the reused Fiji batch macro matches the raw filename field before trimming and would skip this source"
+        )
 
     groups: dict[tuple[str, str], list[tuple[int, int, str]]] = defaultdict(list)
     for line_no, row in enumerate(grid, 2):
