@@ -150,6 +150,7 @@ def build_report(
 ) -> tuple[list[str], bool, list[dict[str, str]]]:
     image_root = Path(config["image_root"])
     crop_root = Path(config["crop_output"])
+    validate_output_layout(image_root, crop_root)
     crop_width = int(config.get("crop_width", 130))
     crop_height = int(config.get("crop_height", 546))
     grid = read_csv(Path(config["grid_csv"]))
