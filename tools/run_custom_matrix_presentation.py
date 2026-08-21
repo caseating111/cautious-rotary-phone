@@ -35,7 +35,6 @@ def run_job(selection: dict, no_open_output: bool = False) -> Path:
         filtered = custom.filter_project_csvs(config, selection, root / "csv")
         custom_config = dict(config)
         custom_config.update({key: str(path) for key, path in filtered.items()})
-        pillow_adapter.validate_csvs(custom_config)
         contract = pillow_adapter.expected_crop_contract(filtered["grid_csv"], filtered["images_csv"])
         selected_crops = pillow_adapter.validate_unique_crop_matches(
             Path(config["crop_output"]), filtered["grid_csv"], filtered["images_csv"], allow_missing=False
