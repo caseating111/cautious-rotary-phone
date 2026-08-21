@@ -15,6 +15,10 @@ Route:
 
 Manual first/last placement remains authoritative. Previous-reference and previous-span seeding are only conveniences to reduce repeated resizing and long-distance dragging on similarly framed images; neither can bypass either manual placement or full-grid QC.
 
+## Native ImageJ fine adjustment
+
+Do not add custom nudge geometry or AHK arrow forwarding. ImageJ already moves an active ROI one pixel with the arrow keys and resizes rectangular/oval selections one pixel with Alt+arrow. If a whole-column box only needs a small correction, click/focus the image selection and use those native controls rather than precision dragging. The AHK helper remains limited to dialog placement and Z/X workflow shortcuts so it does not introduce extra focus/selection behavior.
+
 `fiji/create_synthetic_grid_plate.ijm` provides an 8x10 tilted test image. `ahk/full_column_alignment_hotkeys.ah2` keeps Z=advance/accept and X=retry; placement dialogs are moved once to a predictable corner by the same lightweight shell-hook pattern used by the original helper.
 
 The existing four-point production crop macro remains unchanged as fallback until this route is desktop-validated.
