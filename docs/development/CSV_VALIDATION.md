@@ -4,6 +4,8 @@
 
 Checks include:
 - required headers;
+- exact header names with no surrounding whitespace, matching the reused Pillow `csv.DictReader` scripts rather than silently normalizing a format those scripts would later reject;
+- duplicate headers that collapse to the same name after trimming are rejected with a targeted error;
 - consistent `GridCols` within each Experiment/Set;
 - exactly columns `1..GridCols` with no duplicates;
 - non-empty strain names;
@@ -20,4 +22,4 @@ Checks include:
 
 Comma-containing source filenames remain supported. The existing production ImageJ macro already has explicit handling for quoted filenames containing commas, so the validator deliberately does not reject that case.
 
-The controller **Validate CSVs** button uses this validator, and the full-column batch launcher runs it automatically before Fiji starts. The synthetic fixtures are kept semantically valid so they can serve as a known-good example.
+The controller **Validate CSVs** button uses this validator, and both batch routes run it automatically before Fiji starts. The synthetic fixtures are kept semantically valid so they can serve as a known-good example.
