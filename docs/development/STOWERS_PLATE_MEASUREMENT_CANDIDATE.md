@@ -1,16 +1,15 @@
 # Stowers yeast-plate measurement candidate
 
-Status: **researched, not integrated**. Do not add installation/controller code before the core full-column Fiji route works on one representative real plate and there is a concrete need for quantitative colony-growth output.
+Status: **researched with an optional one-plate geometry adapter; not a production/controller stage**. Do not add batch/controller integration before the core full-column Fiji route works on one representative real plate and the plugin produces scientifically sensible output on one representative accepted plate.
 
 ## Why this is the first measurement candidate
 
-Stowers/Jay Unruh `plate analysis jru v1` is an established Fiji/ImageJ plugin specifically documented for yeast growth-defect/rescue plates. Its source is public in `jayunruh/Jay_Plugins`, and published yeast studies have used it to quantify colony pixel intensity and normalize growth to plate controls.
-
-The Stowers Fiji update site remains the preferred installation route. Check the current Stowers licensing/academic-use terms before deployment.
+Stowers/Jay Unruh `plate analysis jru v1` is an established Fiji/ImageJ plugin specifically documented for yeast growth-defect/rescue plates. Its source is public in `jayunruh/Jay_Plugins`; the source header is GPL v2, and published yeast studies have used the plugin to quantify colony pixel intensity and normalize growth to plate controls.
 
 Relevant upstream sources:
 - tutorial: `https://research.stowers.org/imagejplugins/plate_analysis.html`
 - plugin repository: `https://github.com/jayunruh/Jay_Plugins`
+- registered ImageJ command: `plate analysis jru v1`
 - single-plate source: `plate_analysis_jru_v1.java`
 - batch source: `batch_plate_analysis_jru_v1.java`
 
@@ -24,18 +23,32 @@ Current accepted full-column geometry already supplies the required corner colon
 - lower-right: `(rightX, rightRows[gridRows-1])`
 - lower-left: `(leftX, leftRows[gridRows-1])`
 
-For the current 8-row layouts, plugin `#_of_spots` would be `8 * GridCols` and XY ratio would be `GridCols / 8` (for example 10 columns -> 1.25; 12 columns -> 1.5).
+For the current 8-row layouts, plugin `#_of_spots` is `8 * GridCols` and XY ratio is `GridCols / 8`: 10 columns -> 80 spots / 1.25, 12 columns -> 96 spots / 1.5.
 
-The plugin measures circular spot regions and can apply circular local-background subtraction. This is a better first quantitative-growth route than inventing a new pixel-scoring implementation.
+The plugin measures circular spot regions and supports circular local-background subtraction. This is a better first quantitative-growth route than inventing a new pixel-scoring implementation.
+
+ImageJ's documented `GenericDialog` behavior is macro-recordable and `run("command", "options")` can auto-fill plugin dialog values. That means a later validated batch/controller adapter can remain thin rather than reimplementing the plugin.
+
+## Optional one-plate proof adapter
+
+`fiji/stowers_measure_current_alignment.ijm` exists only to reduce proof-test clicking. It:
+1. requires an accepted `last_alignment.txt`;
+2. verifies saved directory/filename/dimensions belong to the current image;
+3. derives the four required polygon vertices from the accepted first/last-column row geometry;
+4. creates that polygon on the **unmodified current source image**;
+5. displays the geometry-derived spot count and XY ratio;
+6. launches the installed `plate analysis jru v1` command with its own native options dialog unchanged.
+
+It deliberately does **not** script spot radius, replicate grouping, background mode or any other assay-specific measurement setting. `tests/test_stowers_measurement_adapter.py` also protects that it is not exposed as a controller production action yet.
 
 ## Minimal proof route if/when measurement is needed
 
 1. Finish the existing minimal real-plate alignment validation first.
-2. Install/enable the Stowers Fiji plugin using its published update-site route.
-3. On **one** representative accepted plate, construct the four-corner polygon from `last_alignment.txt` rather than manually redrawing geometry.
-4. Run `plate analysis jru v1` once with a conservative spot radius and circular background enabled.
-5. Inspect the plugin's ROI placement/table against the visible colonies and compare a few obvious strong/weak/control colonies.
-6. Only if that output is sensible, add a thin macro/controller adapter and consider its batch plugin. Do not reimplement its measurement algorithm.
+2. Install/enable the Stowers plugin using its published Fiji route.
+3. On **one** representative accepted plate, run `fiji/stowers_measure_current_alignment.ijm` instead of manually redrawing the four corners.
+4. Enter the displayed spot-count/XY-ratio values in the plugin dialog; choose radius/replicate/background settings from the actual analysis requirement rather than blindly accepting defaults.
+5. Inspect the plugin's ROI placement/table against visible colonies and compare a few obvious strong/weak/control colonies.
+6. Only if that output is sensible, record the proven plugin options and consider a thin macro/controller/batch adapter. Do not reimplement its measurement algorithm.
 
 ## Stop-loss / non-goals
 
