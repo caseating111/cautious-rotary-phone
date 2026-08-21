@@ -70,7 +70,7 @@ def save_config(data: dict[str, str]) -> None:
 class Controller(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
-        self.title("Plate workflow controller")
+        self.title("Image workflow controller")
         self.resizable(False, False)
         self.vars = {key: tk.StringVar(value=value) for key, value in load_config().items()}
         self.pillow_job = tk.StringVar(value="Matrices")
@@ -131,6 +131,11 @@ class Controller(tk.Tk):
         ttk.Button(self, text="Start alignment hotkeys", command=self.start_ahk).grid(row=r, column=0, sticky="ew", **pad)
         ttk.Button(self, text="Stop alignment hotkeys", command=self.stop_ahk).grid(row=r, column=1, sticky="ew", **pad)
         ttk.Button(self, text="Open config folder", command=self.open_config_folder).grid(row=r, column=2, sticky="ew", **pad)
+
+        r += 1
+        ttk.Button(self, text="Open image root", command=lambda: self.open_path_from_config("image_root")).grid(row=r, column=0, sticky="ew", **pad)
+        ttk.Button(self, text="Open crop output", command=lambda: self.open_path_from_config("crop_output")).grid(row=r, column=1, sticky="ew", **pad)
+        ttk.Button(self, text="Open matrix output", command=lambda: self.open_path_from_config("matrix_output")).grid(row=r, column=2, sticky="ew", **pad)
 
         r += 1
         ttk.Label(self, textvariable=self.status, wraplength=720).grid(row=r, column=0, columnspan=3, sticky="w", **pad)
@@ -303,6 +308,17 @@ class Controller(tk.Tk):
             self.status.set("Alignment hotkeys stopped.")
         else:
             self.status.set("No controller-started hotkey process is running.")
+
+    def open_path_from_config(self, key: str) -> None:
+        raw = self.vars[key].get().strip()
+        path = Path(raw) if raw else None
+        if not path or not path.is_dir():
+            messagebox.showerror("Open folder", f"Configured folder does not exist:\n{raw or '(not set)'}")
+            return
+        try:
+            os.startfile(path)  # type: ignore[attr-defined]
+        except (AttributeError, OSError):
+            self.status.set(str(path))
 
     def open_config_folder(self) -> None:
         APP_DIR.mkdir(parents=True, exist_ok=True)
