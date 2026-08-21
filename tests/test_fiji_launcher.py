@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from pathlib import Path
 
 from tools.run_fiji_macro_from_config import build_command, visibility_argument
 
@@ -25,7 +26,7 @@ class FijiLauncherTests(unittest.TestCase):
             "visibility_high_percentile": 99.5,
         }
         command = build_command(config)
-        self.assertEqual(command[0], "C:/Fiji/ImageJ-win64.exe")
+        self.assertEqual(Path(command[0]), Path(config["fiji_executable"]))
         self.assertEqual(command[1], "-macro")
         self.assertTrue(command[2].endswith("apply_global_visibility_and_archive.ijm"))
         self.assertEqual(
