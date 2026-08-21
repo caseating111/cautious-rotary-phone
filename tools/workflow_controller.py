@@ -13,6 +13,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 APP_DIR = Path.home() / ".cautious-rotary-phone"
 CONFIG_FILE = APP_DIR / "config.json"
 PENDING_IMAGES_CSV = APP_DIR / "pending_images.csv"
+CONFIGURED_BATCH_MACRO = APP_DIR / "batch_full_column.configured.ijm"
 
 DEFAULTS = {
     "fiji_executable": "",
@@ -265,20 +266,49 @@ class Controller(tk.Tk):
         self.launch_python("tools/run_fiji_macro_from_config.py", macro_alias)
 
     def run_full_column_batch(self) -> None:
-        returncode, output, pending = self.batch_preflight_result()
-        if returncode != 0:
-            messagebox.showerror("Batch preflight", output)
-            self.status.set("Batch not started: preflight needs attention.")
+        self.save()
+        script = REPO_ROOT / "tools" / "run_full_column_batch_from_config.py"
+        if not script.is_file():
+            messagebox.showerror("Batch preparation", f"Batch helper not found:\n{script}")
+            self.status.set("Batch not started: helper missing.")
             return
-        if pending == 0:
-            messagebox.showinfo("Batch", "All expected crops already exist. No alignment work is needed.")
-            self.status.set("Batch already complete.")
+
+        prepared = subprocess.run(
+            [sys.executable, str(script), "--prepare-only"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        output = (prepared.stdout + prepared.stderr).strip() or "No batch preparation output."
+        if prepared.returncode != 0:
+            if "All expected crops already exist" in output:
+                messagebox.showinfo("Batch", output)
+                self.status.set("Batch already complete.")
+            else:
+                messagebox.showerror("Batch preparation", output)
+                self.status.set("Batch not started: preparation needs attention.")
+            return
+
+        exe = self.fiji_executable()
+        if exe is None:
+            self.status.set("Batch prepared, but Fiji is not configured.")
+            return
+        if not CONFIGURED_BATCH_MACRO.is_file():
+            messagebox.showerror("Batch preparation", f"Prepared macro not found:\n{CONFIGURED_BATCH_MACRO}")
+            self.status.set("Batch not started: prepared macro missing.")
             return
 
         ahk = Path(self.vars["ahk_executable"].get().strip())
         if ahk.is_file() and (not self.ahk_process or self.ahk_process.poll() is not None):
             self.start_ahk()
-        self.launch_python("tools/run_full_column_batch_from_config.py")
+
+        try:
+            subprocess.Popen([str(exe), "-macro", str(CONFIGURED_BATCH_MACRO)])
+        except OSError as exc:
+            messagebox.showerror("Fiji launch", str(exc))
+            self.status.set("Batch prepared but Fiji launch failed.")
+            return
+        self.status.set("Prepared batch launched in Fiji.")
 
     def run_pillow_job(self) -> None:
         alias = PILLOW_JOBS[self.pillow_job.get()]
