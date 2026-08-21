@@ -110,6 +110,7 @@ def build_report(config: dict) -> tuple[list[str], bool, list[dict[str, str]]]:
     pending_rows: list[dict[str, str]] = []
     grid_missing: list[str] = []
     output_claims: dict[Path, list[Path]] = defaultdict(list)
+    logical_name_claims: dict[str, list[Path]] = defaultdict(list)
 
     for source in sources:
         metadata_rows = metadata_by_name.get(source.name, [])
@@ -130,6 +131,7 @@ def build_report(config: dict) -> tuple[list[str], bool, list[dict[str, str]]]:
         for name in names:
             output_path = output_dir / name
             output_claims[output_path].append(source)
+            logical_name_claims[name.lower()].append(source)
             if output_path.is_file():
                 existing_crops += 1
             else:
@@ -148,6 +150,15 @@ def build_report(config: dict) -> tuple[list[str], bool, list[dict[str, str]]]:
             rel_output = output_path.relative_to(crop_root)
             sources_text = ", ".join(str(path) for path in unique_claimants)
             output_collisions.append(f"{rel_output} <- {sources_text}")
+
+    downstream_ambiguities = []
+    for name, claimants in sorted(logical_name_claims.items()):
+        unique_claimants = sorted({path.relative_to(image_root) for path in claimants}, key=str)
+        if len(unique_claimants) > 1:
+            folders = {path.parent for path in unique_claimants}
+            if len(folders) > 1:
+                sources_text = ", ".join(str(path) for path in unique_claimants)
+                downstream_ambiguities.append(f"{name} <- {sources_text}")
 
     lines = [
         "BATCH PREFLIGHT",
@@ -168,6 +179,7 @@ def build_report(config: dict) -> tuple[list[str], bool, list[dict[str, str]]]:
         ("DUPLICATE images.csv FILENAMES", duplicate_csv_names),
         ("MAPPED IMAGES WITH NO GRID DEFINITION", sorted(set(grid_missing))),
         ("OUTPUT FILENAME COLLISIONS", output_collisions),
+        ("DOWNSTREAM CROP-NAME AMBIGUITIES", downstream_ambiguities),
     ]
 
     problems = False
