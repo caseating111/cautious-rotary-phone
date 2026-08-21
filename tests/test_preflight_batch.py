@@ -112,6 +112,16 @@ class PreflightBatchTests(unittest.TestCase):
         self.assertIn("UNEXPECTED CROP PNGS — NON-BLOCKING (1)", lines)
         self.assertIn("- setA/old_stale_crop.png", lines)
 
+    def test_semicolon_in_source_folder_is_blocking_before_fiji_handoff(self) -> None:
+        unsafe = self.image_root / "set;unsafe"
+        self.source_folder.rename(unsafe)
+        self.source_folder = unsafe
+
+        lines, problems, _ = build_report(self.config)
+        self.assertTrue(problems)
+        self.assertIn("SOURCE FOLDERS UNSAFE FOR FIJI ARGUMENT HANDOFF (1)", lines)
+        self.assertIn("- set;unsafe", lines)
+
     def test_duplicate_source_basename_is_blocking(self) -> None:
         second_folder = self.image_root / "setB"
         second_folder.mkdir()
