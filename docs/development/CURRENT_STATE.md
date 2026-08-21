@@ -22,10 +22,11 @@ Routine implementation goes directly onto `workflow-dev`. Do **not** create a ne
 - Batch Experiment/Set/Type context is passed into the already-required first-column `waitForUser` dialog. The separate per-plate `Next plate` acknowledgement was removed, saving one click/keypress per image without removing alignment oversight.
 - After an accepted alignment, the first-column whole-column reference rectangle is persisted. On a later image with matching dimensions it can be pre-positioned as a **starting suggestion only**. The user must still move/resize it, position the last column, and accept full-grid QC; previous geometry is never automatically accepted.
 - ROI preset reads fall back safely when the saved preset value is missing, NaN or non-positive.
-- The ROI preset GUI now uses the configured Fiji executable to search the Fiji installation for `Roi 1-Click Tools.ijm`, preferring the normal `macros/toolsets/` location and recursively searching only as fallback. A unique discovered toolset is patched directly; missing/ambiguous installs keep the original file-picker route. This reduces first-run setup without replacing the published plugin.
+- The ROI preset GUI uses the configured Fiji executable to find `Roi 1-Click Tools.ijm`, preferring the normal `macros/toolsets/` location and recursively searching only as fallback. A unique discovered toolset is patched directly; missing/ambiguous installs retain the file picker.
+- The ROI 1-Click Tools patch action is idempotent. Re-running it on an already preset-aware toolset reports **Already patched** and makes no changes instead of presenting a false failure.
 - Accepted alignment persists ImageJ `image.directory` and `image.filename` when available, plus title/dimensions. Crop export and visibility reject stale geometry from another same-named/same-sized real file; older/synthetic alignment files retain title+dimension fallback.
 - `ahk/full_column_alignment_hotkeys.ah2` remains small global-hotkey convenience only. It watches only the remaining dialogs (`1 / 2`, `2 / 2`, `Alignment QC`, `ALL DONE`); obsolete `Next plate` handling was removed.
-- `tests/test_alignment_macro_contract.py` protects the manual-authority/seed/native-profile contract without speculative headless Fiji CI. `tests/test_roi_preset_discovery.py` covers configured-Fiji toolset discovery without Fiji itself.
+- `tests/test_alignment_macro_contract.py` protects the manual-authority/seed/native-profile contract without speculative headless Fiji CI. `tests/test_roi_preset_discovery.py` covers configured-Fiji discovery and idempotent patching without Fiji itself.
 
 ### Visibility / crop handoff
 - `fiji/apply_global_visibility.ijm`: robust outside-grid background + inside-grid high percentile -> one whole-image display range while preserving quantitative source pixels.
@@ -50,16 +51,16 @@ Routine implementation goes directly onto `workflow-dev`. Do **not** create a ne
 - `tools/preflight_batch.py` mirrors production immediate-subfolder, basename metadata and exact output-name semantics.
 - Standalone preflight runs the authoritative project CSV validator first.
 - `crop_output` must be outside `image_root`; derived crops are not allowed inside the production source-image tree.
-- The generic CSV contract still permits a one-column grid for non-Fiji/Pillow uses, but full-column batch preflight specifically blocks `GridCols < 2` because first/last-column geometry requires two distinct columns.
+- `build_report(config, require_full_column_geometry=True)` keeps the Fiji-specific `GridCols >= 2` rule by default. Shared consumers such as Pillow can call it with `False` to reuse source/crop freshness and mapping checks without inheriting a full-column-only geometry restriction. This preserves valid one-column non-Fiji/Pillow workflows.
 - It reports discovered/mapped/unmapped images, duplicate source basenames, stale metadata rows, missing grid definitions and expected/current/pending crop counts.
 - It blocks same-path output collisions and duplicate logical crop names across different output folders, preventing downstream Pillow first-match ambiguity.
 - Semicolon-bearing `grid_csv`/`crop_output` paths and immediate source-folder names are rejected before Fiji handoff.
-- An expected crop counts as current only when all of the following hold: it exists, it is not older than its source image, it is readable by Pillow, and its dimensions match configured crop width/height in either pre-rotation or post-rotation orientation.
+- An expected crop counts as current only when it exists, is not older than its source image, is readable by Pillow, and its dimensions match configured crop width/height in either orientation.
 - Existing derived crops older than the source are listed under **STALE EXPECTED CROPS — WILL REBUILD**. Unreadable/corrupt or wrong-size expected PNGs are listed under **INCOMPATIBLE EXPECTED CROPS — WILL REBUILD**. In both cases the plate returns to pending instead of being silently skipped.
 - Existing PNGs under `crop_output` outside the current expected set are listed as **UNEXPECTED CROP PNGS — NON-BLOCKING**.
 - Partially complete plates are listed as **PARTIALLY COMPLETE PLATES — NON-BLOCKING**. Resume intentionally remains plate-level; rerunning may replace existing expected crops instead of introducing fragile per-crop resume logic.
 - It writes `~/.cautious-rotary-phone/last_preflight.txt` and pending-only `pending_images.csv`; complete/current plates are skipped naturally.
-- `tests/test_preflight_batch.py` covers semantic validation, source/crop separation, missing/complete/partial/stale-source, rotated-current and wrong-dimension expected crops, stale unrelated PNG reporting, unsafe folders, duplicate basenames/collisions and downstream ambiguities. `tests/test_preflight_full_column_constraints.py` covers the one-column batch guard.
+- `tests/test_preflight_full_column_constraints.py` now proves both modes: a one-column project is blocked for full-column Fiji and accepted by shared non-Fiji preflight when its crops are current.
 
 ### Metadata reconciliation
 - `tools/reconcile_images_csv.py` scans production source folders, preserves existing authoritative metadata, leaves new metadata blank rather than guessed, and preserves manual draft metadata across rescans.
@@ -74,13 +75,13 @@ Routine implementation goes directly onto `workflow-dev`. Do **not** create a ne
 - Pillow output jobs run the same authoritative project CSV validator used by Fiji before adapter generation or crop mutation.
 - `matrix_output` must be outside `crop_output`, preventing recursive legacy scans from ingesting their own generated matrices.
 - The wrapper builds/validates its configured legacy script before any crop-orientation mutation.
-- It derives the legacy logical prefixes **and the exact current exporter filenames**. More than one prefix match is blocking. A lone old prefix-compatible crop with the wrong strain suffix is also blocking instead of being silently accepted by the legacy script's broader `startswith()` lookup.
-- **Missing expected logical crop cells are blocking by default**, preventing final matrices from silently rendering blank cells because crop generation was incomplete. Intentional partial output is available only through explicit CLI `--allow-missing`; that opt-in may omit cells but still cannot substitute stale prefix-compatible files.
-- In normal controller use, where `image_root` is configured, the Pillow wrapper now reuses the established batch preflight before final output. A changed/newer source image, corrupt/wrong-size current crop, unfinished plate or blocking source/crop mapping therefore stops matrix generation automatically. Standalone Pillow-only configs without `image_root` retain the independent route.
+- It derives the legacy logical prefixes **and exact current exporter filenames**. More than one prefix match is blocking. A lone prefix-compatible crop with an old/wrong strain suffix is also blocking instead of being silently accepted by the legacy `startswith()` lookup.
+- Missing expected logical crop cells are blocking by default. Intentional partial output requires explicit CLI `--allow-missing`; that opt-in may omit cells but still cannot substitute stale prefix-compatible files.
+- In normal controller use, where `image_root` is configured, the Pillow wrapper reuses established source/crop preflight with `require_full_column_geometry=False`. It therefore blocks changed/newer source images, corrupt/wrong-size crops, unfinished plates and mapping problems while preserving one-column Pillow use.
 - Only current exact logical crop matches are passed to orientation normalization. Unrelated images are ignored; incompatible current crop dimensions fail before matrix generation.
 - Temporary configured copies force `ROTATE_IMAGES_90_CCW = False`, removing dependence on legacy one-shot rotation markers.
 - Failed legacy jobs remove only newly created empty output folders and retain non-empty partial output for inspection.
-- `tests/test_pillow_input_completeness.py` covers strict completeness and explicit partial-output opt-in. `tests/test_pillow_source_readiness.py` covers source-preflight reuse. `tests/test_pillow_wrapper_end_to_end.py` now proves a complete synthetic source -> current crops -> preflight -> wrapper -> actual legacy matrix route. Existing source-adapter/navigation tests cover stale suffixes, ambiguity, orientation, output-tree separation and failure cleanup.
+- `tests/test_pillow_source_readiness.py` covers preflight reuse, and `tests/test_pillow_wrapper_end_to_end.py` proves a complete synthetic source -> current crops -> shared preflight -> wrapper -> actual legacy matrix route.
 
 ### CSV validation
 - `tools/validate_project_csvs.py` checks required headers, grid completeness/duplicates, consistent GridCols, unique source filenames, image->grid references and condition-order coverage.
@@ -94,40 +95,40 @@ Routine implementation goes directly onto `workflow-dev`. Do **not** create a ne
 - Processing settings cover alignment tolerance, crop size and global visibility values without moving processing into the GUI.
 - **Run full-column batch** runs `--prepare-only` synchronously first. Only after validation/preflight/build succeeds does it verify Fiji, optionally start AHK, and launch the already-prepared macro directly. If this launch started AHK and Fiji then fails to spawn, that AHK process is stopped again.
 - Configured visibility launch is checked synchronously through its thin helper so configuration/path errors surface in the GUI.
-- Pillow jobs are run synchronously through the existing adapter so strict input/validation failures are shown directly in the controller instead of disappearing into a child console. The wrapper still owns processing/output-folder opening; the GUI adds no duplicate image logic or success modal.
-- `tests/test_controller_contract.py` protects prepare-before-AHK, launch cleanup and checked Pillow handoff behavior.
-- Root `start_controller.cmd` provides a thin Windows double-click entry point using active conda, `conda run`, `py -3`, then `python` fallback.
-- `tools/run_fiji_macro_from_config.py` remains a thin config-aware visibility launcher with dry-run command inspection.
+- Pillow jobs are run synchronously through the existing adapter so strict input/validation failures are shown directly in the controller instead of disappearing into a child console.
+- Root `start_controller.cmd` stays intentionally thin: active named conda -> `conda run` -> Windows `py` -> PATH Python. Environment auto-creation was deliberately not added because it would increase surprise/setup risk.
 - `environment.yml` remains minimal (`python>=3.11`, `pillow`).
 
 ### Automated regression checks
 - `.github/workflows/python-glue-tests.yml` runs compileall plus the Python unittest suite on pushes to `workflow-dev` and pull requests, installing Pillow explicitly.
-- Stock ImageJ `-batch` and Maven ImageJ were investigated for IJM CI; no headless macro CI was added because the interactive helpers could not be proven cleanly without introducing another unvalidated runtime path.
-- Current regression coverage includes preflight/resume/freshness/dimensions, full-column constraints, CSV validation, source adapters, Fiji launcher construction, ROI toolset discovery, output navigation, controller handoffs, batch interaction, alignment macro contract, Pillow input completeness/source readiness and real synthetic end-to-end matrix generation.
+- Stock ImageJ `-batch` and Maven ImageJ were investigated for IJM CI; no headless macro CI was added because the interactive helpers could not be proven cleanly without another unvalidated runtime path.
+- Current regression coverage includes preflight/resume/freshness/dimensions, shared/full-column constraint modes, CSV validation, source adapters, Fiji launcher construction, ROI discovery/idempotent patching, output navigation, controller handoffs, batch interaction, alignment macro contract, Pillow source readiness and real synthetic end-to-end matrix generation.
 - The GitHub connector's combined-status endpoint has returned no status contexts for direct branch commits; do not infer a passing/failing Actions result from that absence.
 
 ## Branch cleanup status
-Historical milestone branches are not needed for routine continuation. Do not create more routine branches; development remains on `workflow-dev`.
+- Development remains on `workflow-dev`; no routine branch was created.
+- `workflow-policy-stoploss`, `workflow-policy-stoploss-v2` and `workflow-policy-stoploss-final` were compared against `workflow-dev`: each has zero unique commits and is 205–207 commits behind, so they are fully obsolete. The available connector does not expose branch deletion, so they remain present but must not be resumed.
+- `workflow-foundation` is 209 commits behind and Git reports four old divergent commits affecting `AGENTS.md` and example CSVs. Their content is superseded by evolved files on `workflow-dev`, but because the commits are not literally contained it was left untouched. Do not develop on it.
 
 ## Legacy audit result
 - `existing scripts clean/pythonfileaudit.py` is an E2/B-specific diagnostic and is superseded by generic preflight/reconciliation tooling; do not expose or expand it without a concrete missing use case.
 
 ## Pending manual validation (not a stop condition)
-- Desktop Fiji interaction for the whole-column route, including previous-reference ROI seeding, first/last placement and full-grid QC.
-- Visual confirmation of native wide-line profile peak selection on representative real plates.
-- One end-to-end composed batch on representative images, including source identity and crop bounds/completeness behavior.
+- `docs/development/MINIMAL_DESKTOP_VALIDATION.md` caps the interactive validation burden: one ordinary representative plate first; a second same-sized plate only if the first succeeds to verify previous-reference ROI seeding.
+- The representative plate validates Fiji `waitForUser`, native wide-line profile behavior, `Array.findMaxima()` row selection, first/last interpolation, full-grid QC, crop handoff and optional AHK convenience together.
+- Do not manually re-test noninteractive validation/Pillow paths exhaustively; they already have synthetic regression coverage.
 
 ## Research notes / stop-loss
 - ImageJ documentation/source confirms wide straight-line profiles average pixels natively and `Array.findMaxima(array, tolerance)` returns peak positions ordered by strength. The current route composes mature ImageJ functionality rather than bespoke colony detection.
-- ImageJ `waitForUser` is the intended non-modal ROI-adjustment interaction; plate metadata was therefore folded into that existing dialog rather than kept as a separate confirmation.
-- ImageJ built-ins `getInfo("image.directory")` / `getInfo("image.filename")` provide stronger accepted-alignment identity for real files.
-- BAR's established `Find Peaks` remains the first fallback if native maxima selection proves weak on representative plates; do not integrate a second detector preemptively.
-- Previous-reference ROI seeding is deliberately limited to a starting rectangle when image dimensions match. Do not expand into automatic accepted alignment before representative desktop validation.
-- ImageJ supports installed macro keyboard shortcuts, but AHK remains preferable for the current modal/non-modal dialog flow; do not move workflow logic into AHK.
+- ImageJ `waitForUser` is the intended non-modal ROI-adjustment interaction; plate metadata was folded into that existing dialog rather than kept as a separate confirmation.
+- The published ROI 1-Click Tools route uses `ImageJ/macros/toolsets` and provides modifiable macro source, supporting the current thin patch/discovery approach.
+- `docs/development/BAR_FIND_PEAKS_FALLBACK.md` records the mature BAR **Find Peaks** fallback, including Fiji update-site installation and macro-call shape. It is deliberately not integrated pre-emptively.
+- If native peak selection fails on a representative plate after one sensible reposition/retry, stop tuning custom/native heuristics and test BAR Find Peaks before any bespoke detector work.
+- Previous-reference ROI seeding remains a starting rectangle only. Do not expand into automatic accepted alignment before representative desktop validation.
 
 ## Highest-value next routes
 1. Use `--prepare-only` with real configured metadata before requesting interactive Fiji validation.
-2. Validate the smallest representative desktop first/last-column route, including the previous-reference seed; preserve four-point fallback.
-3. If native peak selection is weak, test BAR Find Peaks before custom detection work.
-4. Continue only deterministic, user-time-reducing setup/output handoff improvements that can be proven without repeated manual testing; avoid further architecture growth.
+2. Perform the minimal representative desktop route in `MINIMAL_DESKTOP_VALIDATION.md`; preserve the four-point fallback.
+3. If native peak selection is weak, test BAR Find Peaks before any custom detector.
+4. Continue only deterministic, user-time-reducing setup/output handoff improvements that can be proven without repeated manual testing; avoid architecture growth.
 5. Keep metadata inference conservative unless real data demonstrates a stable, verifiable pattern.
