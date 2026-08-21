@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import tkinter as tk
+from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 try:
@@ -8,6 +9,7 @@ try:
     from tools.custom_matrix_gui import CustomMatrixBuilder
     from tools.custom_matrix_preview import build_preview as build_raw_preview, output_count
     from tools.custom_matrix_presentation_preview import build_preview as build_presentation_preview
+    from tools.output_processing_records import record_paths
     from tools.output_recipe_loader import default_recipe_folder, load_output_recipe
     from tools.run_custom_matrix_job import run_job as run_raw_job
     from tools.run_custom_matrix_presentation import run_job as run_presentation_job
@@ -17,6 +19,7 @@ except ModuleNotFoundError:
     from custom_matrix_gui import CustomMatrixBuilder
     from custom_matrix_preview import build_preview as build_raw_preview, output_count
     from custom_matrix_presentation_preview import build_preview as build_presentation_preview
+    from output_processing_records import record_paths
     from output_recipe_loader import default_recipe_folder, load_output_recipe
     from run_custom_matrix_job import run_job as run_raw_job
     from run_custom_matrix_presentation import run_job as run_presentation_job
@@ -41,12 +44,23 @@ class RecordedCustomMatrixBuilder(CustomMatrixBuilder):
             state="readonly",
             width=24,
         ).pack(side="left", padx=(6, 16))
-        ttk.Button(controls, text="Open old recipe…", command=self.open_recipe).pack(side="left", padx=(0, 16))
+        ttk.Button(controls, text="Open old recipe…", command=self.open_recipe).pack(side="left", padx=(0, 8))
+        ttk.Button(controls, text="Open Processing Logs", command=self.open_processing_logs).pack(side="left", padx=(0, 16))
         ttk.Checkbutton(
             controls,
             text="Preview first when multiple outputs",
             variable=self.preview_first,
         ).pack(side="right")
+
+    def open_processing_logs(self) -> None:
+        folder = Path(self.config_data["matrix_output"]) / "Processing Logs"
+        if not folder.is_dir():
+            messagebox.showinfo(
+                "Processing Logs",
+                "No Processing Logs folder exists yet. It will be created after the first recorded custom output.",
+            )
+            return
+        open_output(folder)
 
     def open_recipe(self) -> None:
         initial = default_recipe_folder(self.config_data["matrix_output"])
@@ -118,10 +132,12 @@ class RecordedCustomMatrixBuilder(CustomMatrixBuilder):
             messagebox.showerror("Custom matrix", str(exc))
             self.status.set("Custom matrix stopped; source CSVs and real crops were not changed.")
             return
+        human_log, _machine_recipe = record_paths(Path(self.config_data["matrix_output"]), output)
         self.status.set(f"Created: {output} | processing log and recipe saved")
         messagebox.showinfo(
             "Custom matrix",
-            f"Created focused matrix output:\n{output}\n\nA readable Processing Log and machine output recipe were also saved.",
+            f"Created focused matrix output:\n{output}\n\nProcessing Log:\n{human_log}\n\n"
+            "The machine recipe was saved separately under _workflow.",
         )
 
 
