@@ -19,7 +19,8 @@ _ACTIVE_FIJI_PROCESS: subprocess.Popen | None = None
 
 
 def proof_is_running() -> bool:
-    return bool(_ACTIVE_FIJI_PROCESS and _ACTIVE_FIJI_PROCESS.poll() is None)
+    """Compatibility helper only; a live Fiji app is not treated as a live proof."""
+    return False
 
 
 def read_pending_rows(path: Path) -> tuple[list[str], list[dict[str, str]]]:
@@ -71,7 +72,7 @@ def patch_roi_click_interaction(source: str) -> str:
     replacements = [
         (
             '            "A temporary boosted alignment view will open. Centre the 108x108 box four times."',
-            '            "A temporary boosted alignment view will open. Use ROI 1-click tools to click the four requested colony centres."',
+            '            "A temporary boosted alignment view will open. The Rotated Rectangle Click Tool will be selected automatically for the four colony-centre clicks."',
         ),
         (
             '        run("Enhance Contrast", "saturated=0.35");\n\n'
@@ -79,24 +80,25 @@ def patch_roi_click_interaction(source: str) -> str:
             '        accepted = 0;\n'
             '        makeRectangle(round(viewW / 2 - CLICK_ROI / 2), round(viewH / 2 - CLICK_ROI / 2), CLICK_ROI, CLICK_ROI);',
             '        run("Enhance Contrast", "saturated=0.35");\n'
-            '        run("Select None");\n\n'
+            '        run("Select None");\n'
+            '        setTool("Rotated Rectangle Click Tool");\n\n'
             '        accepted = 0;',
         ),
         (
             '                sourceTitle + "\\n\\nCentre box on ROW 1, COLUMN 1.\\n\\nReposition as needed, then click OK."',
-            '                sourceTitle + "\\n\\nWith ROI 1-click selected, click the centre of ROW 1, COLUMN 1, then click OK."',
+            '                sourceTitle + "\\n\\nClick the centre of ROW 1, COLUMN 1 with the Rotated Rectangle Click Tool, then click OK."',
         ),
         (
             '                sourceTitle + "\\n\\nCentre box on ROW 1, COLUMN " + gridCols + ".\\n\\nReposition as needed, then click OK."',
-            '                sourceTitle + "\\n\\nWith ROI 1-click selected, click the centre of ROW 1, COLUMN " + gridCols + ", then click OK."',
+            '                sourceTitle + "\\n\\nClick the centre of ROW 1, COLUMN " + gridCols + " with the Rotated Rectangle Click Tool, then click OK."',
         ),
         (
             '                sourceTitle + "\\n\\nCentre box on ROW 5, COLUMN 1.\\n\\nReposition as needed, then click OK."',
-            '                sourceTitle + "\\n\\nWith ROI 1-click selected, click the centre of ROW 5, COLUMN 1, then click OK."',
+            '                sourceTitle + "\\n\\nClick the centre of ROW 5, COLUMN 1 with the Rotated Rectangle Click Tool, then click OK."',
         ),
         (
             '                sourceTitle + "\\n\\nCentre box on ROW 5, COLUMN " + gridCols + ".\\n\\nReposition as needed, then click OK."',
-            '                sourceTitle + "\\n\\nWith ROI 1-click selected, click the centre of ROW 5, COLUMN " + gridCols + ", then click OK."',
+            '                sourceTitle + "\\n\\nClick the centre of ROW 5, COLUMN " + gridCols + " with the Rotated Rectangle Click Tool, then click OK."',
         ),
         (
             '            R1LX = x + w / 2;\n            R1LY = y + h / 2;',
@@ -147,8 +149,6 @@ def prepare(filename: str | None = None, *, legacy: bool = False) -> tuple[Path,
 
 def run(filename: str | None = None, *, legacy: bool = False) -> dict[str, str]:
     global _ACTIVE_FIJI_PROCESS
-    if proof_is_running():
-        raise SystemExit("A one-plate Fiji proof launched by this controller is still running.")
 
     macro, selected = prepare(filename, legacy=legacy)
     config = batch.load_config(require_fiji=True, require_fiji_handoff_paths=not legacy)
@@ -156,6 +156,9 @@ def run(filename: str | None = None, *, legacy: bool = False) -> dict[str, str]:
     if not fiji.is_file():
         raise SystemExit(f"Fiji executable not found: {fiji}")
     try:
+        # Do not block merely because a Fiji process from an earlier proof is still open.
+        # Fiji may reuse its existing instance; if its own single-instance handoff is unavailable,
+        # launching the macro again remains preferable to a permanently stale controller lock.
         _ACTIVE_FIJI_PROCESS = subprocess.Popen([str(fiji), "-macro", str(macro)])
     except OSError as exc:
         raise SystemExit(f"Could not launch Fiji one-plate validation: {exc}") from exc
