@@ -6,7 +6,10 @@ import json
 from collections import Counter
 from pathlib import Path
 
-from tools.validate_project_csvs import validate
+try:
+    from tools.validate_project_csvs import validate
+except ModuleNotFoundError:
+    from validate_project_csvs import validate
 
 APP_DIR = Path.home() / ".cautious-rotary-phone"
 DEFAULT_CONFIG = APP_DIR / "config.json"
