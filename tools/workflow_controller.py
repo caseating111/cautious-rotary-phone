@@ -96,7 +96,7 @@ def preflight_dialog_text(returncode: int, pending: int, output: str, report_exi
             summary += f"\n\nFull details are saved to:\n{PREFLIGHT_REPORT}"
         return summary
 
-    if report_exists:
+    if report_exists and "BATCH PREFLIGHT" in output:
         return (
             "Preflight found blocking items.\n\n"
             "Open the saved preflight report for the full actionable list:\n"
