@@ -197,9 +197,9 @@ function seedPreviousReferenceROI(width, height) {
 
 // ImageJ natively averages wide straight-line profiles. Convert the user's tall
 // rectangle temporarily to a vertical line whose width equals the rectangle,
-// retrieve the compiled ImageJ profile, then restore the rectangle. Keep the
-// explicit pixel loop only as a fallback if the native profile is unexpectedly
-// empty/short on a particular installation or image type.
+// retrieve the compiled ImageJ profile, then restore the rectangle. If an
+// installation/image type returns an unexpectedly short profile, fall back to
+// ImageJ's native ROI statistics one row at a time rather than custom pixel reads.
 function getVerticalAverageProfile(x, y, w, h) {
     centerX = x + w / 2;
     lineBottom = y + h - 1;
@@ -216,11 +216,11 @@ function getVerticalAverageProfile(x, y, w, h) {
 function getVerticalAverageProfileFallback(x, y, w, h) {
     profile = newArray(h);
     for (yy = 0; yy < h; yy++) {
-        sum = 0;
-        for (xx = 0; xx < w; xx++)
-            sum += getValue(x + xx, y + yy);
-        profile[yy] = sum / w;
+        makeRectangle(x, y + yy, w, 1);
+        getStatistics(area, mean);
+        profile[yy] = mean;
     }
+    makeRectangle(x, y, w, h);
     return profile;
 }
 
