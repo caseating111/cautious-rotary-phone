@@ -10,13 +10,20 @@ Purpose: validate the remaining interactive Fiji uncertainty with the smallest u
 ## One representative plate
 Use one ordinary representative plate first, not a deliberately difficult edge case.
 
-1. Start **Run full-column batch**.
-2. Confirm the first-column dialog shows the correct Experiment/Set/Type context.
-3. Position the whole-column rectangle on the first column; press Z/OK. If only a tiny correction is needed, use ImageJ's native arrow-key ROI nudge (Alt+arrow resizes a rectangle one pixel) instead of precision dragging.
-4. Move the same rectangle to the last column; use the same native fine adjustment if useful, then press Z/OK.
-5. Inspect the complete proposed grid overlay.
-6. If the overlay is sensible, accept once. If it is clearly wrong, retry once with a better whole-column placement.
-7. Confirm the expected Top/Low crops are written and source pixels remain unchanged.
+Use **Run one-plate full-column proof (first pending image only)** in the extended controller instead of starting the normal full batch. This proof route first runs the same authoritative `--prepare-only` path, copies only the first pending metadata row into a separate proof CSV, patches only the generated proof macro's `imagesFile` path, and launches that copy. It does not modify the real pending list or production configured batch macro, so a successful first plate cannot accidentally roll straight into plate two.
+
+If the first pending image is not a sensible representative plate, the same thin helper supports an explicit exact filename from the command line:
+
+`python tools/run_one_plate_validation.py --filename "plate-name.ext"`
+
+Then:
+
+1. Confirm the first-column dialog shows the correct Experiment/Set/Type context.
+2. Position the whole-column rectangle on the first column; press Z/OK. If only a tiny correction is needed, use ImageJ's native arrow-key ROI nudge (Alt+arrow resizes a rectangle one pixel) instead of precision dragging.
+3. Move the same rectangle to the last column; use the same native fine adjustment if useful, then press Z/OK.
+4. Inspect the complete proposed grid overlay.
+5. If the overlay is sensible, accept once. If it is clearly wrong, retry once with a better whole-column placement.
+6. Confirm the expected Top/Low crops are written and source pixels remain unchanged.
 
 The native arrow-key behavior is only an operating convenience; it is not a separate validation requirement and the AHK helper does not forward or reinterpret those keys.
 
@@ -29,7 +36,7 @@ The native arrow-key behavior is only an operating convenience; it is not a sepa
 - AHK Z/X convenience behavior if the helper is used.
 
 ## Second image only if the first succeeds
-Use one same-sized next plate for both previous-geometry conveniences at once:
+Use one same-sized next plate for both previous-geometry conveniences at once. At that point use the normal batch route during real work, or run the one-plate proof against an explicit second filename if you specifically want to keep validation isolated.
 
 1. Confirm the previous accepted first-column rectangle appears only as a movable starting suggestion. Reposition/resize it manually for the current first column and confirm it normally.
 2. After first-column confirmation, confirm the **same current rectangle** is moved near the last column using the previous accepted first-to-last horizontal span. Fine-tune it manually and confirm it normally.
