@@ -123,6 +123,16 @@ Before requesting manual testing:
 
 If repeated user testing is required, treat that as evidence that the route itself may be poor. Apply the stop-loss policy rather than automatically generating another patched version.
 
+## Manual validation is a checkpoint, not a stop condition
+
+Do **not** stop development merely because one completed slice now needs desktop/manual validation.
+
+Unless the user explicitly asks for a pause, continue autonomously with other safe, useful work that does not depend on that validation. Record the pending manual check in `docs/development/CURRENT_STATE.md`, preserve a known-good fallback, and move to the next independent or low-risk task.
+
+Only stop for manual validation when further progress is genuinely blocked by information that cannot be inferred, simulated, tested, researched, or isolated safely.
+
+A completed milestone or pre-release is a checkpoint, not a reason to end the work session.
+
 ## GUI role
 
 The GUI should simplify controls and hide orchestration complexity, not replace mature processing tools.
@@ -143,6 +153,12 @@ Prefer the GUI to provide a coherent control surface for:
 It is acceptable for the GUI to launch or coordinate several programs/scripts behind one button or workflow step.
 
 Do not move Fiji-native interactive work into Python merely to make the application appear self-contained.
+
+## Anaconda ecosystem preference
+
+Anaconda/conda is a preferred environment and package ecosystem for Python/scientific tooling where it is useful. Reuse packages already available through Anaconda/conda before adding bespoke equivalents or unnecessary separate dependency stacks.
+
+Do not force Anaconda into a path that does not benefit from it, and do not interrupt higher-value current work merely to migrate functioning components. Integrate it opportunistically for future scientific/image/data capabilities, environment reproducibility and dependency management when that reduces setup or maintenance burden.
 
 ## Workflow invariants
 
@@ -213,6 +229,7 @@ Generated crop names may encode useful metadata for human readability, but scrip
 - Do not expand a speculative architecture until a small representative end-to-end route has actually worked.
 - Treat repeated fragile patches or repeated user retesting as evidence that the implementation route may be wrong.
 - Never mistake "more code completed" for "more progress". Progress means getting the user's real workflow closer to a reliable, low-effort result.
+- Prioritize useful, coherent pre-release milestones over creating branches for every small idea. Use feature branches when needed for safety/review, but keep durable progress moving toward `workflow-dev`.
 
 ## Research/reuse requirement
 
