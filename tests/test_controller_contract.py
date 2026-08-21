@@ -4,13 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tools.workflow_controller import (
-    PROJECT_CSV_FILES,
-    preflight_dialog_text,
-    preparation_error_text,
-    sibling_project_csvs,
-)
-
+from tools.workflow_controller import PROJECT_CSV_FILES, preflight_dialog_text, preparation_error_text, sibling_project_csvs
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CONTROLLER = REPO_ROOT / "tools" / "workflow_controller.py"
@@ -20,14 +14,12 @@ AHK_HELPER = REPO_ROOT / "ahk" / "full_column_alignment_hotkeys.ah2"
 class ControllerContractTests(unittest.TestCase):
     def test_batch_prepares_before_hotkeys_and_pillow_failures_are_checked(self) -> None:
         text = CONTROLLER.read_text(encoding="utf-8")
-
         prepare_at = text.index('"--prepare-only"')
         start_ahk_at = text.index("self.start_ahk()", prepare_at)
         self.assertLess(prepare_at, start_ahk_at)
         self.assertIn("started_ahk_here", text)
         self.assertIn("if started_ahk_here:", text)
         self.assertIn("self.stop_ahk()", text)
-
         pillow_at = text.index("def run_pillow_job")
         pillow_block = text[pillow_at : text.index("def start_ahk", pillow_at)]
         self.assertIn("subprocess.run(", pillow_block)
@@ -39,7 +31,6 @@ class ControllerContractTests(unittest.TestCase):
         text = CONTROLLER.read_text(encoding="utf-8")
         prepared_at = text.index("def run_prepared_batch")
         prepared_block = text[prepared_at : text.index("def run_pillow_job", prepared_at)]
-
         self.assertIn('text="Run 4-point fallback"', text)
         self.assertIn('args.append("--legacy")', prepared_block)
         self.assertIn("CONFIGURED_LEGACY_BATCH_MACRO", prepared_block)
@@ -57,48 +48,33 @@ class ControllerContractTests(unittest.TestCase):
 
     def test_preflight_dialog_summary_avoids_repeating_long_saved_report(self) -> None:
         long_output = "BATCH PREFLIGHT\n" + ("detail line\n" * 200)
-
         ready = preflight_dialog_text(0, 7, long_output, report_exists=True)
         self.assertIn("Pending images: 7", ready)
         self.assertIn("Full details are saved", ready)
         self.assertNotIn("detail line", ready)
-
         blocked = preflight_dialog_text(1, 0, long_output, report_exists=True)
         self.assertIn("Preflight found blocking items", blocked)
         self.assertIn("Open the saved preflight report", blocked)
         self.assertNotIn("detail line", blocked)
-
-        raw_failure = preflight_dialog_text(1, 0, "Config not found", report_exists=False)
-        self.assertEqual(raw_failure, "Config not found")
-
-        stale_report_failure = preflight_dialog_text(
-            1,
-            0,
-            "CSV validation FAILED\n- bad metadata",
-            report_exists=True,
-        )
-        self.assertEqual(stale_report_failure, "CSV validation FAILED\n- bad metadata")
+        self.assertEqual(preflight_dialog_text(1, 0, "Config not found", report_exists=False), "Config not found")
+        stale = preflight_dialog_text(1, 0, "CSV validation FAILED\n- bad metadata", report_exists=True)
+        self.assertEqual(stale, "CSV validation FAILED\n- bad metadata")
 
     def test_batch_preparation_only_summarizes_actual_preflight_output(self) -> None:
         preflight_output = "BATCH PREFLIGHT\n" + ("detail line\n" * 200)
         summary = preparation_error_text(preflight_output, report_exists=True)
         self.assertIn("Batch preparation stopped at preflight", summary)
         self.assertNotIn("detail line", summary)
-
         validator_error = "CSV validation FAILED\n- images.csv row 2: bad metadata"
-        self.assertEqual(
-            preparation_error_text(validator_error, report_exists=True),
-            validator_error,
-        )
+        self.assertEqual(preparation_error_text(validator_error, report_exists=True), validator_error)
 
     def test_processing_settings_reject_non_finite_values_before_save(self) -> None:
         text = CONTROLLER.read_text(encoding="utf-8")
         settings_at = text.index("def open_processing_settings")
         settings_block = text[settings_at : text.index("def validate_csvs", settings_at)]
-
         self.assertIn("math.isfinite", settings_block)
         self.assertIn("Processing settings must be finite numbers.", settings_block)
-        self.assertLess(settings_block.index("math.isfinite"), settings_block.index("self.save()"))
+        self.assertLess(settings_block.index("math.isfinite"), settings_block.index("self.save(explicit="))
 
     def test_single_hotkey_helper_covers_full_column_and_four_point_dialogs(self) -> None:
         text = AHK_HELPER.read_text(encoding="utf-8")
@@ -111,7 +87,6 @@ class ControllerContractTests(unittest.TestCase):
         text = AHK_HELPER.read_text(encoding="utf-8")
         shell_at = text.index("ShellMessage(")
         shell_block = text[shell_at : text.index("AlignmentDialogExists()", shell_at)]
-
         self.assertIn("HSHELL_WINDOWCREATED = 1", shell_block)
         self.assertIn("PlacementDialogTitle(title)", shell_block)
         self.assertIn("WinMove(10, 10", shell_block)
@@ -127,9 +102,7 @@ class ControllerContractTests(unittest.TestCase):
             grid.write_text("grid\n", encoding="utf-8")
             images.write_text("images\n", encoding="utf-8")
             unrelated.write_text("not the contract filename\n", encoding="utf-8")
-
             found = sibling_project_csvs(grid)
-
             self.assertEqual(found["grid_csv"], grid)
             self.assertEqual(found["images_csv"], images)
             self.assertNotIn("condition_order_csv", found)
@@ -139,7 +112,6 @@ class ControllerContractTests(unittest.TestCase):
         text = CONTROLLER.read_text(encoding="utf-8")
         browse_at = text.index("def browse")
         browse_block = text[browse_at : text.index("def save", browse_at)]
-
         self.assertIn("if key in PROJECT_CSV_FILES:", browse_block)
         self.assertIn("sibling_project_csvs(Path(chosen))", browse_block)
         self.assertIn("self.vars[sibling_key].get().strip()", browse_block)
