@@ -108,7 +108,7 @@ def patch_roi_click_interaction(source: str) -> str:
         ),
         (
             '            } else {\n                Overlay.remove;\n                makeRectangle(round(R1LX - CLICK_ROI / 2), round(R1LY - CLICK_ROI / 2), CLICK_ROI, CLICK_ROI);\n            }',
-            '            } else {\n                Overlay.remove;\n                run("Select None");\n            }',
+            '            } else {\n                Overlay.remove;\n            }',
         ),
     ]
     for old, new in replacements:
