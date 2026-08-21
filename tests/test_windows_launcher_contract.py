@@ -31,6 +31,15 @@ class WindowsLauncherContractTests(unittest.TestCase):
         )
         self.assertIn("call conda run --no-capture-output -n base python", text)
 
+    def test_no_anaconda_controller_launcher_skips_conda_entirely(self) -> None:
+        text = (REPO_ROOT / "start_controller_no_anaconda.cmd").read_text(encoding="utf-8").lower()
+        self.assertNotIn("conda run", text)
+        self.assertNotIn("where conda", text)
+        self.assertIn("where py >nul 2>nul", text)
+        self.assertIn("py -3 tools\\workflow_controller_extended.py", text)
+        self.assertIn("where python >nul 2>nul", text)
+        self.assertIn("python tools\\workflow_controller_extended.py", text)
+
 
 if __name__ == "__main__":
     unittest.main()
