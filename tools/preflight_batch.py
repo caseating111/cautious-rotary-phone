@@ -9,7 +9,9 @@ from pathlib import Path
 APP_DIR = Path.home() / ".cautious-rotary-phone"
 DEFAULT_CONFIG = APP_DIR / "config.json"
 DEFAULT_REPORT = APP_DIR / "last_preflight.txt"
+DEFAULT_PENDING_CSV = APP_DIR / "pending_images.csv"
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".tif", ".tiff"}
+IMAGE_FIELDS = ["Filename", "Experiment", "Set", "Type"]
 
 
 def load_config(path: Path) -> dict:
@@ -76,7 +78,7 @@ def expected_output_names(meta: dict[str, str], grid_rows: list[dict[str, str]])
     return names
 
 
-def build_report(config: dict) -> tuple[list[str], bool]:
+def build_report(config: dict) -> tuple[list[str], bool, list[dict[str, str]]]:
     image_root = Path(config["image_root"])
     crop_root = Path(config["crop_output"])
     grid = read_csv(Path(config["grid_csv"]))
@@ -104,6 +106,8 @@ def build_report(config: dict) -> tuple[list[str], bool]:
     expected_crops = 0
     existing_crops = 0
     missing_crops = 0
+    complete_images = 0
+    pending_rows: list[dict[str, str]] = []
     grid_missing: list[str] = []
 
     for source in sources:
@@ -121,17 +125,26 @@ def build_report(config: dict) -> tuple[list[str], bool]:
         names = expected_output_names(meta, grid_rows)
         expected_crops += len(names)
         output_dir = crop_root / source.parent.name
+        image_missing = 0
         for name in names:
             if (output_dir / name).is_file():
                 existing_crops += 1
             else:
                 missing_crops += 1
+                image_missing += 1
+
+        if image_missing:
+            pending_rows.append({field: meta.get(field, "") for field in IMAGE_FIELDS})
+        else:
+            complete_images += 1
 
     lines = [
         "BATCH PREFLIGHT",
         f"Source folders: {len([p for p in image_root.iterdir() if p.is_dir()])}",
         f"Source images discovered: {len(sources)}",
         f"Mapped source images ready: {mapped_images}",
+        f"Already complete images: {complete_images}",
+        f"Images still requiring batch work: {len(pending_rows)}",
         f"Expected crops for ready images: {expected_crops}",
         f"Existing expected crops: {existing_crops}",
         f"Crops still to produce: {missing_crops}",
@@ -154,20 +167,30 @@ def build_report(config: dict) -> tuple[list[str], bool]:
         lines.extend(f"- {item}" for item in items)
 
     lines.extend(["", "STATUS: CHECK ITEMS ABOVE BEFORE BATCH ALIGNMENT" if problems else "STATUS: READY FOR BATCH ALIGNMENT"])
-    return lines, problems
+    return lines, problems, pending_rows
+
+
+def write_pending_csv(path: Path, rows: list[dict[str, str]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8-sig", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=IMAGE_FIELDS)
+        writer.writeheader()
+        writer.writerows(rows)
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
     parser.add_argument("--report", type=Path, default=DEFAULT_REPORT)
+    parser.add_argument("--pending-images-csv", type=Path, default=DEFAULT_PENDING_CSV)
     args = parser.parse_args()
 
-    lines, problems = build_report(load_config(args.config))
+    lines, problems, pending_rows = build_report(load_config(args.config))
     text = "\n".join(lines) + "\n"
     print(text, end="")
     args.report.parent.mkdir(parents=True, exist_ok=True)
     args.report.write_text(text, encoding="utf-8")
+    write_pending_csv(args.pending_images_csv, pending_rows)
     return 1 if problems else 0
 
 
