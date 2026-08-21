@@ -4,6 +4,21 @@ This repository develops a practical Fiji + Python/Pillow workflow for experimen
 
 Repository state, executable checks, actual script behaviour and accepted data contracts outrank chat-history reconstructions.
 
+## Mandatory implementation decision policy
+
+Before any substantial implementation decision, read and follow `docs/development/IMPLEMENTATION_DECISION_POLICY.md`.
+
+That policy is binding. In particular:
+- assume the user is operating under a practical time constraint unless explicitly told otherwise;
+- optimize total user time-to-reliable-result, including setup, testing, debugging, regression risk and validation, not just coding time;
+- prefer mature/tested/published tools and composed workflows over fresh bespoke code;
+- an approximate or partially manual route is acceptable if it removes most of the burden;
+- prove a small end-to-end route before expanding a speculative architecture;
+- repeated patch/test failures trigger reassessment of the approach rather than automatic escalation;
+- substantial bespoke code requires clear evidence that mature-tool composition, patching, wrappers, manual steps and thin glue cannot provide a practical result.
+
+Do not assume code written in one session is likely to outperform or be more reliable than established software that has been tested, maintained, used scientifically, or published over months or years.
+
 ## Core product posture
 
 Preserve the useful existing workflow and improve it incrementally. Reliability, source-image safety, transparent geometry and low-friction human QC matter more than architectural novelty.
@@ -157,6 +172,8 @@ Generated crop names may encode useful metadata for human readability, but scrip
 - A completed subtask is a transition point, not a reason to redesign unrelated parts.
 - If a composed route needs a few manual steps but achieves a major time-cost reduction, implement it rather than continuing to chase total automation.
 - If a mature plugin/package is close but not exact, prefer adapting or patching it over replacing it unless there is concrete evidence that adaptation is less reliable or more costly.
+- Do not expand a speculative architecture until a small representative end-to-end route has actually worked.
+- Treat repeated fragile patches or repeated user retesting as evidence that the implementation route may be wrong.
 
 ## Research/reuse requirement
 
