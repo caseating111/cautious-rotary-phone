@@ -20,13 +20,20 @@ class PillowWrapperEndToEndTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             home = root / "home"
+            image_root = root / "images"
+            source_folder = image_root / "setA"
             crop_root = root / "crops"
             crop_folder = crop_root / "setA"
             matrix_root = root / "matrices"
             app_dir = home / ".cautious-rotary-phone"
+            source_folder.mkdir(parents=True)
             crop_folder.mkdir(parents=True)
             matrix_root.mkdir()
             app_dir.mkdir(parents=True)
+
+            source = source_folder / "plate1.jpg"
+            Image.new("L", (200, 200), 12).save(source)
+            source_mtime = source.stat().st_mtime_ns
 
             grid_csv = root / "grid.csv"
             images_csv = root / "images.csv"
@@ -45,14 +52,24 @@ class PillowWrapperEndToEndTests(unittest.TestCase):
             conditions_csv.write_text("Order,Type\n1,YPDA\n", encoding="utf-8")
 
             # Configured unrotated size is 20x48; provide already-ready 48x20 crops.
-            for column, strain in ((1, "WT"), (2, "mut1")):
-                for state in ("Top", "Low"):
-                    path = crop_folder / f"E1_A_YPDA_{column:02d}_{state}_{strain}.png"
-                    Image.new("L", (48, 20), 30 + column).save(path)
+            # Make them explicitly newer than the source so source/crop preflight accepts them.
+            for index, (column, strain, state) in enumerate(
+                (
+                    (1, "WT", "Top"),
+                    (1, "WT", "Low"),
+                    (2, "mut1", "Top"),
+                    (2, "mut1", "Low"),
+                ),
+                1,
+            ):
+                path = crop_folder / f"E1_A_YPDA_{column:02d}_{state}_{strain}.png"
+                Image.new("L", (48, 20), 30 + column).save(path)
+                os.utime(path, ns=(source_mtime + index, source_mtime + index))
 
             (app_dir / "config.json").write_text(
                 json.dumps(
                     {
+                        "image_root": str(image_root),
                         "crop_output": str(crop_root),
                         "matrix_output": str(matrix_root),
                         "grid_csv": str(grid_csv),
