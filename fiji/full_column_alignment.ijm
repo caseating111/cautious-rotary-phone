@@ -40,6 +40,7 @@ if (toleranceFraction <= 0)
 roiW = readPresetValue("width", 108);
 roiH = readPresetValue("height", 108);
 accepted = 0;
+previousColumnSpan = readPreviousColumnSpan(sourceWidth, sourceHeight);
 seededReference = seedPreviousReferenceROI(sourceWidth, sourceHeight);
 
 while (accepted == 0) {
@@ -81,8 +82,20 @@ while (accepted == 0) {
     for (r = 0; r < gridRows; r++)
         leftRows[r] = ly + leftPeaks[r] + 0.5;
 
+    lastColumnHint = "";
+    if (!isNaN(previousColumnSpan)) {
+        suggestedX = lx + previousColumnSpan;
+        if (suggestedX >= 0 && suggestedX + lw <= sourceWidth) {
+            makeRectangle(suggestedX, ly, lw, lh);
+            lastColumnHint =
+                "Previous accepted first-to-last span moved this SAME rectangle near the last column as a starting point.\n" +
+                "Fine-tune it for this plate; it is NOT accepted automatically.\n\n";
+        }
+    }
+
     waitForUser(
         "2 / 2 — Last column",
+        lastColumnHint +
         "Move the SAME tall rectangle to the entire LAST grid column.\n" +
         "Keep all " + gridRows + " row positions inside it.\n\n" +
         "Press OK (or Z) when positioned."
@@ -134,8 +147,30 @@ function isTallRectangle() {
     return w > 0 && h > w;
 }
 
+function previousAlignmentPath() {
+    return getDirectory("home") + ".cautious-rotary-phone" + File.separator + "last_alignment.txt";
+}
+
+function readPreviousColumnSpan(width, height) {
+    path = previousAlignmentPath();
+    if (!File.exists(path))
+        return NaN;
+
+    previousWidth = parseInt(readSavedValue(path, "source_width", "-1"));
+    previousHeight = parseInt(readSavedValue(path, "source_height", "-1"));
+    if (previousWidth != width || previousHeight != height)
+        return NaN;
+
+    previousLeftX = parseFloat(readSavedValue(path, "left_x", "NaN"));
+    previousRightX = parseFloat(readSavedValue(path, "right_x", "NaN"));
+    if (isNaN(previousLeftX) || isNaN(previousRightX) || previousRightX <= previousLeftX)
+        return NaN;
+
+    return previousRightX - previousLeftX;
+}
+
 function seedPreviousReferenceROI(width, height) {
-    path = getDirectory("home") + ".cautious-rotary-phone" + File.separator + "last_alignment.txt";
+    path = previousAlignmentPath();
     if (!File.exists(path))
         return 0;
 
