@@ -73,6 +73,12 @@ def adopt_candidate(candidate: Path, destination: Path) -> Path | None:
     return backup
 
 
+def reconciliation_result_is_expected(returncode: int, output: str) -> bool:
+    if returncode == 0:
+        return True
+    return returncode == 1 and "Metadata reconciliation written:" in output
+
+
 class MetadataReview(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
@@ -118,7 +124,7 @@ class MetadataReview(tk.Tk):
         self.status.set(output)
         if REVIEW.is_file():
             self.open_path(REVIEW)
-        if result.returncode not in (0, 1):
+        if not reconciliation_result_is_expected(result.returncode, output):
             messagebox.showerror("Metadata reconciliation", output)
 
     def finalize(self) -> None:
