@@ -14,7 +14,7 @@ class PresentationNormalizeTests(unittest.TestCase):
         image = Image.new("L", (3, 1))
         image.putdata([10, 60, 110])
         mapped = display_map(image, 10, 110)
-        self.assertEqual(list(mapped.getdata()), [0, 128, 255])
+        self.assertEqual([mapped.getpixel((x, 0)) for x in range(3)], [0, 128, 255])
 
     def test_range_identity_mismatch_is_blocking(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -57,7 +57,7 @@ class PresentationNormalizeTests(unittest.TestCase):
             count = normalize_staged_crops([crop], grid, images, ranges)
             self.assertEqual(count, 1)
             with Image.open(crop) as normalized:
-                self.assertEqual(list(normalized.getdata()), [0, 128, 255])
+                self.assertEqual([normalized.getpixel((x, 0)) for x in range(3)], [0, 128, 255])
 
 
 if __name__ == "__main__":
