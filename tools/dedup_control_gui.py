@@ -6,9 +6,11 @@ from tkinter import messagebox, ttk
 
 try:
     from tools import run_existing_pillow_from_config as pillow_adapter
+    from tools.output_processing_records import record_paths
     from tools.run_dedup_with_control import build_preview, control_groups, load_preferred_source, run
 except ModuleNotFoundError:
     import run_existing_pillow_from_config as pillow_adapter
+    from output_processing_records import record_paths
     from run_dedup_with_control import build_preview, control_groups, load_preferred_source, run
 
 
@@ -91,8 +93,13 @@ class DedupControlGui(tk.Tk):
             messagebox.showerror("Preferred WT source", str(exc))
             self.status.set("Output stopped without modifying source crops.")
             return
-        self.status.set(f"Created: {output} | this WT source will be restored next time")
-        messagebox.showinfo("Preferred WT source", f"Created output:\n{output}")
+        human_log, _machine_recipe = record_paths(Path(self.config_data["matrix_output"]), output)
+        self.status.set(f"Created: {output} | WT source remembered | processing log saved")
+        messagebox.showinfo(
+            "Preferred WT source",
+            f"Created output:\n{output}\n\nProcessing Log:\n{human_log}\n\n"
+            "The machine recipe was saved separately under _workflow.",
+        )
 
 
 def main() -> None:
