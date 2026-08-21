@@ -15,7 +15,7 @@ Relevant upstream sources:
 
 ## Fit to the current workflow
 
-The plugin uses a four-corner polygon, ordered upper-left -> upper-right -> lower-right -> lower-left, then bilinearly interpolates the full rectangular colony grid. The batch plugin can load a saved ROI, recurse through a directory and write per-image average/error tables.
+The plugin uses a four-corner polygon, ordered upper-left -> upper-right -> lower-right -> lower-left, then bilinearly interpolates the full rectangular colony grid. The batch plugin can load a saved ROI and recurse through a directory.
 
 Current accepted full-column geometry already supplies the required corner colony centres without another detection system:
 - upper-left: `(leftX, leftRows[0])`
@@ -27,7 +27,19 @@ For the current 8-row layouts, plugin `#_of_spots` is `8 * GridCols` and XY rati
 
 The plugin measures circular spot regions and supports circular local-background subtraction. This is a better first quantitative-growth route than inventing a new pixel-scoring implementation.
 
-ImageJ's documented `GenericDialog` behavior is macro-recordable and `run("command", "options")` can auto-fill plugin dialog values. That means a later validated batch/controller adapter can remain thin rather than reimplementing the plugin.
+ImageJ's documented `GenericDialog` behavior is macro-recordable and `run("command", "options")` can auto-fill plugin dialog values. That means a later validated adapter can remain thin rather than reimplementing the plugin.
+
+## Important upstream batch bug
+
+Do **not** treat the upstream `batch plate analysis jru v1` table output as production-ready without a patch/verification step.
+
+In the current upstream `analyzeDirectory()` implementation:
+- `_avg.xls` is written from `stats2[0]` as expected;
+- `_sem.xls` is also written from `stats2[0]`, even though the plotting path correctly uses `stats2[1]` for errors.
+
+So the file named `_sem.xls` appears to duplicate the averages rather than contain the computed error array. The single-plate plugin's on-screen `Plate Errors` table uses `stats2[1]` correctly.
+
+If the single-plate proof succeeds and batch measurement is later worthwhile, prefer a tiny verified patch/wrapper around the mature plugin (changing the batch SEM write to the error array) rather than custom measurement code. Re-test that one patched handoff on representative data before controller exposure.
 
 ## Optional one-plate proof adapter
 
@@ -48,12 +60,14 @@ It deliberately does **not** script spot radius, replicate grouping, background 
 3. On **one** representative accepted plate, run `fiji/stowers_measure_current_alignment.ijm` instead of manually redrawing the four corners.
 4. Enter the displayed spot-count/XY-ratio values in the plugin dialog; choose radius/replicate/background settings from the actual analysis requirement rather than blindly accepting defaults.
 5. Inspect the plugin's ROI placement/table against visible colonies and compare a few obvious strong/weak/control colonies.
-6. Only if that output is sensible, record the proven plugin options and consider a thin macro/controller/batch adapter. Do not reimplement its measurement algorithm.
+6. Only if that output is sensible, record the proven plugin options and consider a thin macro/controller adapter.
+7. If batch output is then needed, patch/verify the upstream `_sem.xls` write before using the batch plugin. Do not reimplement its measurement algorithm.
 
 ## Stop-loss / non-goals
 
 - Do not replace current manual first/last alignment with this plugin; it is a downstream measurement candidate.
-- Do not assume its intensity metric is automatically the correct biological score for every stress assay. Control normalization/replicate handling must follow the actual experimental analysis requirement.
+- Do not assume its intensity metric is automatically the correct biological score for every assay. Control normalization/replicate handling must follow the actual experimental analysis requirement.
 - Do not build custom segmentation/scoring before testing this mature route (or another clearly better established tool).
+- Do not expose the upstream batch plugin unchanged while its SEM table write is suspect.
 - If the plugin requires repeated compatibility surgery on the current Fiji/image type, abandon it rather than entering a patch/retest cycle.
 - Keep quantitative measurement on unmodified source pixels, not visibility-enhanced or annotated outputs.
