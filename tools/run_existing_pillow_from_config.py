@@ -234,6 +234,23 @@ def newest_new_directory(before: set[Path], after: set[Path]) -> Path | None:
     return max(created, key=lambda path: path.stat().st_mtime_ns)
 
 
+def cleanup_empty_new_directories(before: set[Path], after: set[Path]) -> tuple[list[Path], list[Path]]:
+    removed: list[Path] = []
+    retained: list[Path] = []
+    for path in sorted(after - before):
+        if not path.is_dir():
+            continue
+        try:
+            if not any(path.iterdir()):
+                path.rmdir()
+                removed.append(path)
+            else:
+                retained.append(path)
+        except OSError:
+            retained.append(path)
+    return removed, retained
+
+
 def record_output(path: Path) -> None:
     APP_DIR.mkdir(parents=True, exist_ok=True)
     LAST_OUTPUT_FILE.write_text(str(path) + "\n", encoding="utf-8")
@@ -273,9 +290,10 @@ def main() -> None:
     output_root = Path(config["matrix_output"])
     before = child_directories(output_root)
     result = subprocess.run([sys.executable, str(configured)], check=False)
+    after = child_directories(output_root)
 
     if result.returncode == 0:
-        output = newest_new_directory(before, child_directories(output_root))
+        output = newest_new_directory(before, after)
         if output is not None:
             record_output(output)
             print(f"New output folder: {output}")
@@ -283,6 +301,12 @@ def main() -> None:
                 open_output(output)
         else:
             print("No new output folder detected.")
+    else:
+        removed, retained = cleanup_empty_new_directories(before, after)
+        for path in removed:
+            print(f"Removed empty failed output folder: {path}")
+        for path in retained:
+            print(f"Retained non-empty partial output for inspection: {path}")
 
     raise SystemExit(result.returncode)
 
