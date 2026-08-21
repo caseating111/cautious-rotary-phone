@@ -159,6 +159,10 @@ def expected_crop_issue(path: Path, source_mtime: int, crop_width: int, crop_hei
     return None
 
 
+def windows_path_key(path: Path, root: Path) -> str:
+    return str(path.relative_to(root)).replace("\\", "/").casefold()
+
+
 def build_report(
     config: dict,
     require_full_column_geometry: bool = True,
@@ -215,6 +219,7 @@ def build_report(
     incompatible_expected_crops: list[str] = []
     grid_missing: list[str] = []
     output_claims: dict[Path, list[Path]] = defaultdict(list)
+    windows_output_claims: dict[str, list[tuple[Path, Path]]] = defaultdict(list)
     logical_name_claims: dict[str, list[Path]] = defaultdict(list)
     current_prefixes: set[str] = set()
 
@@ -240,6 +245,7 @@ def build_report(
         for name in names:
             output_path = output_dir / name
             output_claims[output_path].append(source)
+            windows_output_claims[windows_path_key(output_path, crop_root)].append((output_path, source))
             logical_name_claims[name.lower()].append(source)
             issue = expected_crop_issue(output_path, source_mtime, crop_width, crop_height)
             if issue is None:
@@ -265,12 +271,13 @@ def build_report(
             complete_images += 1
 
     output_collisions = []
-    for output_path, claimants in sorted(output_claims.items(), key=lambda item: str(item[0])):
-        unique_claimants = sorted({path.relative_to(image_root) for path in claimants}, key=str)
+    for _, entries in sorted(windows_output_claims.items()):
+        unique_claimants = sorted({source.relative_to(image_root) for _, source in entries}, key=str)
         if len(unique_claimants) > 1:
-            rel_output = output_path.relative_to(crop_root)
+            actual_outputs = sorted({str(path.relative_to(crop_root)) for path, _ in entries})
+            outputs_text = " / ".join(actual_outputs)
             sources_text = ", ".join(str(path) for path in unique_claimants)
-            output_collisions.append(f"{rel_output} <- {sources_text}")
+            output_collisions.append(f"{outputs_text} <- {sources_text}")
 
     downstream_ambiguities = []
     for name, claimants in sorted(logical_name_claims.items()):
@@ -320,7 +327,7 @@ def build_report(
         ("DUPLICATE SOURCE BASENAMES", duplicate_source_names),
         ("DUPLICATE images.csv FILENAMES", duplicate_csv_names),
         ("MAPPED IMAGES WITH NO GRID DEFINITION", sorted(set(grid_missing))),
-        ("OUTPUT FILENAME COLLISIONS", output_collisions),
+        ("OUTPUT PATH COLLISIONS (WINDOWS CASE-INSENSITIVE)", output_collisions),
         ("DOWNSTREAM CROP-NAME AMBIGUITIES", downstream_ambiguities),
         ("EXACT CURRENT CROP IN UNEXPECTED FOLDER", misplaced_exact_crops),
     ]
