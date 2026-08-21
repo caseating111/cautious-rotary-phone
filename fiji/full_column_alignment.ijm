@@ -1,6 +1,6 @@
 // Full-column alignment using native ImageJ profile + peak tools.
 // Manual first/last column placement remains authoritative.
-// Optional macro argument: cols=10;rows=8;tolerance=0.08
+// Optional macro argument: cols=10;rows=8;tolerance=0.08;context=E1/A/YPDA
 
 requires("1.53f");
 
@@ -14,10 +14,12 @@ sourceDirectory = getInfo("image.directory");
 sourceFilename = getInfo("image.filename");
 
 arg = getArgument();
+context = "";
 if (lengthOf(arg) > 0) {
     gridCols = parseInt(argValue(arg, "cols", "10"));
     gridRows = parseInt(argValue(arg, "rows", "8"));
     toleranceFraction = parseFloat(argValue(arg, "tolerance", "0.08"));
+    context = argValue(arg, "context", "");
 } else {
     Dialog.create("Full-column alignment");
     Dialog.addNumber("Grid columns", 10);
@@ -42,8 +44,13 @@ accepted = 0;
 while (accepted == 0) {
     Overlay.remove;
 
+    contextText = "";
+    if (context != "")
+        contextText = "Plate: " + context + "\n\n";
+
     waitForUser(
         "1 / 2 — First column",
+        contextText +
         "Draw or position ONE tall rectangle around the entire FIRST grid column.\n" +
         "It should include all " + gridRows + " row positions.\n\n" +
         "Move/resize it as needed, then press OK (or Z with the helper)."
