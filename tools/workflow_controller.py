@@ -30,6 +30,13 @@ CSV_REQUIREMENTS = {
     "condition_order_csv": {"Order", "Type"},
 }
 
+PILLOW_JOBS = {
+    "Matrices": "matrices",
+    "All strains": "all-strains",
+    "All strains (extra WT removed)": "all-strains-dedup",
+    "Label individual crops": "label-individual",
+}
+
 
 def load_config() -> dict[str, str]:
     data = DEFAULTS.copy()
@@ -56,6 +63,7 @@ class Controller(tk.Tk):
         self.title("Plate workflow controller")
         self.resizable(False, False)
         self.vars = {key: tk.StringVar(value=value) for key, value in load_config().items()}
+        self.pillow_job = tk.StringVar(value="Matrices")
         self.ahk_process: subprocess.Popen | None = None
         self.status = tk.StringVar(value=self.environment_text())
         self.build_ui()
@@ -102,13 +110,17 @@ class Controller(tk.Tk):
             ttk.Button(self, text=label, command=lambda m=macro: self.launch_fiji_macro(m)).grid(row=r, column=col, sticky="ew", **pad)
 
         r += 1
-        ttk.Button(self, text="Build matrices", command=lambda: self.launch_python("tools/run_matrices_from_config.py")).grid(row=r, column=0, sticky="ew", **pad)
-        ttk.Button(self, text="Start alignment hotkeys", command=self.start_ahk).grid(row=r, column=1, sticky="ew", **pad)
-        ttk.Button(self, text="Stop alignment hotkeys", command=self.stop_ahk).grid(row=r, column=2, sticky="ew", **pad)
+        ttk.Label(self, text="Pillow output").grid(row=r, column=0, sticky="w", **pad)
+        ttk.Combobox(self, textvariable=self.pillow_job, values=list(PILLOW_JOBS), state="readonly", width=34).grid(row=r, column=1, sticky="w", **pad)
+        ttk.Button(self, text="Run", command=self.run_pillow_job).grid(row=r, column=2, sticky="ew", **pad)
 
         r += 1
-        ttk.Button(self, text="Open config folder", command=self.open_config_folder).grid(row=r, column=0, sticky="ew", **pad)
-        ttk.Label(self, textvariable=self.status, wraplength=600).grid(row=r, column=1, columnspan=2, sticky="w", **pad)
+        ttk.Button(self, text="Start alignment hotkeys", command=self.start_ahk).grid(row=r, column=0, sticky="ew", **pad)
+        ttk.Button(self, text="Stop alignment hotkeys", command=self.stop_ahk).grid(row=r, column=1, sticky="ew", **pad)
+        ttk.Button(self, text="Open config folder", command=self.open_config_folder).grid(row=r, column=2, sticky="ew", **pad)
+
+        r += 1
+        ttk.Label(self, textvariable=self.status, wraplength=720).grid(row=r, column=0, columnspan=3, sticky="w", **pad)
 
     def browse(self, key: str, kind: str) -> None:
         current = self.vars[key].get().strip()
@@ -175,18 +187,22 @@ class Controller(tk.Tk):
             return
         self.status.set(f"Launched Fiji macro: {macro.name}")
 
-    def launch_python(self, relative_script: str) -> None:
+    def launch_python(self, relative_script: str, *args: str) -> None:
         script = REPO_ROOT / relative_script
         if not script.is_file():
             messagebox.showerror("Python helper", f"Script not found:\n{script}")
             return
         self.save()
         try:
-            subprocess.Popen([sys.executable, str(script)])
+            subprocess.Popen([sys.executable, str(script), *args])
         except OSError as exc:
             messagebox.showerror("Python helper", str(exc))
             return
         self.status.set(f"Launched: {script.name}")
+
+    def run_pillow_job(self) -> None:
+        alias = PILLOW_JOBS[self.pillow_job.get()]
+        self.launch_python("tools/run_existing_pillow_from_config.py", alias)
 
     def start_ahk(self) -> None:
         if self.ahk_process and self.ahk_process.poll() is None:
