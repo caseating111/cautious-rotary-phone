@@ -9,6 +9,7 @@ from tkinter import filedialog, messagebox, ttk
 APP_DIR = Path.home() / ".cautious-rotary-phone"
 PRESETS_FILE = APP_DIR / "roi_presets.json"
 ACTIVE_FILE = APP_DIR / "active_roi_preset.txt"
+CONFIG_FILE = APP_DIR / "config.json"
 
 PATCH_FUNCTION = r'''
 function loadActiveRectPreset() {
@@ -33,6 +34,7 @@ function loadActiveRectPreset() {
 HELPER_MARKER = "// ----------- Helper functions -----------------//"
 TOOL_MARKER = 'macro "Rotated Rectangle Click Tool - Cf00R11cc" {'
 PATCH_CALL = "\tloadActiveRectPreset();"
+TOOLSET_NAME = "Roi 1-Click Tools.ijm"
 
 
 def ensure_dir() -> None:
@@ -73,6 +75,35 @@ def load_presets() -> dict[str, dict[str, float]]:
 def save_presets(presets: dict[str, dict[str, float]]) -> None:
     ensure_dir()
     PRESETS_FILE.write_text(json.dumps(presets, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def configured_fiji_root(config_path: Path = CONFIG_FILE) -> Path | None:
+    if not config_path.is_file():
+        return None
+    try:
+        data = json.loads(config_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    raw = str(data.get("fiji_executable", "")).strip()
+    if not raw:
+        return None
+    executable = Path(raw)
+    return executable.parent if executable.parent.is_dir() else None
+
+
+def find_roi_click_tools(fiji_root: Path | None) -> list[Path]:
+    if fiji_root is None or not fiji_root.is_dir():
+        return []
+
+    likely = [
+        fiji_root / "macros" / "toolsets" / TOOLSET_NAME,
+        fiji_root / "plugins" / TOOLSET_NAME,
+    ]
+    found = [path for path in likely if path.is_file()]
+    if found:
+        return sorted(set(path.resolve() for path in found))
+
+    return sorted(set(path.resolve() for path in fiji_root.rglob(TOOLSET_NAME) if path.is_file()))
 
 
 def patch_roi_click_tools(path: Path) -> Path:
@@ -190,10 +221,14 @@ class App(tk.Tk):
             self.status.set(f"Deleted preset: {name}")
 
     def patch_plugin(self) -> None:
-        selected = filedialog.askopenfilename(
-            title="Select Roi 1-Click Tools.ijm",
-            filetypes=[("ImageJ macro", "*.ijm"), ("All files", "*.*")],
-        )
+        candidates = find_roi_click_tools(configured_fiji_root())
+        selected = str(candidates[0]) if len(candidates) == 1 else ""
+
+        if not selected:
+            selected = filedialog.askopenfilename(
+                title="Select Roi 1-Click Tools.ijm",
+                filetypes=[("ImageJ macro", "*.ijm"), ("All files", "*.*")],
+            )
         if not selected:
             return
         try:
@@ -204,9 +239,9 @@ class App(tk.Tk):
         messagebox.showinfo(
             "Patched",
             "ROI 1-Click Tools will now read the active rectangle preset before each rectangle click.\n\n"
-            f"Backup: {backup}\n\nRestart/reload the toolset once.",
+            f"Toolset: {selected}\nBackup: {backup}\n\nRestart/reload the toolset once.",
         )
-        self.status.set("ROI 1-Click Tools patched for live preset loading.")
+        self.status.set(f"ROI 1-Click Tools patched: {selected}")
 
 
 if __name__ == "__main__":
