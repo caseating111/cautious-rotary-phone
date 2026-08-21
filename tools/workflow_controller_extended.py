@@ -87,7 +87,7 @@ class ExtendedController(Controller):
 
         ttk.Button(
             self,
-            text="Run one-plate full-column proof (choose plate)",
+            text="Run one-plate 4-point proof (choose plate)",
             command=self.run_one_plate_validation,
         ).grid(row=23, column=0, columnspan=3, sticky="ew", padx=5, pady=(0, 6))
 
@@ -130,8 +130,6 @@ class ExtendedController(Controller):
             self.status.set(f"Recognised existing project layout: {existing.project_root}")
             return
 
-        # Keep folder selection convenient, but route all actual moves through the
-        # same confirmation path as the explicit project-layout button.
         self.initialize_project_layout()
 
     def apply_project_layout(
@@ -247,7 +245,7 @@ class ExtendedController(Controller):
 
         image_root = self.vars["image_root"].get().strip()
         chosen = filedialog.askopenfilename(
-            title="Choose one pending plate for the full-column proof",
+            title="Choose one pending plate for the 4-point proof",
             initialdir=image_root or None,
             filetypes=[
                 ("Plate images", "*.jpg *.jpeg *.png *.tif *.tiff"),
@@ -259,7 +257,7 @@ class ExtendedController(Controller):
             return
 
         filename = Path(chosen).name
-        self.status.set(f"Refreshing pending list and preparing proof for {filename}…")
+        self.status.set(f"Refreshing pending list and preparing 4-point proof for {filename}…")
         self.update_idletasks()
         ahk_was_running = bool(self.ahk_process and self.ahk_process.poll() is None)
         ahk = Path(self.vars["ahk_executable"].get().strip())
@@ -269,7 +267,7 @@ class ExtendedController(Controller):
             started_ahk_here = bool(self.ahk_process and self.ahk_process.poll() is None)
 
         try:
-            selected = one_plate_validation.run(filename)
+            selected = one_plate_validation.run(filename, legacy=True)
         except SystemExit as exc:
             if started_ahk_here:
                 self.stop_ahk()
@@ -279,13 +277,16 @@ class ExtendedController(Controller):
 
         filename = selected.get("Filename", "")
         context = "/".join(
-            value for value in (selected.get("Experiment", ""), selected.get("Set", ""), selected.get("Type", "")) if value
+            value
+            for value in (selected.get("Experiment", ""), selected.get("Set", ""), selected.get("Type", ""))
+            if value
         )
-        self.status.set(f"One-plate full-column proof launched: {filename} | {context}")
+        self.status.set(f"One-plate 4-point proof launched: {filename} | {context}")
         messagebox.showinfo(
             "One-plate validation",
             f"Launched exactly one selected pending source:\n{filename}\n\nContext: {context or 'not specified'}\n\n"
-            "The normal pending list remains complete. A second click is blocked while this controller-launched Fiji proof is still running.",
+            "The proof uses the four centre clicks, mathematical full-grid QC, and fixed crop dimensions. "
+            "The normal pending list remains complete, and a second proof launch is blocked while Fiji is still running.",
         )
 
     def standard_output_count(self, alias: str, config: dict) -> int:
@@ -353,8 +354,6 @@ class ExtendedController(Controller):
     def run_pillow_job(self) -> None:
         alias = PILLOW_JOBS[self.pillow_job.get()]
         if alias == "all-strains-dedup":
-            # This route has experiment-dependent biology/user intent. Never let the
-            # base controller silently use the legacy script's inherited E2/A choice.
             self.launch_python("tools/dedup_control_gui.py")
             self.status.set("Choose the preferred WT source; that dialog previews before Top + Low output by default.")
             return
