@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import csv
 import tempfile
 import unittest
@@ -71,7 +72,7 @@ class PreflightBatchTests(unittest.TestCase):
         self.assertFalse(problems)
         self.assertEqual([row["Filename"] for row in pending], ["plate1.jpg"])
         self.assertIn("Images still requiring batch work: 1", lines)
-        self.assertIn("Crops still to produce: 4", lines)
+        self.assertIn("Crops still to produce/rebuild: 4", lines)
 
     def test_exact_existing_outputs_mark_image_complete(self) -> None:
         output_dir = self.crop_root / "setA"
@@ -81,14 +82,39 @@ class PreflightBatchTests(unittest.TestCase):
             {"Column": "1", "Strain": "WT"},
             {"Column": "2", "Strain": "mut1"},
         ]
-        for name in expected_output_names(meta, grid_rows):
-            (output_dir / name).write_bytes(b"derived placeholder")
+        source_mtime = (self.source_folder / "plate1.jpg").stat().st_mtime_ns
+        for index, name in enumerate(expected_output_names(meta, grid_rows), 1):
+            path = output_dir / name
+            path.write_bytes(b"derived placeholder")
+            os.utime(path, ns=(source_mtime + index, source_mtime + index))
 
         lines, problems, pending = build_report(self.config)
         self.assertFalse(problems)
         self.assertEqual(pending, [])
         self.assertIn("Already complete images: 1", lines)
-        self.assertIn("Crops still to produce: 0", lines)
+        self.assertIn("Crops still to produce/rebuild: 0", lines)
+
+    def test_source_newer_than_existing_outputs_marks_plate_pending_for_rebuild(self) -> None:
+        output_dir = self.crop_root / "setA"
+        output_dir.mkdir()
+        meta = {"Experiment": "E1", "Set": "A", "Type": "YPDA"}
+        grid_rows = [
+            {"Column": "1", "Strain": "WT"},
+            {"Column": "2", "Strain": "mut1"},
+        ]
+        for name in expected_output_names(meta, grid_rows):
+            (output_dir / name).write_bytes(b"old derived placeholder")
+
+        source = self.source_folder / "plate1.jpg"
+        future = max(source.stat().st_mtime_ns, *(p.stat().st_mtime_ns for p in output_dir.iterdir())) + 10_000_000_000
+        os.utime(source, ns=(future, future))
+
+        lines, problems, pending = build_report(self.config)
+        self.assertFalse(problems)
+        self.assertEqual([row["Filename"] for row in pending], ["plate1.jpg"])
+        self.assertIn("Already complete images: 0", lines)
+        self.assertIn("Crops still to produce/rebuild: 4", lines)
+        self.assertIn("STALE EXPECTED CROPS — WILL REBUILD (4)", lines)
 
     def test_partially_complete_plate_warns_about_whole_plate_rerun_without_blocking(self) -> None:
         output_dir = self.crop_root / "setA"
@@ -99,13 +125,16 @@ class PreflightBatchTests(unittest.TestCase):
             {"Column": "2", "Strain": "mut1"},
         ]
         names = expected_output_names(meta, grid_rows)
-        (output_dir / names[0]).write_bytes(b"derived placeholder")
+        existing = output_dir / names[0]
+        existing.write_bytes(b"derived placeholder")
+        source_mtime = (self.source_folder / "plate1.jpg").stat().st_mtime_ns
+        os.utime(existing, ns=(source_mtime + 1, source_mtime + 1))
 
         lines, problems, pending = build_report(self.config)
         self.assertFalse(problems)
         self.assertEqual([row["Filename"] for row in pending], ["plate1.jpg"])
         self.assertIn("PARTIALLY COMPLETE PLATES — NON-BLOCKING (1)", lines)
-        self.assertIn("- setA/plate1.jpg: 1 existing, 3 missing", lines)
+        self.assertIn("- setA/plate1.jpg: 1 current, 3 missing/stale", lines)
 
     def test_unexpected_crop_png_is_reported_but_not_blocking(self) -> None:
         output_dir = self.crop_root / "setA"
