@@ -17,69 +17,54 @@ The established Pillow jobs keep their current default behavior: all applicable 
 Custom composition is opt-in.
 
 ### GUI selection
-Custom matrix selection should allow:
+Custom matrix selection supports:
 - one or more Experiment/Set groups;
 - independent strain/column selection within each selected Experiment/Set;
 - a condition/type subset;
-- Top, Low or both;
-- later, existing output variants such as all/no-extra-WT where applicable.
+- Top, Low or both.
 
 The GUI shows strain names to the user but stores grid column numbers internally because column identity is the stable crop contract.
 
-Examples:
-- E1/S0 columns 1+3 plus E2/A columns 2+4;
-- E2/A only, columns 1+3+4;
-- E2/A only, selected conditions 2+4;
-- Top only, Low only or both.
-
 ### Selection inheritance
-The last custom selection is automatically reusable as the starting point for the next focused comparison. This is convenience only, not a new metadata source.
+The last **successful** custom selection is automatically reusable as the starting point for the next focused comparison. Failed/partial builds do not replace that convenience state. This is not a new metadata source.
 
 ### Existing crops first
-Focused composition should normally use existing current crops only. It must not silently launch Fiji or recrop because a requested cell is missing.
+Focused composition uses existing current crops only. It never silently launches Fiji or recrops because a requested cell is missing.
 
-The UI should report crop availability and identify missing selections. A later explicit "missing only" processing handoff may be useful, but composition and processing remain distinct actions.
+**Check selected crop availability** reports exact selected current/missing/stale/incompatible/duplicate crops. In presentation mode the same dialog also reports whether every selected source plate has a usable archived Fiji display range.
+
+A later explicit "missing only" processing handoff may be useful, but composition and processing remain distinct actions.
 
 ### Preview-first multi-output default
-When one request would generate multiple images, default to previewing only the first representative output before rendering the rest. Acceptance should freeze one recipe/settings set for the remaining batch.
+When one request would generate multiple images, default to previewing only the first representative output before rendering the rest.
+
+Preview validates/stages only that representative selection, including source freshness, then the accepted full build validates the complete requested selection. This avoids a redundant recursive scan of the complete crop tree before preview while retaining the actual full-build safety boundary.
 
 Single-image output does not need a mandatory duplicate preview. Keep an override to generate all without preview for trusted settings.
 
 Preview is for checking selection/layout/labels/display appearance, not for building a freeform image editor.
 
 ### Raw versus presentation-normalized
-Preserve raw crops and existing raw matrix output.
+Raw crops and existing raw matrix output remain untouched.
 
-Add an optional presentation-normalized output mode later. Normalization must operate only on disposable staging/derived copies, never on source pixels or stored quantitative crops. Prefer reusing accepted plate-level Fiji display-range values where available rather than independently beautifying each crop.
+Presentation-normalized mode reuses source-specific Fiji display ranges and applies them only to disposable staged crop copies. `fiji/apply_global_visibility_and_archive.ijm` runs the existing visibility calculation unchanged and archives the resulting range with source identity.
+
+When `image_root` is configured, an archived range older than the current source image is rejected. The user must run **Global visibility** once on that current plate or choose Raw mode. Crop-only standalone composition keeps filename-identity validation without inventing a source root.
+
+### Output postcondition
+The established `make_matrices.py` generator remains unchanged, but focused wrappers no longer treat a merely non-empty output folder as sufficient success. Every selected Experiment/Set × requested Top/Low state must produce its expected `{Experiment}_{Set}_{State}_MATRIX.png` before the output is remembered/opened/recorded. A non-empty partial folder is left for inspection but is reported as failure.
 
 ### Control / WT source
-The inherited current no-extra-WT case uses E2/A, but control source must become GUI-selectable because the biologically preferred control depends on the experiment.
+The inherited no-extra-WT script executable behavior prefers E2/A despite an old contradictory E2/B comment. That ambiguity is not treated as biological authority.
 
-Do not hard-code biological choice deeper into Pillow scripts.
+`tools/run_dedup_with_control.py` patches only the generated copy's existing preference condition. The user chooses the Experiment/Set containing recognised WT X/Y controls. The GUI restores only the last **successful** user-selected control source when it is still present; otherwise it starts from the available list without a hard-coded E2/A default.
 
 ### Human processing logs + machine recipes
-For generated focused outputs, keep two representations:
-- clear human-readable TXT processing logs;
-- machine-readable JSON output recipes for exact reconstruction/reopen.
+Focused outputs keep two representations:
+- clear human-readable TXT processing logs under `Processing Logs`;
+- machine-readable JSON output recipes under `_workflow/output-recipes` for reopen/rebuild.
 
-Human-intended naming should be descriptive, not opaque. Preferred output-side folder is `Processing Logs`.
-
-Machine files may be more technical and should be separated, e.g. `_workflow/output-recipes` or equivalent inside the experiment/output area.
-
-TXT and JSON records should share an output/recipe identifier and include at least:
-- created time;
-- output path/type;
-- Experiment/Set selections;
-- selected strain columns/names;
-- conditions;
-- Top/Low state;
-- raw/presentation mode;
-- control source when relevant;
-- required/available/used crop counts;
-- missing/skipped warnings;
-- settings needed to reproduce the output.
-
-Do not build a database for this.
+The two records share the unique output-folder identifier and capture selection, display mode and crop counts. Do not build a database for this.
 
 ### Labels/layout
 Overall plate annotation positions/spacing are plate-specific. Presets may cover stable style settings such as font, size, colour and orientation, but do not force fixed plate-specific positions.
@@ -94,17 +79,12 @@ Expected eventual pattern:
 
 Do not create a parallel long-term workbook while this is deferred.
 
-## Current implementation slice
-`tools/custom_matrix_selection.py` adapts the established `make_matrices.py` route without changing the legacy matrix builder:
-- filters temporary grid/images/condition CSVs;
-- stages only exact selected current crop filenames;
-- normalizes orientation only on staged copies;
-- patches only the generated configured script's `STATES_TO_BUILD` setting;
-- runs the established Pillow matrix generator.
+## Current implementation
+`tools/custom_matrix_selection.py` adapts the established `make_matrices.py` route without changing the legacy matrix builder: temporary filtered CSVs, exact selected crop staging, staged orientation normalization, state-setting patch, mature Pillow generation and explicit expected-output verification.
 
-`tools/custom_matrix_gui.py` provides the first lightweight GUI selection surface, with all values selected initially or restoration of the previous selection.
+`tools/custom_matrix_gui_recorded.py` is the current user-facing surface. It adds selection restoration, detailed availability, raw/presentation mode, representative preview, prior-recipe reopening and processing-log access while remaining a separate thin GUI launched by the extended controller.
 
-`start_custom_matrix.cmd` is a direct Windows launcher while controller integration remains a later small orchestration change.
+`tools/workflow_controller_extended.py` subclasses the original controller and adds only **Custom matrices** and **Preferred WT source** entry points. `start_controller.cmd` launches this extension. `start_custom_matrix.cmd` remains a direct launcher.
 
 ## Reuse / external-tool notes
 Do not build a freeform figure designer into the controller. Pillow remains the deterministic regular-layout tool. If later presentation work needs arbitrary figure rearrangement, investigate mature Fiji/ImageJ figure tooling such as QuickFigures as an optional handoff instead of reproducing its capabilities.
