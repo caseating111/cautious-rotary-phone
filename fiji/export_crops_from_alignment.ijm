@@ -153,9 +153,16 @@ function exportCrop(sourceTitle, cx, cy, outputName, outDir) {
 }
 
 function alignmentMatchesCurrentImage(path, title, width, height) {
-    return readValue(path, "source_title", "") == title &&
-           parseInt(readValue(path, "source_width", "-1")) == width &&
-           parseInt(readValue(path, "source_height", "-1")) == height;
+    savedDirectory = readValue(path, "source_directory", "");
+    savedFilename = readValue(path, "source_filename", "");
+    dimensionsMatch = parseInt(readValue(path, "source_width", "-1")) == width &&
+                      parseInt(readValue(path, "source_height", "-1")) == height;
+
+    if (savedDirectory != "" && savedFilename != "")
+        return dimensionsMatch && savedDirectory == getInfo("image.directory") && savedFilename == getInfo("image.filename");
+
+    // Backward-compatible fallback for older alignment files and unsaved synthetic images.
+    return dimensionsMatch && readValue(path, "source_title", "") == title;
 }
 
 function readValue(path, key, fallback) {
