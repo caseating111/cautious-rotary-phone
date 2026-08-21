@@ -39,6 +39,12 @@ def load_config() -> dict:
     if missing:
         raise SystemExit("Missing config values: " + ", ".join(missing))
 
+    for key in ("grid_csv", "crop_output"):
+        if ";" in str(data[key]):
+            raise SystemExit(
+                f"Configured {key} contains a semicolon, which conflicts with the composed Fiji macro-argument delimiter: {data[key]}"
+            )
+
     try:
         data["alignment_tolerance"] = float(data.get("alignment_tolerance", 0.08))
         data["crop_width"] = int(data.get("crop_width", 130))
