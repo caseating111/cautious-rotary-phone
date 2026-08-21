@@ -10,7 +10,16 @@ Controller choices:
 
 The launcher replaces only the shared five `Path(r"path here")` setting lines in a configured copy and requires each line to occur exactly once. It runs that copy with the current Python/conda interpreter. The configured `IMAGE_ROOT` points at a disposable validated staging directory, not at the real crop tree.
 
-One narrow legacy-script bug has been corrected in place: `folder per strain all indiv strains labelled.py` already created a unique `MATRIX_OUTPUT` folder but accidentally wrote strain subfolders directly under `MATRIX_ROOT`. It now writes those same labelled files under the intended unique `MATRIX_OUTPUT`; labelling logic and image content behavior are unchanged. `tests/test_label_individual_output.py` protects that path contract and `tests/test_label_individual_end_to_end.py` proves the staged wrapper route creates one non-empty top-level output with the expected strain subfolders.
+## Narrow labelled-individual repairs
+
+The reused labelled-individual script had two evidenced handoff defects; both are patched narrowly rather than replacing its Pillow label rendering:
+
+1. It already created a unique `MATRIX_OUTPUT` folder but accidentally wrote strain subfolders directly under `MATRIX_ROOT`. It now writes those same labelled files under the intended unique output folder.
+2. It historically reparsed Experiment/Set from crop filenames with `split("_")`, even though authoritative `grid.csv` + `images.csv` metadata already exists and valid metadata may contain underscores. Normal staged/controller use now builds the exact current exporter filename -> strain map from those CSVs. The old filename parser remains fallback-only for direct legacy inputs not represented in the current metadata map.
+
+The script declares `ROTATE_IMAGES_90_CCW = False` only to satisfy the shared adapter contract; it has no internal rotation function. Orientation remains owned by the wrapper on disposable staged copies.
+
+`tests/test_label_individual_output.py` protects these contracts. `tests/test_label_individual_end_to_end.py` uses underscore-bearing Experiment/Set/Type metadata to prove wrapper -> staged orientation -> metadata-first lookup -> one non-empty labelled output tree with zero skipped current crops.
 
 Before any Pillow output job, the adapter runs the authoritative project CSV validator and derives the exact crop contract produced by the current Fiji exporter from `grid.csv` + `images.csv`.
 
@@ -31,12 +40,12 @@ Output-tree policy:
 - `matrix_output` must remain outside `crop_output`;
 - when `image_root` is configured, `matrix_output` must also remain outside `image_root`, because batch preflight scans immediate source-image subfolders and generated matrix folders inside the source tree would otherwise be rediscovered as source images.
 
-Temporary configured copies force `ROTATE_IMAGES_90_CCW = False`, removing dependence on the legacy one-shot rotation marker because staging already supplies the correct orientation.
+Temporary configured copies force/retain `ROTATE_IMAGES_90_CCW = False`, removing dependence on legacy one-shot rotation markers because staging already supplies the correct orientation.
 
 Each successful job must create one new non-empty top-level output directory. A child script returning exit code zero without producing a usable new output directory is treated as failure rather than reported as completion. Failed jobs remove only newly created empty output folders and preserve non-empty partial output for inspection. The temporary staged crop tree is automatically removed after the legacy process exits.
 
 Malformed/non-object `config.json` produces a targeted wrapper error instead of a traceback. `tests/test_output_tree_layout.py` protects both config handling and source/crop/matrix tree separation.
 
-Regression coverage includes exact/stale filename handling, duplicate-exact rejection, non-destructive staged rotation, source-readiness reuse, strict/partial input behavior, output postconditions, a full synthetic matrix route, and a full synthetic labelled-individual route.
+Regression coverage includes exact/stale filename handling, duplicate-exact rejection, non-destructive staged rotation, source-readiness reuse, strict/partial input behavior, output postconditions, a full synthetic matrix route, and the metadata-first labelled-individual route.
 
 This remains a thin glue layer: established Pillow composition behavior stays authoritative; the wrapper validates and prepares a clean disposable input handoff, with only narrowly evidenced legacy defects patched rather than replaced.
