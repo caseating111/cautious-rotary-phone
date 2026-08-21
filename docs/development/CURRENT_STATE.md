@@ -37,7 +37,7 @@ Routine implementation goes directly onto `workflow-dev`. Do **not** create a ne
 - CSV semantic validation runs before Fiji starts.
 - Saved crop width/height and alignment tolerance are consumed only where metadata already supplies the grid column count.
 - `--prepare-only` performs CSV validation, preflight, pending-image generation, exact source-marker checks and configured macro construction without launching Fiji.
-- Batch preparation now verifies the production macro, alignment macro, crop helper, validator and preflight helper exist before doing work. Actual launch also verifies the configured Fiji executable first, while `--prepare-only` deliberately remains independent of a local Fiji installation.
+- Batch preparation verifies the production macro, alignment macro, crop helper, validator and preflight helper exist before doing work. Actual launch also verifies the configured Fiji executable first, while `--prepare-only` deliberately remains independent of a local Fiji installation.
 - `tests/test_source_adapters.py` covers the distinction between preparation-only runtime requirements and actual-launch Fiji requirements.
 
 ### Batch preflight / resume
@@ -45,7 +45,7 @@ Routine implementation goes directly onto `workflow-dev`. Do **not** create a ne
 - It reports discovered/mapped/unmapped images, duplicate source basenames, stale metadata rows, missing grid definitions and expected/existing/missing crop counts.
 - It blocks exact same-path output collisions before Fiji can overwrite a plate.
 - It also blocks duplicate logical crop names across different output folders because the reused Pillow matrix scripts recursively search by filename prefix and otherwise warn then choose the first match.
-- Existing PNGs under `crop_output` that are not part of the current metadata-defined expected crop set are now listed as **UNEXPECTED CROP PNGS — NON-BLOCKING**. This exposes likely stale outputs earlier without preventing valid processing merely because unrelated/old files exist.
+- Existing PNGs under `crop_output` that are not part of the current metadata-defined expected crop set are listed as **UNEXPECTED CROP PNGS — NON-BLOCKING**. This exposes likely stale outputs earlier without preventing valid processing merely because unrelated/old files exist.
 - It writes `~/.cautious-rotary-phone/last_preflight.txt` and pending-only `pending_images.csv`.
 - The composed batch uses pending-only metadata, so completed plates are naturally skipped on rerun. Partially complete plates remain pending as a whole plate; no fragile per-crop resume path is introduced.
 - `tests/test_preflight_batch.py` covers missing, complete, stale non-blocking PNG reporting, duplicate-basename, same-folder collision, cross-folder downstream ambiguity and distinct-condition non-ambiguity cases.
@@ -60,6 +60,7 @@ Routine implementation goes directly onto `workflow-dev`. Do **not** create a ne
 ### Existing Pillow output reuse
 - `tools/run_existing_pillow_from_config.py` exposes the four existing matrix/all-strain/individual-label scripts through saved controller paths without rewriting their composition logic.
 - All four aliases are regression-checked for the shared path-block adapter.
+- The wrapper now builds/validates its temporary configured legacy script before performing any crop-orientation mutation. If the old script's expected path/rotation markers drift, the run fails before touching derived crop pixels.
 - Before output generation, the wrapper derives the same logical crop prefixes used by the existing scripts from `grid.csv` + `images.csv` and blocks any prefix with multiple real file matches. This catches stale/legacy duplicates before the old scripts can silently choose the first match.
 - Only current logical crop matches are passed to orientation normalization. Unrelated images under `crop_output` are ignored.
 - Current crop inputs matching configured unrotated dimensions are rotated once with Pillow; already-rotated crops are skipped. Current logical crops with incompatible dimensions fail before matrix generation.
@@ -69,8 +70,9 @@ Routine implementation goes directly onto `workflow-dev`. Do **not** create a ne
 - `tools/validate_project_csvs.py` checks required headers, grid completeness/duplicates, consistent GridCols, unique source filenames, image->grid references and condition-order coverage.
 - It rejects comma-bearing Experiment/Set/Type/Strain metadata and embedded line breaks that the reused ImageJ line parser would misread.
 - It rejects semicolons in Experiment/Set/Type because the composed Fiji helpers use semicolon-delimited `runMacro` arguments.
+- It rejects Windows filename-unsafe characters (`/ \\ : * ? " < > |`) in Experiment/Set/Type because those values are inserted directly into crop filenames without sanitizing. Strain remains allowed to contain those characters because the established exporter already applies `safeName()` to strain output text.
 - Comma-containing filenames remain allowed because the production macro explicitly handles quoted filenames containing commas.
-- `tests/test_csv_validation.py` covers comma, semicolon, embedded-line-break and supported comma-in-filename cases.
+- `tests/test_csv_validation.py` covers comma, semicolon, embedded-line-break, filename-unsafe metadata and supported comma-in-filename cases.
 
 ### Lightweight controller / conda
 - `tools/workflow_controller.py` persists paths/settings, validates CSVs, launches Fiji/AHK/Pillow helpers and ROI presets.
@@ -83,7 +85,7 @@ Routine implementation goes directly onto `workflow-dev`. Do **not** create a ne
 
 ### Automated regression checks
 - `.github/workflows/python-glue-tests.yml` runs the Python unittest suite on pushes to `workflow-dev` and pull requests.
-- The workflow installs Pillow explicitly and now runs `python -m compileall -q tools tests` before behavioral tests so syntax breakage in the glue layer is caught cheaply.
+- The workflow installs Pillow explicitly and runs `python -m compileall -q tools tests` before behavioral tests so syntax breakage in the glue layer is caught cheaply.
 - The GitHub connector's combined-status endpoint is currently returning no status contexts for these direct branch commits; do not infer a passing or failing Actions result from that absence.
 
 ## Branch cleanup status
