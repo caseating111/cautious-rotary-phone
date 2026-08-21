@@ -38,7 +38,7 @@ ShellMessage(wParam, lParam, msg, hwnd)
 AlignmentDialogExists()
 {
     for title in [
-        "1 / 2", "2 / 2", "Alignment QC",
+        "1 / 2", "2 / 2", "Alignment QC", "Full-grid QC",
         "1 / 4", "2 / 4", "3 / 4", "4 / 4",
         "ALL DONE"
     ]
@@ -50,13 +50,13 @@ AlignmentDialogExists()
 }
 
 ; Z is only intercepted while one of the workflow's Fiji dialogs exists.
-; It advances either the full-column or preserved four-point route, accepts QC,
-; and dismisses ALL DONE before closing this helper.
+; It advances either alignment route, accepts QC, and dismisses ALL DONE
+; before closing this helper.
 #HotIf AlignmentDialogExists()
 z::
 {
     for title in [
-        "1 / 2", "2 / 2", "Alignment QC",
+        "1 / 2", "2 / 2", "Alignment QC", "Full-grid QC",
         "1 / 4", "2 / 4", "3 / 4", "4 / 4",
         "ALL DONE"
     ]
@@ -74,16 +74,20 @@ z::
 }
 #HotIf
 
-; X is only intercepted while Alignment QC exists on the full-column route.
-; The Fiji choice defaults to Accept; Down selects Retry, Enter confirms.
-#HotIf WinExist("Alignment QC")
+; X selects Retry on either QC dialog. Both dialogs default to Accept;
+; Down selects Retry, Enter confirms.
+#HotIf WinExist("Alignment QC") || WinExist("Full-grid QC")
 x::
 {
-    if hwnd := WinExist("Alignment QC")
+    for title in ["Alignment QC", "Full-grid QC"]
     {
-        WinActivate(hwnd)
-        if WinWaitActive(hwnd, , 0.5)
-            Send("{Down}{Enter}")
+        if hwnd := WinExist(title)
+        {
+            WinActivate(hwnd)
+            if WinWaitActive(hwnd, , 0.5)
+                Send("{Down}{Enter}")
+            return
+        }
     }
 }
 #HotIf
