@@ -21,6 +21,17 @@ class ControllerExtensionContractTests(unittest.TestCase):
         self.assertNotIn("Image.open", text)
         self.assertNotIn("subprocess.run", text)
 
+    def test_one_plate_proof_uses_dedicated_thin_adapter(self) -> None:
+        text = EXTENDED.read_text(encoding="utf-8")
+        self.assertIn("run_one_plate_validation as one_plate_validation", text)
+        self.assertIn('text="Run one-plate full-column proof (first pending image only)"', text)
+        start = text.index("def run_one_plate_validation")
+        end = text.index("def standard_output_count", start)
+        block = text[start:end]
+        self.assertIn("selected = one_plate_validation.run()", block)
+        self.assertIn("production pending metadata was not changed", block)
+        self.assertIn("normal pending list and production batch macro were left unchanged", block)
+
     def test_standard_multi_output_jobs_preview_first_by_default_with_opt_out(self) -> None:
         text = EXTENDED.read_text(encoding="utf-8")
         self.assertIn("self.preview_standard_outputs = tk.BooleanVar(value=True)", text)
@@ -63,7 +74,7 @@ class ControllerExtensionContractTests(unittest.TestCase):
     def test_processing_logs_button_uses_human_facing_folder_name(self) -> None:
         text = EXTENDED.read_text(encoding="utf-8")
         start = text.index("def open_processing_logs")
-        end = text.index("def standard_output_count", start)
+        end = text.index("def run_one_plate_validation", start)
         block = text[start:end]
         self.assertIn('Path(raw) / "Processing Logs"', block)
         self.assertNotIn("_workflow", block)
