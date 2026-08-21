@@ -3,6 +3,11 @@
 ## Durable line
 `workflow-dev`
 
+## Branching rule
+Routine implementation now goes directly onto `workflow-dev`. Do **not** create a new branch for ordinary fixes, small features, docs, tests, adapters, UI/default changes, refactors, or routine experiments. Create a separate branch only when the work is genuinely risky, destructive, highly speculative, likely to conflict with concurrent work, or needs isolation because it may be discarded wholesale. Prefer one longer-lived integration branch over many milestone branches.
+
+A task/commit/checkpoint is not a reason to create another branch. If work is safe and incremental, keep moving on `workflow-dev`.
+
 ## Working baseline
 - Original four-point Fiji crop macro and original AHK helper remain unchanged as fallback.
 - Original Pillow matrix/label scripts remain under `existing scripts clean/` and are reused through thin config adapters.
@@ -59,15 +64,8 @@
 - `tools/run_fiji_macro_from_config.py` is a thin visibility launcher using ImageJ's macro argument mechanism and supports dry-run command inspection.
 - `environment.yml` remains minimal (`python`, `pillow`).
 
-## Active branch: output-navigation
-Purpose: remove unnecessary Explorer navigation after deterministic Pillow output jobs without changing any image-generation logic.
-
-Current changes:
-- `tools/run_existing_pillow_from_config.py` snapshots child output directories before/after the existing script runs;
-- on success it identifies the actual newly created output folder, writes it to `~/.cautious-rotary-phone/last_pillow_output.txt`, and opens that folder by default on Windows;
-- `--no-open-output` preserves command-line control when automatic navigation is unwanted;
-- no legacy Pillow script is modified;
-- `tests/test_output_navigation.py` covers new-directory detection and the no-new-output case.
+## Branch cleanup status
+Many historical milestone branches are already fully represented by `workflow-dev`. The available GitHub connector can move/create refs but does not expose remote branch deletion, so do not create more routine branches. Historical branches can be deleted in GitHub's branch UI when convenient; no development depends on them.
 
 ## Legacy audit result
 - The remaining unwrapped `existing scripts clean/pythonfileaudit.py` is an E2/B-specific diagnostic and is superseded by the generic preflight/reconciliation tooling; do not expose or expand it unless a concrete missing use case appears.
