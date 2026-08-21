@@ -103,6 +103,7 @@ while (accepted == 0) {
 
     if (!isTallRectangle()) {
         showMessage("Last-column ROI", "Use one tall axis-aligned rectangle containing the full last column, then retry.");
+        makeRectangle(lx, ly, lw, lh);
         continue;
     }
 
@@ -111,6 +112,7 @@ while (accepted == 0) {
     rightPeaks = findExpectedPeaks(rightProfile, gridRows, toleranceFraction);
     if (rightPeaks.length < gridRows) {
         showMessage("Last-column profile", "Could not resolve " + gridRows + " row peaks. Retry with a better whole-column ROI or lower tolerance.");
+        makeRectangle(lx, ly, lw, lh);
         continue;
     }
 
@@ -135,6 +137,7 @@ while (accepted == 0) {
         saveLastAlignment(sourceTitle, sourceWidth, sourceHeight, sourceDirectory, sourceFilename, lx, ly, lw, lh, leftX, rightX, leftRows, rightRows, gridCols, gridRows, roiW, roiH);
     } else {
         Overlay.remove;
+        makeRectangle(lx, ly, lw, lh);
     }
 }
 
