@@ -25,9 +25,15 @@ After validation, only the selected exact current crops are copied into a tempor
 
 Crop-orientation normalization happens **only on staged copies**. Staged crops matching the configured unrotated size are rotated 90° CCW; crops already matching the swapped dimensions are left untouched. The real files under `crop_output` are never rotated or rewritten by Pillow output generation. Current crop inputs with incompatible dimensions still fail before the legacy script runs.
 
-`matrix_output` must remain outside `crop_output`, preventing recursive output/input mistakes. Temporary configured copies force `ROTATE_IMAGES_90_CCW = False`, removing dependence on the legacy one-shot rotation marker because staging already supplies the correct orientation.
+Output-tree policy:
+- `matrix_output` must remain outside `crop_output`;
+- when `image_root` is configured, `matrix_output` must also remain outside `image_root`, because batch preflight scans immediate source-image subfolders and generated matrix folders inside the source tree would otherwise be rediscovered as source images.
+
+Temporary configured copies force `ROTATE_IMAGES_90_CCW = False`, removing dependence on the legacy one-shot rotation marker because staging already supplies the correct orientation.
 
 The existing scripts create a unique output folder early. If a legacy job fails, the wrapper removes only newly created empty output folders and preserves non-empty partial output for inspection. The temporary staged crop tree is automatically removed after the legacy process exits.
+
+Malformed/non-object `config.json` now produces a targeted wrapper error instead of a traceback. `tests/test_output_tree_layout.py` protects both config handling and source/crop/matrix tree separation.
 
 Regression coverage includes exact/stale filename handling, duplicate-exact rejection, non-destructive staged rotation, source-readiness reuse, strict/partial input behavior and a full synthetic source -> unrotated current crops + stale prefix crop -> staging -> actual legacy matrix route that proves the real crop files remain unchanged.
 
