@@ -42,7 +42,9 @@ MoveKnownWorkflowWindowsOnce()
     for title in ["1 / 2", "2 / 2", "1 / 4", "2 / 4", "3 / 4", "4 / 4"]
     {
         if hwnd := WinExist(title)
+        {
             try WinMove(10, 10, , , hwnd)
+        }
     }
     MoveFijiToolbarOnce()
 }
@@ -67,9 +69,13 @@ ShellMessage(wParam, lParam, msg, hwnd)
     catch title := ""
 
     if PlacementDialogTitle(title)
+    {
         try WinMove(10, 10, , , "ahk_id " lParam)
+    }
     else if (title == "Fiji" || title == "ImageJ")
+    {
         MoveFijiToolbarOnce()
+    }
 
     ; One catch-up pass only: no permanent timer, polling or repeated jitter.
     SetTimer(MoveKnownWorkflowWindowsOnce, -120)
