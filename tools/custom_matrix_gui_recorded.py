@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import tkinter as tk
-from tkinter import messagebox, ttk
+from tkinter import filedialog, messagebox, ttk
 
 try:
     from tools.custom_crop_inventory import inventory_summary, selected_inventory
     from tools.custom_matrix_gui import CustomMatrixBuilder
     from tools.custom_matrix_preview import build_preview as build_raw_preview, output_count
     from tools.custom_matrix_presentation_preview import build_preview as build_presentation_preview
+    from tools.output_recipe_loader import default_recipe_folder, load_output_recipe
     from tools.run_custom_matrix_job import run_job as run_raw_job
     from tools.run_custom_matrix_presentation import run_job as run_presentation_job
     from tools.run_existing_pillow_from_config import open_output
@@ -16,6 +17,7 @@ except ModuleNotFoundError:
     from custom_matrix_gui import CustomMatrixBuilder
     from custom_matrix_preview import build_preview as build_raw_preview, output_count
     from custom_matrix_presentation_preview import build_preview as build_presentation_preview
+    from output_recipe_loader import default_recipe_folder, load_output_recipe
     from run_custom_matrix_job import run_job as run_raw_job
     from run_custom_matrix_presentation import run_job as run_presentation_job
     from run_existing_pillow_from_config import open_output
@@ -39,11 +41,31 @@ class RecordedCustomMatrixBuilder(CustomMatrixBuilder):
             state="readonly",
             width=24,
         ).pack(side="left", padx=(6, 16))
+        ttk.Button(controls, text="Open old recipe…", command=self.open_recipe).pack(side="left", padx=(0, 16))
         ttk.Checkbutton(
             controls,
             text="Preview first when multiple outputs",
             variable=self.preview_first,
         ).pack(side="right")
+
+    def open_recipe(self) -> None:
+        initial = default_recipe_folder(self.config_data["matrix_output"])
+        chosen = filedialog.askopenfilename(
+            title="Open custom matrix output recipe",
+            initialdir=str(initial if initial.is_dir() else initial.parent),
+            filetypes=[("JSON output recipes", "*.json"), ("All files", "*.*")],
+        )
+        if not chosen:
+            return
+        try:
+            loaded = load_output_recipe(chosen)
+            self.apply_selection(loaded["selection"])
+            self.display_mode.set(loaded["display_mode"])
+        except SystemExit as exc:
+            messagebox.showerror("Open output recipe", str(exc))
+            return
+        old_output = loaded.get("output_path") or "unknown output"
+        self.status.set(f"Restored recipe from {old_output}. Adjust it or rebuild as-is.")
 
     def check_availability(self) -> None:
         try:
