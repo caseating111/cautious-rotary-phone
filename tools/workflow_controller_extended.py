@@ -111,7 +111,12 @@ class ExtendedController(Controller):
         else:
             self.status.set("Image root selected. Automatic project layout was not created.")
 
-    def apply_project_layout(self, layout: project_layout.ProjectLayout, original_parent: Path | None = None) -> None:
+    def apply_project_layout(
+        self,
+        layout: project_layout.ProjectLayout,
+        original_parent: Path | None = None,
+        moved_from: Path | None = None,
+    ) -> None:
         self.vars["image_root"].set(str(layout.image_root))
         self.vars["crop_output"].set(str(layout.crop_output))
         self.vars["matrix_output"].set(str(layout.matrix_output))
@@ -120,7 +125,12 @@ class ExtendedController(Controller):
         if original_parent is not None:
             candidate_dirs.append(original_parent)
         for key, filename in PROJECT_CSV_FILES.items():
-            if self.vars[key].get().strip():
+            configured = self.vars[key].get().strip()
+            if configured:
+                if moved_from is not None:
+                    rebased = project_layout.rebase_moved_path(configured, moved_from, layout.image_root)
+                    if rebased != Path(configured).resolve():
+                        self.vars[key].set(str(rebased))
                 continue
             for folder in candidate_dirs:
                 candidate = folder / filename
@@ -146,7 +156,7 @@ class ExtendedController(Controller):
         if not raw:
             messagebox.showerror("Project layout", "Select Image root first.")
             return
-        source = Path(raw)
+        source = Path(raw).resolve()
         original_parent = source.parent
         try:
             layout = project_layout.initialize_project(source, self.project_prefix.get())
@@ -154,7 +164,8 @@ class ExtendedController(Controller):
             messagebox.showerror("Project layout", str(exc))
             return
 
-        self.apply_project_layout(layout, original_parent=original_parent)
+        moved_from = None if layout.image_root == source else source
+        self.apply_project_layout(layout, original_parent=original_parent, moved_from=moved_from)
         messagebox.showinfo(
             "Project layout",
             f"Project ready:\n{layout.project_root}\n\n"
