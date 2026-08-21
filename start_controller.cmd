@@ -5,8 +5,9 @@ cd /d "%~dp0"
 rem Prefer the repository's named conda environment when it is already active.
 if /I "%CONDA_DEFAULT_ENV%"=="cautious-rotary-phone" (
     python tools\workflow_controller_extended.py
-    if errorlevel 1 exit /b 1
-    exit /b 0
+    if not errorlevel 1 exit /b 0
+    echo.
+    echo Active cautious-rotary-phone environment failed; trying other Python routes.
 )
 
 rem Otherwise use the named conda environment if conda is available.
