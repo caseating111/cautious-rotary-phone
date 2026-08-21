@@ -5,15 +5,18 @@ import json
 import subprocess
 import sys
 import tempfile
+from collections import defaultdict
 from pathlib import Path
 
 try:
     from tools import run_existing_pillow_from_config as pillow_adapter
     from tools.custom_matrix_preview import PreviewResult
+    from tools.output_processing_records import write_output_records
     from tools.standard_pillow_preview import patch_first_state
 except ModuleNotFoundError:
     import run_existing_pillow_from_config as pillow_adapter
     from custom_matrix_preview import PreviewResult
+    from output_processing_records import write_output_records
     from standard_pillow_preview import patch_first_state
 
 
@@ -37,6 +40,29 @@ def control_groups(grid_csv: Path) -> dict[tuple[str, str], set[str]]:
         key = (row.get("Experiment", ""), row.get("Set", ""))
         groups.setdefault(key, set()).add(control)
     return groups
+
+
+def full_project_selection(config: dict) -> dict:
+    columns: dict[tuple[str, str], list[int]] = defaultdict(list)
+    for row in pillow_adapter.read_csv_rows(Path(config["grid_csv"])):
+        key = (row.get("Experiment", ""), row.get("Set", ""))
+        column = int(row.get("Column", "0"))
+        if column not in columns[key]:
+            columns[key].append(column)
+    condition_rows = pillow_adapter.read_csv_rows(Path(config["condition_order_csv"]))
+    conditions = [
+        row.get("Type", "")
+        for row in sorted(condition_rows, key=lambda row: int(row.get("Order", "0")))
+        if row.get("Type", "")
+    ]
+    return {
+        "groups": [
+            {"experiment": exp, "set": set_name, "columns": sorted(values)}
+            for (exp, set_name), values in columns.items()
+        ],
+        "conditions": conditions,
+        "states": ["Top", "Low"],
+    }
 
 
 def load_preferred_source(path: Path = PREFERENCE_FILE) -> tuple[str, str] | None:
@@ -183,6 +209,20 @@ def run(experiment: str, set_name: str, no_open_output: bool = False) -> Path:
         raise SystemExit("Deduplicated all-strains job returned success but produced no non-empty output folder.")
     pillow_adapter.record_output(output)
     save_preferred_source(experiment, set_name)
+    required_crops = len(
+        pillow_adapter.expected_crop_contract(Path(config["grid_csv"]), Path(config["images_csv"]))
+    )
+    write_output_records(
+        output_root,
+        output,
+        output_type="all strains (deduplicated controls)",
+        selection=full_project_selection(config),
+        required_crops=required_crops,
+        available_crops=len(selected_crops),
+        used_crops=len(selected_crops),
+        display_mode="raw",
+        control_source={"experiment": experiment.strip(), "set": set_name.strip()},
+    )
     print(
         f"Preferred control source: {experiment.strip()}/{set_name.strip()} "
         f"({', '.join(sorted(controls))}; missing recognised controls fall back to the script's first available candidate)."
