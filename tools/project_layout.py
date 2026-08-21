@@ -75,6 +75,16 @@ def planned_layout(image_root: Path, prefix: str) -> ProjectLayout:
     )
 
 
+def rebase_moved_path(value: str | Path, old_root: Path, new_root: Path) -> Path:
+    path = Path(value).resolve()
+    old = old_root.resolve()
+    try:
+        relative = path.relative_to(old)
+    except ValueError:
+        return path
+    return new_root.resolve() / relative
+
+
 def _cleanup_empty_project(layout: ProjectLayout) -> None:
     for path in (layout.metadata_dir, layout.matrix_output, layout.crop_output, layout.image_root.parent):
         try:
