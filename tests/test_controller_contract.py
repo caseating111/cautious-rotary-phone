@@ -49,6 +49,17 @@ class ControllerContractTests(unittest.TestCase):
         self.assertIn('#HotIf WinExist("Alignment QC")', text)
         self.assertIn("Esc::ExitApp", text)
 
+    def test_hotkey_shell_hook_only_moves_new_placement_dialogs(self) -> None:
+        text = AHK_HELPER.read_text(encoding="utf-8")
+        shell_at = text.index("ShellMessage(")
+        shell_block = text[shell_at : text.index("AlignmentDialogExists()", shell_at)]
+
+        self.assertIn("HSHELL_WINDOWCREATED = 1", shell_block)
+        self.assertIn("PlacementDialogTitle(title)", shell_block)
+        self.assertIn("WinMove(10, 10", shell_block)
+        self.assertNotIn("Send(", shell_block)
+        self.assertNotIn("WinActivate", shell_block)
+
     def test_project_csv_sibling_discovery_uses_only_exact_existing_names(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
