@@ -17,7 +17,7 @@ Routine implementation goes directly onto `workflow-dev`. Do **not** create a ne
 ### ROI presets / manual alignment assistance
 - Named ROI-size presets around the published ROI 1-Click Tools plugin.
 - `fiji/full_column_alignment.ijm`: manually authoritative first/last whole-column ROIs -> vertical average profile -> native ImageJ `Array.findMaxima()` -> regular grid -> full-grid QC -> accept/retry.
-- The user interaction is still one tall rectangle on the first column and the same rectangle moved to the last column. Manual placement remains authoritative.
+- User interaction remains one tall rectangle on the first column and the same rectangle moved to the last column. Manual placement remains authoritative.
 - Profile averaging now uses a mature native ImageJ path: the tall rectangle is temporarily converted to a vertical straight-line ROI with the same width, then `getProfile()` delegates to ImageJ's wide-line/`Straightener` machinery. The rectangle is immediately restored. The previous explicit `getValue()` pixel loop remains only as a fallback if the native profile is unexpectedly unavailable/short.
 - `ahk/full_column_alignment_hotkeys.ah2` remains small global-hotkey convenience only.
 - Source identity/dimensions are persisted with accepted alignment geometry to prevent stale reuse.
@@ -57,22 +57,28 @@ Routine implementation goes directly onto `workflow-dev`. Do **not** create a ne
 - `tools/run_existing_pillow_from_config.py` exposes the four existing matrix/all-strain/individual-label scripts through saved controller paths without rewriting their composition logic.
 - All four aliases are regression-checked for the shared path-block adapter.
 - Before output generation, the wrapper derives the same logical crop prefixes used by the existing scripts from `grid.csv` + `images.csv` and blocks any prefix with multiple real file matches. This catches stale/legacy duplicates before the old scripts can silently choose the first match.
-- Only the current logical crop matches are passed to orientation normalization. Unrelated images under `crop_output` are ignored.
+- Only current logical crop matches are passed to orientation normalization. Unrelated images under `crop_output` are ignored.
 - Current crop inputs matching the configured unrotated dimensions are rotated once with Pillow; already-rotated crops are skipped. Current logical crops with incompatible dimensions fail before matrix generation.
 - Temporary configured copies force `ROTATE_IMAGES_90_CCW = False`, removing dependence on the legacy one-shot `.rotated_90ccw.done` behavior.
 
 ### CSV validation
 - `tools/validate_project_csvs.py` checks required headers, grid completeness/duplicates, consistent GridCols, unique source filenames, image->grid references and condition-order coverage.
-- It rejects comma-bearing Experiment/Set/Type/Strain metadata that Python's CSV parser accepts but the reused ImageJ line parser would misread. Comma-containing filenames remain allowed because the production macro explicitly handles quoted filenames containing commas.
-- `tests/test_csv_validation.py` covers unsafe comma-bearing metadata and the supported comma-in-filename case.
+- It rejects comma-bearing Experiment/Set/Type/Strain metadata and embedded line breaks that the reused ImageJ line parser would misread.
+- It rejects semicolons in Experiment/Set/Type because the composed Fiji helpers use semicolon-delimited `runMacro` arguments.
+- Comma-containing filenames remain allowed because the production macro explicitly handles quoted filenames containing commas.
+- `tests/test_csv_validation.py` covers comma, semicolon, embedded-line-break and supported comma-in-filename cases.
 
 ### Lightweight controller / conda
 - `tools/workflow_controller.py` persists paths/settings, validates CSVs, launches Fiji/AHK/Pillow helpers and ROI presets.
 - Processing settings cover alignment tolerance, crop size and global visibility values without moving processing into the GUI.
-- Quick buttons open the configured source-image, crop-output and matrix-output folders directly using the OS shell.
+- Quick buttons open configured source-image, crop-output and matrix-output folders directly using the OS shell.
 - Controller window is titled `Image workflow controller`.
 - `tools/run_fiji_macro_from_config.py` is a thin visibility launcher using ImageJ's macro argument mechanism and supports dry-run command inspection.
 - `environment.yml` remains minimal (`python`, `pillow`).
+
+### Automated regression checks
+- `.github/workflows/python-glue-tests.yml` runs the Python unittest suite on pushes to `workflow-dev` and pull requests.
+- The workflow now installs Pillow explicitly before running tests, so clean GitHub runners can execute the current adapter/orientation tests instead of depending on an incidental preinstalled package.
 
 ## Branch cleanup status
 Historical milestone branches are not needed for routine continuation. Do not create more routine branches; development remains on `workflow-dev`.
