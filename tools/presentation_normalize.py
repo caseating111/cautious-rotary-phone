@@ -76,7 +76,6 @@ def load_range(range_dir: Path, source_filename: str) -> tuple[float, float]:
 
 
 def display_map(image: Image.Image, black: float, high: float) -> Image.Image:
-    scale = 255.0 / (high - black)
     if image.mode in {"RGB", "RGBA", "CMYK", "YCbCr", "HSV", "LAB", "P"}:
         working = image.convert("L")
     elif image.mode == "L":
@@ -85,13 +84,18 @@ def display_map(image: Image.Image, black: float, high: float) -> Image.Image:
         # Preserve integer intensity values before reducing the derived presentation copy to 8-bit.
         working = image.convert("I")
 
+    span = high - black
     if working.mode == "L":
         lut = []
         for value in range(256):
-            mapped = math.floor(((value - black) * scale) + 0.5)
+            # Calculate the ratio directly rather than multiplying by a pre-rounded 2.55-style
+            # scale. The epsilon only neutralizes binary float representation immediately below
+            # an exact half; it is far smaller than one output intensity step.
+            mapped = math.floor((((value - black) * 255.0) / span) + 0.500000001)
             lut.append(max(0, min(255, mapped)))
         return working.point(lut)
 
+    scale = 255.0 / span
     # Pillow handles linear point transforms for I-mode images; conversion to L clamps to 0..255.
     mapped = working.point(lambda value: (value - black) * scale)
     return mapped.convert("L")
