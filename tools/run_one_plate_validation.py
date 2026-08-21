@@ -14,6 +14,7 @@ except ModuleNotFoundError:
 APP_DIR = batch.APP_DIR
 PROOF_IMAGES_CSV = APP_DIR / "one_plate_validation_images.csv"
 PROOF_MACRO = APP_DIR / "one_plate_validation.configured.ijm"
+_ACTIVE_FIJI_PROCESS: subprocess.Popen | None = None
 
 
 def read_pending_rows(path: Path) -> tuple[list[str], list[dict[str, str]]]:
@@ -82,15 +83,28 @@ def prepare(filename: str | None = None) -> tuple[Path, dict[str, str]]:
     return PROOF_MACRO, selected
 
 
+def proof_is_running() -> bool:
+    return _ACTIVE_FIJI_PROCESS is not None and _ACTIVE_FIJI_PROCESS.poll() is None
+
+
 def run(filename: str | None = None) -> dict[str, str]:
+    global _ACTIVE_FIJI_PROCESS
+
+    if proof_is_running():
+        raise SystemExit(
+            "A one-plate Fiji proof launched by this controller is still running. "
+            "Finish or close that Fiji instance before launching another proof."
+        )
+
     macro, selected = prepare(filename)
     config = batch.load_config(require_fiji=True, require_fiji_handoff_paths=True)
     fiji = Path(config["fiji_executable"])
     if not fiji.is_file():
         raise SystemExit(f"Fiji executable not found: {fiji}")
     try:
-        subprocess.Popen([str(fiji), "-macro", str(macro)])
+        _ACTIVE_FIJI_PROCESS = subprocess.Popen([str(fiji), "-macro", str(macro)])
     except OSError as exc:
+        _ACTIVE_FIJI_PROCESS = None
         raise SystemExit(f"Could not launch Fiji one-plate validation: {exc}") from exc
     return selected
 
