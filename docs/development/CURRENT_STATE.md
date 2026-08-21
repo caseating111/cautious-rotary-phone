@@ -1,7 +1,7 @@
 # Current state
 
 ## Durable line
-`workflow-dev` is the only active development line. Routine work goes directly here; do not create side branches for ordinary fixes/features/tests/docs. `workflow-foundation` and `metadata-candidate-switch` are superseded and must not be resumed.
+`workflow-dev` is the only active development line. Routine work goes directly here; do not create side branches for ordinary fixes/features/tests/docs. Current repository branches are `main`, `workflow-dev` and `alpha-pre-release`; `alpha-pre-release` points at an ancestor of `workflow-dev` and is a stale pre-release pointer, not a development line. Previously superseded side branches are no longer present.
 
 Binding rules: root `AGENTS.md` and `docs/development/IMPLEMENTATION_DECISION_POLICY.md`. Optimize total user time-to-reliable-result, reuse mature tools first, preserve source pixels/manual alignment authority, prove small routes, and stop patch/retest escalation early.
 
@@ -82,7 +82,7 @@ Important hardening:
 - standalone metadata/ROI helpers also handle non-object config cleanly;
 - `start_controller.cmd` remains thin: named conda -> Windows `py` -> PATH Python. No installer layer.
 
-Environment: `environment.yml` = Python >=3.11 + Pillow. CI now runs compileall + unittest discovery on Python 3.11 **and 3.14**.
+Environment: `environment.yml` = Python >=3.11 + Pillow. CI runs compileall + unittest discovery on Python 3.11 **and 3.14**.
 
 ## Mature fallbacks / optional routes
 ### Peak fallback
@@ -93,7 +93,7 @@ See `docs/development/BAR_FIND_PEAKS_FALLBACK.md`.
 ### Quantitative growth measurement
 Jay Unruh/Stowers `plate analysis jru v1` is the first mature measurement candidate. `fiji/stowers_measure_current_alignment.ijm` is an **optional one-plate proof adapter only**: it verifies accepted geometry belongs to the current source, creates the plugin's required UL→UR→LR→LL polygon, displays geometry-derived spot count/XY ratio, then opens the plugin's native options dialog. It does not guess radius, replicate grouping or background settings and is not exposed in the controller.
 
-Only consider thin batch/controller automation after one representative plugin result is scientifically sensible. Do not reimplement its measurement algorithm.
+The current upstream **batch** plugin must not be used unchanged: its active directory-analysis code writes both `_avg.xls` and `_sem.xls` from `stats2[0]`, while its plotting path correctly uses `stats2[1]` for errors. If the single-plate proof succeeds and batch measurement is useful, prefer a tiny verified patch/wrapper around the mature plugin rather than custom scoring code.
 
 See `docs/development/STOWERS_PLATE_MEASUREMENT_CANDIDATE.md`.
 
