@@ -23,18 +23,19 @@ START_MARKER = "        // ====================================================\
 END_MARKER = "        setBatchMode(false);"
 
 
-def load_config() -> dict:
+def load_config(require_fiji: bool = True) -> dict:
     if not CONFIG_FILE.is_file():
         raise SystemExit(f"Config not found: {CONFIG_FILE}")
     data = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
     required = [
-        "fiji_executable",
         "image_root",
         "crop_output",
         "grid_csv",
         "images_csv",
         "condition_order_csv",
     ]
+    if require_fiji:
+        required.insert(0, "fiji_executable")
     missing = [key for key in required if not str(data.get(key, "")).strip()]
     if missing:
         raise SystemExit("Missing config values: " + ", ".join(missing))
@@ -63,7 +64,7 @@ def validate_runtime_files(config: dict, require_fiji: bool) -> None:
         raise SystemExit("Required workflow file(s) missing:\n" + "\n".join(str(path) for path in missing))
 
     if require_fiji:
-        fiji = Path(config["fiji_executable"])
+        fiji = Path(config.get("fiji_executable", ""))
         if not fiji.is_file():
             raise SystemExit(f"Fiji executable not found: {fiji}")
 
@@ -183,11 +184,11 @@ def main() -> None:
     parser.add_argument(
         "--prepare-only",
         action="store_true",
-        help="validate/preflight and build the configured Fiji macro without launching Fiji",
+        help="validate/preflight and build the configured Fiji macro without requiring or launching Fiji",
     )
     args = parser.parse_args()
 
-    config = load_config()
+    config = load_config(require_fiji=not args.prepare_only)
     validate_runtime_files(config, require_fiji=not args.prepare_only)
     validate_csvs(config)
     pending = run_preflight()
