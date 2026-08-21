@@ -6,7 +6,10 @@ import json
 from collections import Counter, defaultdict
 from pathlib import Path
 
-from tools.preflight_batch import discover_sources
+try:
+    from tools.preflight_batch import discover_sources
+except ModuleNotFoundError:
+    from preflight_batch import discover_sources
 
 APP_DIR = Path.home() / ".cautious-rotary-phone"
 DEFAULT_CONFIG = APP_DIR / "config.json"
