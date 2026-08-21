@@ -24,11 +24,36 @@ def rows(path: Path, required: list[str]) -> list[dict[str, str]]:
         return [{k: (v or "").strip() for k, v in row.items()} for row in reader]
 
 
-def comma_unsafe(problems: list[str], file_name: str, line_no: int, row: dict[str, str], fields: list[str]) -> None:
+def imagej_line_unsafe(
+    problems: list[str],
+    file_name: str,
+    line_no: int,
+    row: dict[str, str],
+    fields: list[str],
+) -> None:
     for field in fields:
-        if "," in row.get(field, ""):
+        value = row.get(field, "")
+        if "," in value:
             problems.append(
                 f"{file_name} row {line_no}: {field} contains a comma, which the reused ImageJ CSV parser cannot safely read"
+            )
+        if "\n" in value or "\r" in value:
+            problems.append(
+                f"{file_name} row {line_no}: {field} contains a line break, which the reused ImageJ line parser cannot safely read"
+            )
+
+
+def macro_argument_unsafe(
+    problems: list[str],
+    file_name: str,
+    line_no: int,
+    row: dict[str, str],
+    fields: list[str],
+) -> None:
+    for field in fields:
+        if ";" in row.get(field, ""):
+            problems.append(
+                f"{file_name} row {line_no}: {field} contains a semicolon, which conflicts with the composed Fiji macro-argument delimiter"
             )
 
 
@@ -43,7 +68,8 @@ def validate(grid_path: Path, images_path: Path, conditions_path: Path) -> list[
 
     groups: dict[tuple[str, str], list[tuple[int, int, str]]] = defaultdict(list)
     for line_no, row in enumerate(grid, 2):
-        comma_unsafe(problems, "grid.csv", line_no, row, ["Experiment", "Set", "Strain"])
+        imagej_line_unsafe(problems, "grid.csv", line_no, row, ["Experiment", "Set", "Strain"])
+        macro_argument_unsafe(problems, "grid.csv", line_no, row, ["Experiment", "Set"])
         key = (row["Experiment"], row["Set"])
         if not all(key):
             problems.append(f"grid.csv row {line_no}: empty Experiment/Set")
@@ -106,7 +132,8 @@ def validate(grid_path: Path, images_path: Path, conditions_path: Path) -> list[
 
     image_filenames: set[str] = set()
     for line_no, row in enumerate(images, 2):
-        comma_unsafe(problems, "images.csv", line_no, row, ["Experiment", "Set", "Type"])
+        imagej_line_unsafe(problems, "images.csv", line_no, row, ["Experiment", "Set", "Type"])
+        macro_argument_unsafe(problems, "images.csv", line_no, row, ["Experiment", "Set", "Type"])
         filename = row["Filename"]
         key = (row["Experiment"], row["Set"])
         type_name = row["Type"]
