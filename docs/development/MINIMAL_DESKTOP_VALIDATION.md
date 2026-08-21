@@ -12,11 +12,13 @@ Use one ordinary representative plate first, not a deliberately difficult edge c
 
 1. Start **Run full-column batch**.
 2. Confirm the first-column dialog shows the correct Experiment/Set/Type context.
-3. Position the whole-column rectangle on the first column; press Z/OK.
-4. Move the same rectangle to the last column; press Z/OK.
+3. Position the whole-column rectangle on the first column; press Z/OK. If only a tiny correction is needed, use ImageJ's native arrow-key ROI nudge (Alt+arrow resizes a rectangle one pixel) instead of precision dragging.
+4. Move the same rectangle to the last column; use the same native fine adjustment if useful, then press Z/OK.
 5. Inspect the complete proposed grid overlay.
 6. If the overlay is sensible, accept once. If it is clearly wrong, retry once with a better whole-column placement.
 7. Confirm the expected Top/Low crops are written and source pixels remain unchanged.
+
+The native arrow-key behavior is only an operating convenience; it is not a separate validation requirement and the AHK helper does not forward or reinterpret those keys.
 
 ### What this single test is actually validating
 - Fiji `waitForUser` interaction with the whole-column rectangle;
