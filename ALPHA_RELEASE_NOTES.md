@@ -26,6 +26,10 @@ The new full-column Fiji interaction still needs one representative real desktop
 - Custom Pillow comparison/subset builder, preview-first multi-output rendering, raw-vs-presentation-normalized output, TXT processing logs/JSON output recipes, and GUI-selectable control source are planned after this alpha snapshot.
 - V10.2 workbook integration is deliberately deferred for later workflow discussion.
 
+## Launcher hotfix
+
+On 2026-08-21 the Windows launcher was patched to invoke `conda run` with `call`. Anaconda exposes `conda` through a batch/cmd entry point on common Windows installs; without `call`, installing Anaconda could cause `start_controller.cmd` to transfer control to conda and never reach its Python fallback. The alpha processing code itself was not otherwise advanced by this hotfix.
+
 ## First use
 
 1. Use `start_controller.cmd` on Windows.
