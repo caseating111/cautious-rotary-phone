@@ -21,17 +21,17 @@ class ControllerExtensionContractTests(unittest.TestCase):
         self.assertNotIn("Image.open", text)
         self.assertNotIn("subprocess.run", text)
 
-    def test_one_plate_proof_uses_dedicated_thin_adapter(self) -> None:
+    def test_one_plate_proof_uses_selectable_four_point_adapter(self) -> None:
         text = EXTENDED.read_text(encoding="utf-8")
         self.assertIn("run_one_plate_validation as one_plate_validation", text)
-        self.assertIn('text="Run one-plate full-column proof (choose plate)"', text)
+        self.assertIn('text="Run one-plate 4-point proof (choose plate)"', text)
         start = text.index("def run_one_plate_validation")
         end = text.index("def standard_output_count", start)
         block = text[start:end]
         self.assertIn("one_plate_validation.proof_is_running()", block)
         self.assertIn("filedialog.askopenfilename(", block)
-        self.assertIn('filename = Path(chosen).name', block)
-        self.assertIn("selected = one_plate_validation.run(filename)", block)
+        self.assertIn("filename = Path(chosen).name", block)
+        self.assertIn("selected = one_plate_validation.run(filename, legacy=True)", block)
         self.assertIn("authoritative prepare-only results remain available", block)
         self.assertIn("normal pending list remains complete", block)
         self.assertIn("no second Fiji instance was launched", block)
@@ -72,7 +72,7 @@ class ControllerExtensionContractTests(unittest.TestCase):
         self.assertIn("write_output_records(", block)
         self.assertIn("selection=selection", block)
         self.assertIn("required_crops=required", block)
-        self.assertIn("display_mode=\"raw\"", block)
+        self.assertIn('display_mode="raw"', block)
         self.assertIn("Processing Log", block)
 
     def test_processing_logs_button_uses_human_facing_folder_name(self) -> None:
