@@ -138,7 +138,12 @@ def expected_crop_prefixes(grid_path: Path, images_path: Path) -> set[str]:
     return prefixes
 
 
-def validate_unique_crop_matches(root: Path, grid_path: Path, images_path: Path) -> list[Path]:
+def validate_unique_crop_matches(
+    root: Path,
+    grid_path: Path,
+    images_path: Path,
+    allow_missing: bool = False,
+) -> list[Path]:
     if not root.is_dir():
         raise SystemExit(f"Crop output folder not found: {root}")
 
@@ -149,6 +154,7 @@ def validate_unique_crop_matches(root: Path, grid_path: Path, images_path: Path)
     )
     prefixes = expected_crop_prefixes(grid_path, images_path)
     ambiguous: list[tuple[str, list[Path]]] = []
+    missing: list[str] = []
     selected: list[Path] = []
 
     for prefix in sorted(prefixes):
@@ -157,6 +163,8 @@ def validate_unique_crop_matches(root: Path, grid_path: Path, images_path: Path)
             ambiguous.append((prefix, matches))
         elif len(matches) == 1:
             selected.append(matches[0])
+        else:
+            missing.append(prefix)
 
     if ambiguous:
         lines = [
@@ -169,6 +177,20 @@ def validate_unique_crop_matches(root: Path, grid_path: Path, images_path: Path)
         if len(ambiguous) > 20:
             lines.append(f"... plus {len(ambiguous) - 20} more ambiguous logical cells")
         raise SystemExit("\n".join(lines))
+
+    if missing and not allow_missing:
+        lines = [
+            f"Incomplete crop inputs: {len(missing)} expected logical crop(s) are missing.",
+            "Complete/rerun crop generation before producing final Pillow outputs.",
+            "For an intentionally partial output, run this wrapper manually with --allow-missing.",
+        ]
+        lines.extend(f"  - {prefix}*" for prefix in missing[:20])
+        if len(missing) > 20:
+            lines.append(f"... plus {len(missing) - 20} more missing logical crops")
+        raise SystemExit("\n".join(lines))
+
+    if missing:
+        print(f"Allowing intentional partial Pillow output with {len(missing)} missing logical crop(s).")
 
     return sorted(set(selected))
 
@@ -278,6 +300,11 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("script", choices=sorted(SCRIPTS))
     parser.add_argument("--no-open-output", action="store_true")
+    parser.add_argument(
+        "--allow-missing",
+        action="store_true",
+        help="allow intentionally partial Pillow outputs instead of requiring every metadata-defined crop",
+    )
     args = parser.parse_args()
 
     config = load_config()
@@ -289,6 +316,7 @@ def main() -> None:
         crop_root,
         Path(config["grid_csv"]),
         Path(config["images_csv"]),
+        allow_missing=args.allow_missing,
     )
     normalize_crop_orientation(
         crop_root,
