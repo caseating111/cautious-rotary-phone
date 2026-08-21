@@ -28,11 +28,12 @@ class PresentationRangeInventoryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             image_root = root / "images"
+            source_folder = image_root / "setA"
             ranges = root / "app" / "display-ranges"
-            image_root.mkdir()
+            source_folder.mkdir(parents=True)
             ranges.mkdir(parents=True)
-            source1 = image_root / "plate1.jpg"
-            source2 = image_root / "plate2.jpg"
+            source1 = source_folder / "plate1.jpg"
+            source2 = source_folder / "plate2.jpg"
             source1.write_bytes(b"one")
             source2.write_bytes(b"two")
             archive = ranges / "plate1.jpg.txt"
@@ -58,10 +59,11 @@ class PresentationRangeInventoryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             image_root = root / "images"
+            source_folder = image_root / "setA"
             ranges = root / "app" / "display-ranges"
-            image_root.mkdir()
+            source_folder.mkdir(parents=True)
             ranges.mkdir(parents=True)
-            source = image_root / "plate1.jpg"
+            source = source_folder / "plate1.jpg"
             source.write_bytes(b"one")
             archive = ranges / "plate1.jpg.txt"
             archive.write_text(
