@@ -98,6 +98,16 @@ class CustomMatrixSelectionTests(unittest.TestCase):
         self.assertTrue(any("e1_s0_salt_01_top_" in key for key in contract))
         self.assertFalse(any("_ypda_" in key for key in contract))
 
+    def test_output_postcondition_rejects_missing_selected_matrix(self) -> None:
+        output = self.root / "partial"
+        output.mkdir()
+        (output / "E1_S0_Top_MATRIX.png").write_bytes(b"placeholder")
+
+        with self.assertRaises(SystemExit) as caught:
+            custom.validate_matrix_outputs(output, self.selection)
+        self.assertIn("E2_A_Top_MATRIX.png", str(caught.exception))
+        self.assertIn("Partial output was left for inspection", str(caught.exception))
+
     def test_end_to_end_builds_only_selected_top_matrices_from_existing_crops(self) -> None:
         # The custom route intentionally works from already-existing crops; source images are not needed here.
         for exp, set_name, columns in (("E1", "S0", [(1, "alpha"), (3, "gamma")]), ("E2", "A", [(2, "delta"), (4, "zeta")])):
