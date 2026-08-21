@@ -10,7 +10,7 @@ Root `AGENTS.md` and `docs/development/IMPLEMENTATION_DECISION_POLICY.md` are bi
 ## Active architecture
 - **Fiji/ImageJ:** interactive alignment, native profile/peak tools, display/QC and crop export.
 - **AHK v2:** hotkeys/dialog positioning only.
-- **Pillow:** existing matrix/label jobs behind validated disposable staging.
+- **Pillow:** established matrix/label jobs behind validated disposable staging.
 - **Tkinter controller:** paths/config/orchestration only.
 - **Original four-point Fiji macro:** immediate preserved fallback.
 
@@ -64,14 +64,14 @@ Important parser-safety rules:
 ## Pillow output route and safety
 `tools/run_existing_pillow_from_config.py` is the only supported config-driven entry point for matrices, all-strains, all-strains-dedup and labelled-individual outputs.
 
-Before running an existing Pillow job it:
+Before running an established Pillow job it:
 1. validates project CSVs;
 2. reuses source/crop preflight when `image_root` is configured;
 3. derives exact current crop filenames;
 4. blocks duplicate/missing exact-current inputs;
 5. stages only validated exact crops into a disposable directory;
 6. normalizes orientation on staged copies only;
-7. disables legacy in-place rotation in the configured child copy;
+7. disables/retains disabled legacy in-place rotation in the configured child copy;
 8. runs the established composition script;
 9. requires one new **non-empty** top-level output directory;
 10. removes staging automatically.
@@ -80,16 +80,24 @@ Real `crop_output` files are not rotated or rewritten. `matrix_output` must be o
 
 The old unsafe `tools/run_matrices_from_config.py` direct route is removed and guarded against reintroduction.
 
-### Labelled-individual repair
-The reused `folder per strain all indiv strains labelled.py` already created a unique `MATRIX_OUTPUT` folder but accidentally wrote strain folders directly beside it under `MATRIX_ROOT`. This one path bug is now fixed: the same labelled files go under the intended unique output folder. Label rendering/parsing behavior is unchanged.
+### Labelled-individual repairs
+`existing scripts clean/folder per strain all indiv strains labelled.py` keeps its established Pillow rendering but has three narrow handoff repairs:
 
-- `tests/test_label_individual_output.py` protects the path contract.
-- `tests/test_label_individual_end_to_end.py` proves staged crops -> one labelled output folder -> expected strain subfolders.
+1. It already created a unique `MATRIX_OUTPUT` but accidentally wrote strain folders beside it under `MATRIX_ROOT`; outputs now go under the intended unique folder.
+2. The shared staged adapter expects an explicit rotation setting. The label job now declares `ROTATE_IMAGES_90_CCW = False` but has no internal rotation function; staged orientation remains wrapper-owned.
+3. Normal controller/staged use no longer reparses Experiment/Set from generated filenames. It constructs the exact current filename -> strain map from authoritative `grid.csv` + `images.csv`. The old underscore-fragile filename parser remains fallback-only for direct legacy inputs outside that current map.
 
-The other three Pillow jobs were audited and already use their unique top-level output folders correctly.
+Regression coverage:
+- `tests/test_label_individual_output.py`: unique output root, adapter rotation contract, metadata-first lookup before legacy fallback.
+- `tests/test_label_individual_end_to_end.py`: underscore-bearing Experiment/Set/Type metadata, exact staged crops, zero skips, one output tree, expected strain subfolders, and unchanged real crop dimensions.
+- the pre-existing all-alias adapter test now also has a valid `label-individual` rotation-setting contract to configure.
 
-### Deferred legacy semantic question
-`docs/development/DEFERRED_LEGACY_OUTPUT_QUESTIONS.md` records one non-blocking mismatch in `allstrainmatrix extra WT removed.py`: comments say prefer E2/B WT controls, executable logic and output naming point to E2/A. Do not guess/change that biological selection without stronger workflow evidence.
+The other three Pillow jobs were audited and already use their unique top-level output folders and structured metadata-based crop lookup correctly.
+
+### Deferred legacy semantics/polish
+`docs/development/DEFERRED_LEGACY_OUTPUT_QUESTIONS.md` records two non-blocking legacy issues that should not drive speculative rewrites:
+- extra-WT-removed comments say E2/B while executable logic/output naming point to E2/A; do not guess the intended biological control source;
+- standard `make_matrices.py` computes optional WT highlight colour but does not pass it to the strain-label drawing call; default is off and controller does not expose it.
 
 ## Visibility
 `fiji/apply_global_visibility.ijm` uses outside-grid robust background + inside-grid high percentile and applies one whole-image display range for QC while preserving quantitative source pixels. Keep this display/QC-only until a concrete derived-output requirement exists.
@@ -109,7 +117,7 @@ If native `Array.findMaxima()` fails on a representative plate after one sensibl
 ## Automated checks / environment limitation
 `.github/workflows/python-glue-tests.yml` runs compileall plus unittest discovery on pushes to `workflow-dev` and PRs with Pillow installed.
 
-This ChatGPT execution environment cannot obtain a local checkout because outbound GitHub DNS is unavailable. The exposed GitHub status/run APIs also do not provide a reliable direct-push CI result here. Do not claim a whole-suite pass from this environment; rely on individual static/contract reasoning and repository CI when visible elsewhere.
+This ChatGPT execution environment cannot obtain a local checkout because outbound GitHub DNS is unavailable. The exposed GitHub status/run APIs also do not provide a reliable direct-push CI result here. Do not claim a whole-suite pass from this environment; rely on repository CI when visible elsewhere and narrow deterministic/contract reasoning here.
 
 ## Pending minimal desktop validation — not a stop condition
 One representative real plate remains the important interactive uncertainty:
@@ -127,4 +135,4 @@ If it succeeds, one same-sized next plate checks both suggestion-only geometry c
 2. Perform the minimal representative desktop route in `MINIMAL_DESKTOP_VALIDATION.md`.
 3. If native peaks remain weak after one sensible retry, test BAR Find Peaks before custom detection.
 4. Continue deterministic setup/output/user-time improvements that can be proven without repeated manual testing.
-5. Keep metadata inference conservative; resolve the deferred WT-control source only from authoritative workflow evidence.
+5. Keep metadata inference conservative; resolve deferred legacy semantics only from authoritative workflow evidence.
