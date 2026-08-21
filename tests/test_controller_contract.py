@@ -83,6 +83,15 @@ class ControllerContractTests(unittest.TestCase):
             validator_error,
         )
 
+    def test_processing_settings_reject_non_finite_values_before_save(self) -> None:
+        text = CONTROLLER.read_text(encoding="utf-8")
+        settings_at = text.index("def open_processing_settings")
+        settings_block = text[settings_at : text.index("def validate_csvs", settings_at)]
+
+        self.assertIn("math.isfinite", settings_block)
+        self.assertIn("Processing settings must be finite numbers.", settings_block)
+        self.assertLess(settings_block.index("math.isfinite"), settings_block.index("self.save()"))
+
     def test_single_hotkey_helper_covers_full_column_and_four_point_dialogs(self) -> None:
         text = AHK_HELPER.read_text(encoding="utf-8")
         for title in ("1 / 2", "2 / 2", "Alignment QC", "1 / 4", "2 / 4", "3 / 4", "4 / 4", "ALL DONE"):
