@@ -32,7 +32,13 @@ def load_config(
 ) -> dict:
     if not CONFIG_FILE.is_file():
         raise SystemExit(f"Config not found: {CONFIG_FILE}")
-    data = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+    try:
+        data = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise SystemExit(f"Could not read config.json: {exc}") from exc
+    if not isinstance(data, dict):
+        raise SystemExit("config.json must contain a JSON object of named settings.")
+
     required = [
         "image_root",
         "crop_output",
