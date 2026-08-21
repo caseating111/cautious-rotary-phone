@@ -49,6 +49,17 @@ class OnePlateValidationTests(unittest.TestCase):
             with self.assertRaises(SystemExit):
                 proof.patch_prepared_macro("other = 1;\n", target)
 
+    def test_roi_click_adapter_removes_internal_click_box_but_keeps_qc_boxes(self) -> None:
+        source = proof.batch.enhance_four_point_macro(proof.batch.SOURCE_MACRO.read_text(encoding="utf-8"))
+        patched = proof.patch_roi_click_interaction(source)
+        self.assertNotIn("CLICK_ROI = 108", patched)
+        self.assertNotIn("makeRectangle(round(viewW / 2 - CLICK_ROI", patched)
+        self.assertIn('run("Select None")', patched)
+        self.assertIn("Use ROI 1-click tools", patched)
+        self.assertIn("QC_W = w;", patched)
+        self.assertIn("QC_H = h;", patched)
+        self.assertIn("Overlay.drawRect(qcX - QC_W / 2", patched)
+
     def test_running_proof_blocks_second_launch_before_prepare(self) -> None:
         class RunningProcess:
             def poll(self):
@@ -84,7 +95,9 @@ class OnePlateValidationTests(unittest.TestCase):
                 proof.batch, "CONFIGURED_LEGACY_MACRO", configured
             ), patch.object(proof, "PROOF_IMAGES_CSV", proof_csv), patch.object(
                 proof, "PROOF_LEGACY_MACRO", proof_macro
-            ), patch.object(proof.subprocess, "run", return_value=completed) as run_mock:
+            ), patch.object(proof, "patch_roi_click_interaction", side_effect=lambda text: text), patch.object(
+                proof.subprocess, "run", return_value=completed
+            ) as run_mock:
                 built, selected = proof.prepare("plate2.jpg", legacy=True)
 
             self.assertEqual(built, proof_macro)
