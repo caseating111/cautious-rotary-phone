@@ -57,7 +57,6 @@ class ControllerContractTests(unittest.TestCase):
 
     def test_preflight_dialog_summary_avoids_repeating_long_saved_report(self) -> None:
         long_output = "BATCH PREFLIGHT\n" + ("detail line\n" * 200)
-
         ready = preflight_dialog_text(0, 7, long_output, report_exists=True)
         self.assertIn("Pending images: 7", ready)
         self.assertIn("Full details are saved", ready)
@@ -86,10 +85,7 @@ class ControllerContractTests(unittest.TestCase):
         self.assertNotIn("detail line", summary)
 
         validator_error = "CSV validation FAILED\n- images.csv row 2: bad metadata"
-        self.assertEqual(
-            preparation_error_text(validator_error, report_exists=True),
-            validator_error,
-        )
+        self.assertEqual(preparation_error_text(validator_error, report_exists=True), validator_error)
 
     def test_processing_settings_reject_non_finite_values_before_save(self) -> None:
         text = CONTROLLER.read_text(encoding="utf-8")
@@ -102,9 +98,19 @@ class ControllerContractTests(unittest.TestCase):
 
     def test_single_hotkey_helper_covers_full_column_and_four_point_dialogs(self) -> None:
         text = AHK_HELPER.read_text(encoding="utf-8")
-        for title in ("1 / 2", "2 / 2", "Alignment QC", "1 / 4", "2 / 4", "3 / 4", "4 / 4", "ALL DONE"):
+        for title in (
+            "1 / 2",
+            "2 / 2",
+            "Alignment QC",
+            "Full-grid QC",
+            "1 / 4",
+            "2 / 4",
+            "3 / 4",
+            "4 / 4",
+            "ALL DONE",
+        ):
             self.assertIn(f'"{title}"', text)
-        self.assertIn('#HotIf WinExist("Alignment QC")', text)
+        self.assertIn('WinExist("Alignment QC") || WinExist("Full-grid QC")', text)
         self.assertIn("Esc::ExitApp", text)
 
     def test_hotkey_shell_hook_only_moves_new_placement_dialogs(self) -> None:
