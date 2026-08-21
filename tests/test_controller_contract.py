@@ -110,7 +110,8 @@ class ControllerContractTests(unittest.TestCase):
     def test_hotkey_shell_hook_only_moves_new_placement_dialogs(self) -> None:
         text = AHK_HELPER.read_text(encoding="utf-8")
         shell_at = text.index("ShellMessage(")
-        shell_block = text[shell_at : text.index("AlignmentDialogExists()", shell_at)]
+        timer_at = text.index("SetTimer(KeepWorkflowWindowsVisible", shell_at)
+        shell_block = text[shell_at:timer_at]
 
         self.assertIn("HSHELL_WINDOWCREATED = 1", shell_block)
         self.assertIn("PlacementDialogTitle(title)", shell_block)
