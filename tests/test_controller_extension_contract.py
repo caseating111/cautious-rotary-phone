@@ -29,8 +29,9 @@ class ControllerExtensionContractTests(unittest.TestCase):
         end = text.index("def standard_output_count", start)
         block = text[start:end]
         self.assertIn("selected = one_plate_validation.run()", block)
-        self.assertIn("production pending metadata was not changed", block)
-        self.assertIn("normal pending list and production batch macro were left unchanged", block)
+        self.assertIn("authoritative prepare-only results remain available", block)
+        self.assertIn("proof uses a separate one-row CSV and separate macro copy", block)
+        self.assertIn("normal batch remains complete rather than being truncated", block)
 
     def test_standard_multi_output_jobs_preview_first_by_default_with_opt_out(self) -> None:
         text = EXTENDED.read_text(encoding="utf-8")
