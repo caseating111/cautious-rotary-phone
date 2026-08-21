@@ -100,7 +100,7 @@ class StandardPillowPreviewTests(unittest.TestCase):
         patches = self.runtime_patches()
         with patches[0], patches[1], patches[2], patches[3]:
             result = preview.build_preview("label-individual")
-            preview_root = result.image.parents[2]
+            preview_root = result.image.parents[3]
             try:
                 self.assertTrue(result.image.is_file())
                 output_images = [
