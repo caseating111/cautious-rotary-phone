@@ -182,6 +182,12 @@ def prepare(filename: str | None = None, *, legacy: bool = False) -> tuple[Path,
 def run(filename: str | None = None, *, legacy: bool = False) -> dict[str, str]:
     global _ACTIVE_FIJI_PROCESS
 
+    if filename and proof_plate_is_open(filename):
+        raise SystemExit(
+            f"The selected proof plate is already open in Fiji: {Path(filename).name}. "
+            "Finish or close that plate before launching the same proof again. Other open Fiji images do not block this action."
+        )
+
     macro, selected = prepare(filename, legacy=legacy)
     config = batch.load_config(require_fiji=True, require_fiji_handoff_paths=not legacy)
     fiji = Path(config["fiji_executable"])
