@@ -38,6 +38,14 @@
 - Controller checks preflight before AHK/Fiji and launches nothing when the batch is already complete.
 - `tests/test_preflight_batch.py` provides stdlib synthetic coverage for missing, complete and duplicate-basename cases.
 
+### Metadata reconciliation
+- `tools/reconcile_images_csv.py` scans the production source folders, preserves existing authoritative metadata, leaves new metadata blank rather than guessed, and preserves manual draft metadata across rescans.
+- Duplicate source basenames, duplicate metadata rows and stale metadata rows are explicitly flagged.
+- `tools/finalize_images_reconciliation.py` creates a separate `images_candidate.csv` only when current source rows are complete, basenames are unique and the existing project validator accepts the candidate.
+- Authoritative `images.csv` is never overwritten automatically.
+- `tools/metadata_review_gui.py` keeps reconcile/edit/finalize/open actions outside the main processing GUI; the controller has one launcher button.
+- `tests/test_metadata_reconciliation.py` covers authoritative metadata preservation, draft persistence, stale-row exclusion and incomplete candidate rejection.
+
 ### Existing Pillow output reuse
 - `tools/run_existing_pillow_from_config.py` exposes the existing matrix/all-strain/individual-label scripts through saved controller paths without rewriting their image logic.
 - Existing scripts remain authoritative; configured temporary copies only replace their shared explicit path block.
@@ -51,20 +59,18 @@
 - `tools/run_fiji_macro_from_config.py` is a thin visibility launcher using ImageJ's macro argument mechanism and supports dry-run command inspection.
 - `environment.yml` remains minimal (`python`, `pillow`).
 
-## Active branch: metadata-reconciliation
-Purpose: reduce repeated `images.csv` setup while preserving original filenames and existing metadata as authoritative.
+## Active branch: output-navigation
+Purpose: remove unnecessary Explorer navigation after deterministic Pillow output jobs without changing any image-generation logic.
 
 Current changes:
-- `tools/reconcile_images_csv.py` scans the same immediate source folders as production and reconciles them against the configured `images.csv`;
-- existing authoritative metadata is copied unchanged for known source basenames;
-- new source images are listed with blank Experiment/Set/Type fields rather than guessed from filenames;
-- duplicate source basenames, duplicate metadata rows and stale metadata rows are explicitly flagged;
-- `~/.cautious-rotary-phone/images_reconciliation.csv` is non-destructive and preserves manually entered draft metadata across rescans;
-- `tools/finalize_images_reconciliation.py` converts current-source review rows into a separate `images_candidate.csv` only when all metadata is complete, basenames are unique and the existing cross-file validator accepts the candidate;
-- authoritative `images.csv` is never overwritten automatically;
-- `tools/metadata_review_gui.py` provides a small reconcile/edit/finalize/open window rather than expanding processing inside the main GUI;
-- the main controller has one Metadata review launcher button;
-- `tests/test_metadata_reconciliation.py` covers preservation of existing metadata, draft persistence, stale-row exclusion from candidates and incomplete metadata rejection.
+- `tools/run_existing_pillow_from_config.py` snapshots child output directories before/after the existing script runs;
+- on success it identifies the actual newly created output folder, writes it to `~/.cautious-rotary-phone/last_pillow_output.txt`, and opens that folder by default on Windows;
+- `--no-open-output` preserves command-line control when automatic navigation is unwanted;
+- no legacy Pillow script is modified;
+- `tests/test_output_navigation.py` covers new-directory detection and the no-new-output case.
+
+## Legacy audit result
+- The remaining unwrapped `existing scripts clean/pythonfileaudit.py` is an E2/B-specific diagnostic and is superseded by the generic preflight/reconciliation tooling; do not expose or expand it unless a concrete missing use case appears.
 
 ## Pending manual validation (not a stop condition)
 - Desktop Fiji interaction for ROI preset patch and whole-column placement/QC.
@@ -73,7 +79,7 @@ Current changes:
 - Confirm the installed Fiji desktop launcher accepts a fourth command-line macro argument for the config-driven visibility shortcut; direct dialog launch remains fallback.
 
 ## Highest-value next routes
-1. Audit remaining existing Pillow/output scripts for reusable entry points/settings rather than adding new image-processing implementations.
-2. Add output-folder/open-result convenience only where it reduces actual navigation burden.
+1. Reduce repeated batch navigation/cleanup only where it composes with existing output folders and does not obscure files.
+2. Inspect AHK/Fiji interaction for small safe keyboard-efficiency improvements while preserving manual first/last-column oversight.
 3. Research/reuse Fiji/BAR profile/peak alternatives only if native `Array.findMaxima()` proves weak on real plates; do not build a custom colony detector first.
-4. Keep metadata inference conservative: use filename/folder heuristics only if a future real-data sample demonstrates a stable, user-verifiable pattern worth exploiting.
+4. Keep metadata inference conservative unless real data demonstrates a stable, verifiable pattern worth exploiting.
