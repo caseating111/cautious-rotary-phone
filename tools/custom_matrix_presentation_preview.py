@@ -10,19 +10,18 @@ try:
     from tools import run_existing_pillow_from_config as pillow_adapter
     from tools.custom_matrix_preview import PreviewResult, representative_selection
     from tools.presentation_normalize import normalize_staged_crops
-    from tools.run_custom_matrix_job import inspect_selected_inputs
+    from tools.run_custom_matrix_job import validate_selected_freshness
 except ModuleNotFoundError:
     import custom_matrix_selection as custom
     import run_existing_pillow_from_config as pillow_adapter
     from custom_matrix_preview import PreviewResult, representative_selection
     from presentation_normalize import normalize_staged_crops
-    from run_custom_matrix_job import inspect_selected_inputs
+    from run_custom_matrix_job import validate_selected_freshness
 
 
 def build_preview(selection: dict) -> PreviewResult:
     selection = custom.normalize_selection(selection)
     config = pillow_adapter.load_config()
-    inspect_selected_inputs(config, selection)
     preview_selection = representative_selection(selection)
     range_dir = custom.APP_DIR / "display-ranges"
     image_root_value = str(config.get("image_root", "")).strip()
@@ -41,6 +40,7 @@ def build_preview(selection: dict) -> PreviewResult:
         selected_crops = pillow_adapter.validate_unique_crop_matches(
             Path(config["crop_output"]), filtered["grid_csv"], filtered["images_csv"], allow_missing=False
         )
+        validate_selected_freshness(config, filtered, selected_crops)
         staged_root = root / "crops"
         staged_crops = pillow_adapter.stage_selected_crops(selected_crops, staged_root)
         pillow_adapter.normalize_crop_orientation(
