@@ -1,7 +1,7 @@
 // Capture the current axis-aligned rectangle ROI as the active ROI preset.
 // The lightweight Python GUI can import this file and save it as a named preset.
 
-if (nImages == 0)
+if (nImages() == 0)
     exit("Open an image and draw/select a rectangle ROI first.");
 
 if (selectionType() != 0)
