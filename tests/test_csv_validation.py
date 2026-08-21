@@ -19,18 +19,20 @@ class CsvValidationTests(unittest.TestCase):
         conditions_path.write_text(conditions, encoding="utf-8")
         return grid_path, images_path, conditions_path, temp
 
-    def test_header_whitespace_is_normalized_consistently(self) -> None:
+    def test_header_whitespace_is_rejected_cleanly_before_downstream_scripts(self) -> None:
         paths = self.write_project(
             ' Experiment , Set , GridCols , Column , Strain \nE1,A,1,1,WT\n',
-            ' Filename , Experiment , Set , Type \nplate1.jpg,E1,A,YPDA\n',
-            ' Order , Type \n1,YPDA\n',
+            'Filename,Experiment,Set,Type\nplate1.jpg,E1,A,YPDA\n',
+            'Order,Type\n1,YPDA\n',
         )
         grid, images, conditions, temp = paths
         try:
             problems = validate(grid, images, conditions)
         finally:
             temp.cleanup()
-        self.assertEqual(problems, [])
+        self.assertEqual(len(problems), 1)
+        self.assertIn("column names must not contain surrounding whitespace", problems[0])
+        self.assertIn("' Experiment '", problems[0])
 
     def test_duplicate_headers_after_trimming_are_rejected_cleanly(self) -> None:
         paths = self.write_project(
