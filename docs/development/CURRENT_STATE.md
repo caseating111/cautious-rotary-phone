@@ -19,13 +19,15 @@
 
 ### Visibility / crop handoff
 - `fiji/apply_global_visibility.ijm`: robust outside-grid background + inside-grid high percentile -> one whole-image display range while preserving quantitative source pixels.
+- It can consume saved visibility settings through ImageJ macro arguments; direct no-argument launch retains the original dialog.
 - `fiji/export_crops_from_alignment.ijm`: accepted alignment -> established Top/Low crop naming and geometry.
 
 ### Existing production batch composition
 - `tools/run_full_column_batch_from_config.py` reuses the existing production Fiji batch macro's folder/CSV/image loop.
 - Only the old four-point calibration/export section is replaced in a temporary configured copy by calls to `full_column_alignment.ijm` and `export_crops_from_alignment.ijm`.
 - The original four-point macro remains untouched as fallback.
-- CSV semantic preflight runs before Fiji starts.
+- CSV semantic validation runs before Fiji starts.
+- Saved crop width/height and alignment tolerance are consumed only where metadata already supplies the grid column count.
 
 ### Existing Pillow output reuse
 - `tools/run_existing_pillow_from_config.py` exposes the existing matrix/all-strain/individual-label scripts through saved controller paths without rewriting their image logic.
@@ -35,28 +37,33 @@
 - `tools/validate_project_csvs.py` checks required headers, grid completeness/duplicates, consistent GridCols, unique source filenames, image->grid references and condition-order coverage.
 
 ### Lightweight controller / conda
-- `tools/workflow_controller.py` persists paths, validates CSVs, launches Fiji/AHK/Pillow helpers and ROI presets.
+- `tools/workflow_controller.py` persists paths/settings, validates CSVs, launches Fiji/AHK/Pillow helpers and ROI presets.
+- Processing settings cover alignment tolerance, crop size and global visibility values without moving processing into the GUI.
+- `tools/run_fiji_macro_from_config.py` is a thin visibility launcher using ImageJ's macro argument mechanism and supports dry-run command inspection.
 - `environment.yml` remains minimal (`python`, `pillow`).
 
-## Active branch: runtime-settings-presets
-Purpose: remove repeated numeric-setting entry without moving processing into the GUI.
+## Active branch: batch-preflight-report
+Purpose: prevent wasted manual alignment and make interrupted/repeated batches resume around already-complete plates using the existing production macro rather than new batch logic.
 
 Current changes:
-- controller processing-settings dialog for alignment tolerance, crop width/height and visibility parameters;
-- composed batch consumes saved crop dimensions and peak tolerance;
-- global visibility accepts optional ImageJ macro args but keeps its existing dialog when launched normally;
-- `tools/run_fiji_macro_from_config.py` passes saved settings through Fiji/ImageJ's own macro-argument mechanism;
-- example config includes the settings;
-- dry-run support exists for the config-aware Fiji launcher so command composition can be checked without opening Fiji.
+- `tools/preflight_batch.py` mirrors the production macro's actual immediate-subfolder, basename-metadata and output-naming semantics;
+- reports discovered/mapped/unmapped images, duplicate source basenames, missing source rows, expected/existing/missing crop counts and missing grid definitions;
+- persists `~/.cautious-rotary-phone/last_preflight.txt`;
+- writes `~/.cautious-rotary-phone/pending_images.csv` containing only mapped images whose full expected Top/Low output set is not already present;
+- the composed batch uses that pending-only metadata file, so the unchanged production macro naturally skips fully completed images on rerun;
+- partially complete images remain pending and are re-aligned/re-exported as one plate, avoiding risky per-crop resume logic;
+- controller exposes Batch preflight and runs it before starting AHK/Fiji;
+- if everything is already complete, the controller starts no AHK/Fiji process;
+- `tests/test_preflight_batch.py` covers missing outputs, exact complete outputs and duplicate source basenames using only synthetic temporary files and stdlib unittest.
 
 ## Pending manual validation (not a stop condition)
 - Desktop Fiji interaction for ROI preset patch and whole-column placement/QC.
 - Visual confirmation of native profile peak selection on representative real plates.
 - End-to-end composed batch on representative images.
-- Confirm Fiji desktop invocation accepts the config-launcher's fourth command-line macro argument as expected; direct dialog-driven macros remain fallback if this behaves differently on the installed Fiji build.
+- Confirm the installed Fiji desktop launcher accepts a fourth command-line macro argument for the config-driven visibility shortcut; direct dialog launch remains fallback.
 
-## Highest-value next routes after settings merge
-1. Reduce metadata setup effort: inspect filename/folder patterns and provide safe assisted `images.csv` generation/reconciliation rather than requiring repeated hand entry. Preserve original filenames as authoritative metadata.
-2. Add a lightweight batch preflight/report that counts discovered source images vs `images.csv`, expected crop count and existing outputs before manual alignment starts.
-3. Research/reuse Fiji/BAR profile/peak tools only if native `Array.findMaxima()` proves weak on real plates; do not build a custom colony detector first.
-4. Inspect current output/annotation scripts for additional shared path/settings blocks that can be exposed through the same generic adapters rather than new implementations.
+## Highest-value next routes
+1. Safely reduce metadata setup effort: generate a reconciliation/template from discovered source images plus existing `images.csv`, preserving original filenames and existing metadata rather than guessing or overwriting authoritative data.
+2. Continue auditing existing output/annotation scripts for shared path/settings blocks suitable for the same thin adapters.
+3. Research/reuse Fiji/BAR profile/peak alternatives only if native `Array.findMaxima()` proves weak on real plates; do not build a custom colony detector first.
+4. Keep batch resume plate-level unless real use demonstrates that per-crop resume would materially save time; current plate-level re-export is simpler and safer.
