@@ -158,7 +158,8 @@ def build_macro(config: dict) -> Path:
 
         runMacro(
             "{macro_path(ALIGNMENT_MACRO)}",
-            "cols=" + gridCols + ";rows=8;tolerance={config['alignment_tolerance']}"
+            "cols=" + gridCols + ";rows=8;tolerance={config['alignment_tolerance']};" +
+            "context=" + experiment + "/" + setName + "/" + typeName
         );
 
         runMacro(
