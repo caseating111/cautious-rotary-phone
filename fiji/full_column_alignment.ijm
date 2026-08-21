@@ -1,4 +1,4 @@
-// Full-column alignment using native ImageJ peak tools plus explicit row averaging.
+// Full-column alignment using native ImageJ profile + peak tools.
 // Manual first/last column placement remains authoritative.
 // Optional macro argument: cols=10;rows=8;tolerance=0.08
 
@@ -118,10 +118,25 @@ function isTallRectangle() {
     return w > 0 && h > w;
 }
 
-// ImageJ getProfile() uses the normal horizontal rectangular profile unless Alt
-// is down. The workflow needs row peaks down a tall column, so average each ROI
-// row explicitly. getValue() also returns intensity for RGB compatibility.
+// ImageJ natively averages wide straight-line profiles. Convert the user's tall
+// rectangle temporarily to a vertical line whose width equals the rectangle,
+// retrieve the compiled ImageJ profile, then restore the rectangle. Keep the
+// explicit pixel loop only as a fallback if the native profile is unexpectedly
+// empty/short on a particular installation or image type.
 function getVerticalAverageProfile(x, y, w, h) {
+    centerX = x + w / 2;
+    lineBottom = y + h - 1;
+    makeLine(centerX, y, centerX, lineBottom, w);
+    profile = getProfile();
+    makeRectangle(x, y, w, h);
+
+    if (profile.length >= h - 2)
+        return profile;
+
+    return getVerticalAverageProfileFallback(x, y, w, h);
+}
+
+function getVerticalAverageProfileFallback(x, y, w, h) {
     profile = newArray(h);
     for (yy = 0; yy < h; yy++) {
         sum = 0;
