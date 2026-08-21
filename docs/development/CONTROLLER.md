@@ -1,16 +1,37 @@
 # Workflow controller
 
-`tools/workflow_controller.py` is intentionally orchestration-only. It stores paths/settings in `~/.cautious-rotary-phone/config.json` and coordinates the existing Fiji, AHK and Pillow routes rather than moving their processing into Tkinter.
+`tools/workflow_controller.py` is intentionally orchestration-only. The active Windows launcher uses `tools/workflow_controller_extended.py`, which subclasses that base controller and adds only lightweight project/output conveniences. Paths/settings are stored in `~/.cautious-rotary-phone/config.json`; Fiji, AHK and Pillow remain the processing tools.
 
 Current controls include:
 - CSV semantic validation and metadata review;
 - ROI presets, synthetic Fiji test plate, direct full-column alignment and configured global visibility;
 - batch preflight, saved preflight-report opening, full-column batch launch and one-click access to the preserved four-point fallback;
 - the four Pillow output jobs through the safe staging wrapper;
+- focused custom matrices, preferred-WT output and processing-log navigation in the extended controller;
 - start/stop for the lightweight AHK alignment helper;
 - direct opening of source, crop, matrix and config folders.
 
-Selecting any one of the exact project CSV names (`grid.csv`, `images.csv`, `condition_order.csv`) discovers exact-named siblings in the same folder and fills only still-empty controller fields. Existing path choices are never overwritten.
+## Automatic project layout
+
+The extended controller can derive the routine filesystem paths from one selected **Image root**. A project prefix field defaults to the local current date in `dd.mm.yy` form but accepts ordinary text such as `ATTEMPT1`.
+
+For source folder `MyImages` and prefix `21.08.26`, initialization creates:
+
+```text
+21.08.26_MyImages/
+    Raw/MyImages/      <- original selected folder moved intact here
+    Crops/
+    Matrices/
+    Metadata/
+```
+
+The controller then fills `image_root`, `crop_output` and `matrix_output` automatically. It shows the planned paths and asks once before a new move because the absolute source path changes. No image file is rewritten/recompressed/copied; the source folder itself is renamed/moved into `Raw` on the same filesystem. Existing initialized Raw layouts are reconnected idempotently. Existing target project directories are never merged automatically.
+
+If a configured project CSV lived inside the moved source tree, its configured path is rebased to the same relative location under `Raw`. External CSV paths remain unchanged. Exact-named CSVs may also be discovered from the project/metadata/original-parent locations when their controller fields are still blank.
+
+Detailed contract: `docs/development/PROJECT_LAYOUT.md`.
+
+Selecting any one of the exact project CSV names (`grid.csv`, `images.csv`, `condition_order.csv`) discovers exact-named siblings in the same folder and fills only still-empty controller fields. Existing path choices are never overwritten except when a configured path itself had to be rebased because its containing source folder was moved by the explicit project-layout action.
 
 **Processing settings** remain simple persisted values rather than a processing subsystem. The controller rejects non-finite alignment/visibility values, non-positive crop dimensions/tolerance, too-small background bands and invalid visibility percentiles before saving them; downstream launch wrappers still validate their own inputs as a second boundary.
 
@@ -32,4 +53,13 @@ The retired direct matrix launcher is intentionally absent; the controller must 
 
 The controller does not reimplement Fiji/ImageJ operations, ROI 1-Click Tools, Pillow composition logic or AHK workflow logic. Child Python helpers use the same Python/conda interpreter as the controller.
 
-Root `start_controller.cmd` is the thin Windows double-click entry point and prefers the repository's named conda environment when available.
+## Windows launcher order
+
+Root `start_controller.cmd` is the thin Windows double-click entry point. It now tries, in order:
+1. an already-active `cautious-rotary-phone` conda environment;
+2. `conda run -n cautious-rotary-phone`;
+3. Anaconda `base`;
+4. Windows `py -3`;
+5. PATH `python`.
+
+`conda run` is invoked with `call` because Windows Anaconda commonly exposes `conda` through a batch/cmd entry point. Without `call`, installing Anaconda can transfer control away from the launcher and prevent all later fallbacks from running.
