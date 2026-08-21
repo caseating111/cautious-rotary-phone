@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import subprocess
 from pathlib import Path
 
@@ -22,9 +23,14 @@ def load_config(path: Path) -> dict:
 
 
 def visibility_argument(config: dict) -> str:
-    band = float(config.get("visibility_band", 50))
-    black_offset = float(config.get("visibility_black_offset", 3))
-    high_percentile = float(config.get("visibility_high_percentile", 99.5))
+    try:
+        band = float(config.get("visibility_band", 50))
+        black_offset = float(config.get("visibility_black_offset", 3))
+        high_percentile = float(config.get("visibility_high_percentile", 99.5))
+    except (TypeError, ValueError) as exc:
+        raise SystemExit(f"Invalid visibility setting: {exc}") from exc
+    if not all(math.isfinite(value) for value in (band, black_offset, high_percentile)):
+        raise SystemExit("Visibility settings must be finite numbers.")
     if band < 1:
         raise SystemExit("visibility_band must be at least 1.")
     if high_percentile <= 0 or high_percentile > 100:
