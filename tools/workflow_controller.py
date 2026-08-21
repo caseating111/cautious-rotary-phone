@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import json
 import os
 import subprocess
@@ -11,6 +12,7 @@ from tkinter import filedialog, messagebox, ttk
 REPO_ROOT = Path(__file__).resolve().parents[1]
 APP_DIR = Path.home() / ".cautious-rotary-phone"
 CONFIG_FILE = APP_DIR / "config.json"
+PENDING_IMAGES_CSV = APP_DIR / "pending_images.csv"
 
 DEFAULTS = {
     "fiji_executable": "",
@@ -196,14 +198,22 @@ class Controller(tk.Tk):
             messagebox.showerror("CSV validation", output)
             self.status.set("CSV validation found issues.")
 
-    def run_batch_preflight(self) -> None:
+    def batch_preflight_result(self) -> tuple[int, str, int]:
         self.save()
         script = REPO_ROOT / "tools" / "preflight_batch.py"
         result = subprocess.run([sys.executable, str(script)], capture_output=True, text=True, check=False)
         output = (result.stdout + result.stderr).strip() or "No preflight output."
-        if result.returncode == 0:
+        pending = 0
+        if PENDING_IMAGES_CSV.is_file():
+            with PENDING_IMAGES_CSV.open("r", encoding="utf-8-sig", newline="") as handle:
+                pending = sum(1 for _ in csv.DictReader(handle))
+        return result.returncode, output, pending
+
+    def run_batch_preflight(self) -> None:
+        returncode, output, pending = self.batch_preflight_result()
+        if returncode == 0:
             messagebox.showinfo("Batch preflight", output)
-            self.status.set("Batch preflight ready.")
+            self.status.set(f"Batch preflight ready: {pending} image(s) pending.")
         else:
             messagebox.showerror("Batch preflight", output)
             self.status.set("Batch preflight found items to resolve.")
@@ -249,6 +259,16 @@ class Controller(tk.Tk):
         self.launch_python("tools/run_fiji_macro_from_config.py", macro_alias)
 
     def run_full_column_batch(self) -> None:
+        returncode, output, pending = self.batch_preflight_result()
+        if returncode != 0:
+            messagebox.showerror("Batch preflight", output)
+            self.status.set("Batch not started: preflight needs attention.")
+            return
+        if pending == 0:
+            messagebox.showinfo("Batch", "All expected crops already exist. No alignment work is needed.")
+            self.status.set("Batch already complete.")
+            return
+
         ahk = Path(self.vars["ahk_executable"].get().strip())
         if ahk.is_file() and (not self.ahk_process or self.ahk_process.poll() is not None):
             self.start_ahk()
