@@ -55,24 +55,33 @@ class OnePlateValidationTests(unittest.TestCase):
         self.assertNotIn("CLICK_ROI = 108", patched)
         self.assertNotIn("makeRectangle(round(viewW / 2 - CLICK_ROI", patched)
         self.assertIn('run("Select None")', patched)
-        self.assertIn("Use ROI 1-click tools", patched)
+        self.assertIn('setTool("Rotated Rectangle Click Tool")', patched)
         self.assertIn("QC_W = w;", patched)
         self.assertIn("QC_H = h;", patched)
         self.assertIn("Overlay.drawRect(qcX - QC_W / 2", patched)
 
-    def test_running_proof_blocks_second_launch_before_prepare(self) -> None:
+    def test_live_fiji_process_does_not_block_another_proof(self) -> None:
         class RunningProcess:
             def poll(self):
                 return None
 
+        selected = {"Filename": "plate1.jpg"}
+        fake_config = {"fiji_executable": str(Path(__file__))}
+        launched = object()
+
         with patch.object(proof, "_ACTIVE_FIJI_PROCESS", RunningProcess()), patch.object(
-            proof, "prepare"
-        ) as prepare:
-            self.assertTrue(proof.proof_is_running())
-            with self.assertRaises(SystemExit) as caught:
-                proof.run("plate1.jpg")
-            self.assertIn("still running", str(caught.exception))
-            prepare.assert_not_called()
+            proof, "prepare", return_value=(Path("proof.ijm"), selected)
+        ) as prepare, patch.object(
+            proof.batch, "load_config", return_value=fake_config
+        ), patch.object(
+            proof.subprocess, "Popen", return_value=launched
+        ) as popen:
+            self.assertFalse(proof.proof_is_running())
+            result = proof.run("plate1.jpg")
+
+        self.assertEqual(result, selected)
+        prepare.assert_called_once_with("plate1.jpg", legacy=False)
+        popen.assert_called_once()
 
     def test_four_point_prepare_uses_legacy_configured_macro(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
