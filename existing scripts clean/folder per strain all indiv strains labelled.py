@@ -299,6 +299,7 @@ def safe_folder_name(name):
         name = name.replace(old, new)
 
     return name
+
 def main():
 
     grid = read_grid()
@@ -365,10 +366,10 @@ def main():
         strain_folder = safe_folder_name(strain)
 
         output_path = (
-            MATRIX_ROOT
+            MATRIX_OUTPUT
             / strain_folder
             / path.name
-)
+        )
         try:
 
             with Image.open(path) as im:
@@ -414,7 +415,7 @@ def main():
 
     print(
         "\nOutput folder:\n"
-        f"{MATRIX_ROOT}"
+        f"{MATRIX_OUTPUT}"
     )
 
 
