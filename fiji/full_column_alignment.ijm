@@ -10,6 +10,8 @@ if (nImages() == 0)
 sourceTitle = getTitle();
 sourceWidth = getWidth();
 sourceHeight = getHeight();
+sourceDirectory = getInfo("image.directory");
+sourceFilename = getInfo("image.filename");
 
 arg = getArgument();
 if (lengthOf(arg) > 0) {
@@ -103,7 +105,7 @@ while (accepted == 0) {
 
     if (action == "Accept") {
         accepted = 1;
-        saveLastAlignment(sourceTitle, sourceWidth, sourceHeight, leftX, rightX, leftRows, rightRows, gridCols, gridRows, roiW, roiH);
+        saveLastAlignment(sourceTitle, sourceWidth, sourceHeight, sourceDirectory, sourceFilename, leftX, rightX, leftRows, rightRows, gridCols, gridRows, roiW, roiH);
     } else {
         Overlay.remove;
     }
@@ -210,7 +212,7 @@ function readPresetValue(key, fallback) {
     return fallback;
 }
 
-function saveLastAlignment(sourceTitle, sourceWidth, sourceHeight, leftX, rightX, leftRows, rightRows, cols, rows, boxW, boxH) {
+function saveLastAlignment(sourceTitle, sourceWidth, sourceHeight, sourceDirectory, sourceFilename, leftX, rightX, leftRows, rightRows, cols, rows, boxW, boxH) {
     dir = getDirectory("home") + ".cautious-rotary-phone" + File.separator;
     if (!File.exists(dir))
         File.makeDirectory(dir);
@@ -218,6 +220,8 @@ function saveLastAlignment(sourceTitle, sourceWidth, sourceHeight, leftX, rightX
     text = "source_title=" + sourceTitle + "\n" +
            "source_width=" + sourceWidth + "\n" +
            "source_height=" + sourceHeight + "\n" +
+           "source_directory=" + sourceDirectory + "\n" +
+           "source_filename=" + sourceFilename + "\n" +
            "grid_cols=" + cols + "\n" +
            "grid_rows=" + rows + "\n" +
            "roi_width=" + boxW + "\n" +
