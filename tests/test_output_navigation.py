@@ -5,7 +5,11 @@ import time
 import unittest
 from pathlib import Path
 
-from tools.run_existing_pillow_from_config import child_directories, newest_new_directory
+from tools.run_existing_pillow_from_config import (
+    child_directories,
+    cleanup_empty_new_directories,
+    newest_new_directory,
+)
 
 
 class OutputNavigationTests(unittest.TestCase):
@@ -26,6 +30,27 @@ class OutputNavigationTests(unittest.TestCase):
             (root / "old").mkdir()
             directories = child_directories(root)
             self.assertIsNone(newest_new_directory(directories, directories))
+
+    def test_failed_output_cleanup_removes_only_new_empty_directories(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            old = root / "old"
+            old.mkdir()
+            before = child_directories(root)
+
+            empty = root / "empty-new"
+            nonempty = root / "partial-new"
+            empty.mkdir()
+            nonempty.mkdir()
+            (nonempty / "partial.png").write_bytes(b"partial")
+            after = child_directories(root)
+
+            removed, retained = cleanup_empty_new_directories(before, after)
+            self.assertEqual(removed, [empty.resolve()])
+            self.assertEqual(retained, [nonempty.resolve()])
+            self.assertFalse(empty.exists())
+            self.assertTrue((nonempty / "partial.png").is_file())
+            self.assertTrue(old.is_dir())
 
 
 if __name__ == "__main__":
