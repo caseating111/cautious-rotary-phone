@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import shutil
 import tkinter as tk
 from pathlib import Path
@@ -41,23 +42,47 @@ def ensure_dir() -> None:
     APP_DIR.mkdir(parents=True, exist_ok=True)
 
 
+def validated_preset(preset: dict) -> dict[str, float]:
+    try:
+        width = float(preset["width"])
+        height = float(preset["height"])
+        angle = float(preset.get("angle", 0))
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError(f"Preset width, height and angle must be numeric: {exc}") from exc
+    if not all(math.isfinite(value) for value in (width, height, angle)):
+        raise ValueError("Preset width, height and angle must be finite numbers.")
+    if width <= 0 or height <= 0:
+        raise ValueError("Width and height must be positive.")
+    return {"width": width, "height": height, "angle": angle}
+
+
 def read_active() -> dict[str, float]:
-    values: dict[str, float] = {}
+    values: dict[str, str] = {}
     if not ACTIVE_FILE.exists():
-        return values
-    for raw in ACTIVE_FILE.read_text(encoding="utf-8").splitlines():
+        return {}
+    try:
+        text = ACTIVE_FILE.read_text(encoding="utf-8")
+    except OSError:
+        return {}
+    for raw in text.splitlines():
         if "=" not in raw:
             continue
         key, value = raw.split("=", 1)
         if key in {"width", "height", "angle"}:
-            values[key] = float(value.strip())
-    return values
+            values[key] = value.strip()
+    if not {"width", "height"}.issubset(values):
+        return {}
+    try:
+        return validated_preset(values)
+    except ValueError:
+        return {}
 
 
 def write_active(preset: dict[str, float]) -> None:
+    clean = validated_preset(preset)
     ensure_dir()
     ACTIVE_FILE.write_text(
-        f"width={preset['width']}\nheight={preset['height']}\nangle={preset.get('angle', 0)}\n",
+        f"width={clean['width']}\nheight={clean['height']}\nangle={clean['angle']}\n",
         encoding="utf-8",
     )
 
@@ -69,7 +94,18 @@ def load_presets() -> dict[str, dict[str, float]]:
         data = json.loads(PRESETS_FILE.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
         return {}
-    return data if isinstance(data, dict) else {}
+    if not isinstance(data, dict):
+        return {}
+
+    clean: dict[str, dict[str, float]] = {}
+    for name, preset in data.items():
+        if not isinstance(name, str) or not isinstance(preset, dict):
+            continue
+        try:
+            clean[name] = validated_preset(preset)
+        except ValueError:
+            continue
+    return clean
 
 
 def save_presets(presets: dict[str, dict[str, float]]) -> None:
@@ -162,12 +198,13 @@ class App(tk.Tk):
         self.combo["values"] = sorted(self.presets)
 
     def current_values(self) -> dict[str, float]:
-        width = float(self.width.get())
-        height = float(self.height.get())
-        angle = float(self.angle.get())
-        if width <= 0 or height <= 0:
-            raise ValueError("Width and height must be positive.")
-        return {"width": width, "height": height, "angle": angle}
+        return validated_preset(
+            {
+                "width": self.width.get(),
+                "height": self.height.get(),
+                "angle": self.angle.get(),
+            }
+        )
 
     def load_selected(self, _event=None) -> None:
         preset = self.presets.get(self.name.get())
