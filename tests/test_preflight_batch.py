@@ -49,6 +49,9 @@ class PreflightBatchTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temp.cleanup()
 
+    def normalized_lines(self, lines: list[str]) -> list[str]:
+        return [line.replace("\\", "/") for line in lines]
+
     def save_expected_png(self, path: Path, size: tuple[int, int] = (130, 546)) -> None:
         Image.new("L", size, 10).save(path)
 
@@ -162,7 +165,10 @@ class PreflightBatchTests(unittest.TestCase):
         self.assertFalse(problems)
         self.assertEqual([row["Filename"] for row in pending], ["plate1.jpg"])
         self.assertIn("PARTIALLY COMPLETE PLATES — NON-BLOCKING (1)", lines)
-        self.assertIn("- setA/plate1.jpg: 1 current, 3 missing/stale/incompatible", lines)
+        self.assertIn(
+            "- setA/plate1.jpg: 1 current, 3 missing/stale/incompatible",
+            self.normalized_lines(lines),
+        )
 
     def test_unrelated_unexpected_crop_png_is_reported_but_not_blocking(self) -> None:
         output_dir = self.crop_root / "setA"
@@ -173,7 +179,7 @@ class PreflightBatchTests(unittest.TestCase):
         self.assertFalse(problems)
         self.assertEqual([row["Filename"] for row in pending], ["plate1.jpg"])
         self.assertIn("OTHER UNEXPECTED CROP PNGS — NON-BLOCKING (1)", lines)
-        self.assertIn("- setA/old_stale_crop.png", lines)
+        self.assertIn("- setA/old_stale_crop.png", self.normalized_lines(lines))
 
     def test_old_strain_suffix_crop_is_classified_as_superseded_non_blocking(self) -> None:
         output_dir = self.crop_root / "old"
@@ -186,7 +192,7 @@ class PreflightBatchTests(unittest.TestCase):
         self.assertFalse(problems)
         self.assertEqual([row["Filename"] for row in pending], ["plate1.jpg"])
         self.assertIn("SUPERSEDED PREFIX CROPS — NON-BLOCKING (1)", lines)
-        self.assertIn("- old/E1_A_YPDA_01_Top_OLD_STRAIN.png", lines)
+        self.assertIn("- old/E1_A_YPDA_01_Top_OLD_STRAIN.png", self.normalized_lines(lines))
         self.assertTrue(any("final Pillow jobs stage only exact current filenames" in line for line in lines))
 
     def test_semicolon_in_source_folder_is_blocking_before_fiji_handoff(self) -> None:
@@ -238,7 +244,8 @@ class PreflightBatchTests(unittest.TestCase):
         self.assertEqual(sorted(row["Filename"] for row in pending), ["plate1.jpg", "plate2.jpg"])
         self.assertNotIn("OUTPUT PATH COLLISIONS (WINDOWS CASE-INSENSITIVE) (4)", lines)
         self.assertIn("DOWNSTREAM CROP-NAME AMBIGUITIES (4)", lines)
-        self.assertTrue(any("setA/plate1.jpg" in line and "setB/plate2.jpg" in line for line in lines))
+        normalized = self.normalized_lines(lines)
+        self.assertTrue(any("setA/plate1.jpg" in line and "setB/plate2.jpg" in line for line in normalized))
 
     def test_distinct_type_in_different_source_folder_remains_unambiguous(self) -> None:
         second_folder = self.image_root / "setB"
