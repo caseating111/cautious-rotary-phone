@@ -103,16 +103,12 @@ for (folderIndex = 0; folderIndex < folders.length; folderIndex++) {
         if (!isImageFile(fileName))
             continue;
 
-        fullPath = inputDir + fileName;
-
-        open(fullPath);
-
-        sourceTitle = getTitle();
-
 
         // ====================================================
-        // LOOK UP IMAGE IN images.csv
+        // LOOK UP IMAGE IN images.csv BEFORE OPENING IT
         // Handles quoted filenames containing commas.
+        // In controller use, images.csv is the pending-only preflight file,
+        // so completed images are skipped without paying the Fiji open/close cost.
         // ====================================================
 
         experiment = "";
@@ -126,8 +122,8 @@ for (folderIndex = 0; folderIndex < folders.length; folderIndex++) {
             if (lengthOf(line) == 0)
                 continue;
 
-            quotedPrefix = "\"" + sourceTitle + "\",";
-            plainPrefix  = sourceTitle + ",";
+            quotedPrefix = "\"" + fileName + "\",";
+            plainPrefix  = fileName + ",";
 
             if (startsWith(line, quotedPrefix)) {
 
@@ -155,19 +151,23 @@ for (folderIndex = 0; folderIndex < folders.length; folderIndex++) {
         }
 
 
-        // If absent from table, skip instead of killing batch
+        // If absent from table, skip before opening instead of paying the
+        // image load/close cost. This is especially useful for resumed batches.
         if (experiment == "") {
 
             print(
                 "SKIPPED - not found in images.csv: " +
-                sourceTitle
+                fileName
             );
 
-            close();
             skippedImages++;
 
             continue;
         }
+
+        fullPath = inputDir + fileName;
+        open(fullPath);
+        sourceTitle = getTitle();
 
 
         // ====================================================
