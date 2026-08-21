@@ -85,6 +85,25 @@ def sibling_project_csvs(selected: Path) -> dict[str, Path]:
     }
 
 
+def preflight_dialog_text(returncode: int, pending: int, output: str, report_exists: bool) -> str:
+    if returncode == 0:
+        if pending:
+            summary = f"Ready for batch alignment.\n\nPending images: {pending}"
+        else:
+            summary = "Preflight is clean. No images are currently pending."
+        if report_exists:
+            summary += f"\n\nFull details are saved to:\n{PREFLIGHT_REPORT}"
+        return summary
+
+    if report_exists:
+        return (
+            "Preflight found blocking items.\n\n"
+            "Open the saved preflight report for the full actionable list:\n"
+            f"{PREFLIGHT_REPORT}"
+        )
+    return output or "Batch preflight failed without a saved report or error message."
+
+
 class Controller(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
@@ -250,11 +269,12 @@ class Controller(tk.Tk):
 
     def run_batch_preflight(self) -> None:
         returncode, output, pending = self.batch_preflight_result()
+        dialog = preflight_dialog_text(returncode, pending, output, PREFLIGHT_REPORT.is_file())
         if returncode == 0:
-            messagebox.showinfo("Batch preflight", output)
+            messagebox.showinfo("Batch preflight", dialog)
             self.status.set(f"Batch preflight ready: {pending} image(s) pending.")
         else:
-            messagebox.showerror("Batch preflight", output)
+            messagebox.showerror("Batch preflight", dialog)
             self.status.set("Batch preflight found items to resolve. Open the saved report for easier review.")
 
     def fiji_executable(self) -> Path | None:
