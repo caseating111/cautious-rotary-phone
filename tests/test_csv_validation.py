@@ -74,6 +74,33 @@ class CsvValidationTests(unittest.TestCase):
             temp.cleanup()
         self.assertEqual(problems, [])
 
+    def test_filename_surrounding_whitespace_is_rejected_before_fiji_lookup(self) -> None:
+        paths = self.write_project(
+            'Experiment,Set,GridCols,Column,Strain\nE1,A,1,1,WT\n',
+            'Filename,Experiment,Set,Type\n" plate1.jpg ",E1,A,YPDA\n',
+            'Order,Type\n1,YPDA\n',
+        )
+        grid, images, conditions, temp = paths
+        try:
+            problems = validate(grid, images, conditions)
+        finally:
+            temp.cleanup()
+        self.assertTrue(any("Filename contains surrounding whitespace" in problem for problem in problems))
+        self.assertTrue(any("would skip this source" in problem for problem in problems))
+
+    def test_quoted_comma_filename_with_no_surrounding_space_remains_supported(self) -> None:
+        paths = self.write_project(
+            'Experiment,Set,GridCols,Column,Strain\nE1,A,1,1,WT\n',
+            'Filename,Experiment,Set,Type\n"plate, 1.jpg",E1,A,YPDA\n',
+            'Order,Type\n1,YPDA\n',
+        )
+        grid, images, conditions, temp = paths
+        try:
+            problems = validate(grid, images, conditions)
+        finally:
+            temp.cleanup()
+        self.assertEqual(problems, [])
+
     def test_comma_in_image_metadata_is_rejected(self) -> None:
         paths = self.write_project(
             'Experiment,Set,GridCols,Column,Strain\nE1,A,1,1,WT\n',
