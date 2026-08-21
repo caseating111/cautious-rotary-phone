@@ -69,6 +69,24 @@ class SourceAdapterTests(unittest.TestCase):
                 for item in reversed(patches):
                     item.stop()
 
+    def test_pillow_wrapper_stops_on_project_validator_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            validator = root / "validator.py"
+            validator.write_text(
+                "print('synthetic invalid metadata')\nraise SystemExit(1)\n",
+                encoding="utf-8",
+            )
+            config = {
+                "grid_csv": str(root / "grid.csv"),
+                "images_csv": str(root / "images.csv"),
+                "condition_order_csv": str(root / "condition_order.csv"),
+            }
+            with patch.object(pillow_adapter, "VALIDATOR", validator):
+                with self.assertRaises(SystemExit) as caught:
+                    pillow_adapter.validate_csvs(config)
+            self.assertIn("synthetic invalid metadata", str(caught.exception))
+
     def test_all_pillow_aliases_only_replace_shared_path_block(self) -> None:
         config = {
             "crop_output": "C:/project/crops",
