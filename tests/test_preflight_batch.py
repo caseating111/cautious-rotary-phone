@@ -164,7 +164,7 @@ class PreflightBatchTests(unittest.TestCase):
         self.assertIn("PARTIALLY COMPLETE PLATES — NON-BLOCKING (1)", lines)
         self.assertIn("- setA/plate1.jpg: 1 current, 3 missing/stale/incompatible", lines)
 
-    def test_unexpected_crop_png_is_reported_but_not_blocking(self) -> None:
+    def test_unrelated_unexpected_crop_png_is_reported_but_not_blocking(self) -> None:
         output_dir = self.crop_root / "setA"
         output_dir.mkdir()
         (output_dir / "old_stale_crop.png").write_bytes(b"derived placeholder")
@@ -172,8 +172,22 @@ class PreflightBatchTests(unittest.TestCase):
         lines, problems, pending = build_report(self.config)
         self.assertFalse(problems)
         self.assertEqual([row["Filename"] for row in pending], ["plate1.jpg"])
-        self.assertIn("UNEXPECTED CROP PNGS — NON-BLOCKING (1)", lines)
+        self.assertIn("OTHER UNEXPECTED CROP PNGS — NON-BLOCKING (1)", lines)
         self.assertIn("- setA/old_stale_crop.png", lines)
+
+    def test_old_strain_suffix_crop_is_classified_as_superseded_non_blocking(self) -> None:
+        output_dir = self.crop_root / "old"
+        output_dir.mkdir()
+        superseded = output_dir / "E1_A_YPDA_01_Top_OLD_STRAIN.png"
+        self.save_expected_png(superseded, (546, 130))
+
+        lines, problems, pending = build_report(self.config)
+
+        self.assertFalse(problems)
+        self.assertEqual([row["Filename"] for row in pending], ["plate1.jpg"])
+        self.assertIn("SUPERSEDED PREFIX CROPS — NON-BLOCKING (1)", lines)
+        self.assertIn("- old/E1_A_YPDA_01_Top_OLD_STRAIN.png", lines)
+        self.assertTrue(any("final Pillow jobs stage only exact current filenames" in line for line in lines))
 
     def test_semicolon_in_source_folder_is_blocking_before_fiji_handoff(self) -> None:
         unsafe = self.image_root / "set;unsafe"
