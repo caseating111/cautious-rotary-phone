@@ -1,19 +1,21 @@
 from __future__ import annotations
 
+import argparse
 import csv
 import json
 from collections import Counter, defaultdict
 from pathlib import Path
 
 APP_DIR = Path.home() / ".cautious-rotary-phone"
-CONFIG_FILE = APP_DIR / "config.json"
+DEFAULT_CONFIG = APP_DIR / "config.json"
+DEFAULT_REPORT = APP_DIR / "last_preflight.txt"
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".tif", ".tiff"}
 
 
-def load_config() -> dict:
-    if not CONFIG_FILE.is_file():
-        raise SystemExit(f"Config not found: {CONFIG_FILE}")
-    data = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+def load_config(path: Path) -> dict:
+    if not path.is_file():
+        raise SystemExit(f"Config not found: {path}")
+    data = json.loads(path.read_text(encoding="utf-8"))
     required = ["image_root", "crop_output", "grid_csv", "images_csv"]
     missing = [key for key in required if not str(data.get(key, "")).strip()]
     if missing:
@@ -68,17 +70,13 @@ def expected_output_names(meta: dict[str, str], grid_rows: list[dict[str, str]])
     for row in sorted(grid_rows, key=lambda item: int(item["Column"])):
         column = int(row["Column"])
         strain = safe_name(row["Strain"])
-        prefix = (
-            f"{meta['Experiment']}_{meta['Set']}_{meta['Type']}_"
-            f"{column:02d}"
-        )
+        prefix = f"{meta['Experiment']}_{meta['Set']}_{meta['Type']}_{column:02d}"
         names.append(f"{prefix}_Top_{strain}.png")
         names.append(f"{prefix}_Low_{strain}.png")
     return names
 
 
-def main() -> int:
-    config = load_config()
+def build_report(config: dict) -> tuple[list[str], bool]:
     image_root = Path(config["image_root"])
     crop_root = Path(config["crop_output"])
     grid = read_csv(Path(config["grid_csv"]))
@@ -129,13 +127,15 @@ def main() -> int:
             else:
                 missing_crops += 1
 
-    print("BATCH PREFLIGHT")
-    print(f"Source folders: {len([p for p in image_root.iterdir() if p.is_dir()])}")
-    print(f"Source images discovered: {len(sources)}")
-    print(f"Mapped source images ready: {mapped_images}")
-    print(f"Expected crops for ready images: {expected_crops}")
-    print(f"Existing expected crops: {existing_crops}")
-    print(f"Crops still to produce: {missing_crops}")
+    lines = [
+        "BATCH PREFLIGHT",
+        f"Source folders: {len([p for p in image_root.iterdir() if p.is_dir()])}",
+        f"Source images discovered: {len(sources)}",
+        f"Mapped source images ready: {mapped_images}",
+        f"Expected crops for ready images: {expected_crops}",
+        f"Existing expected crops: {existing_crops}",
+        f"Crops still to produce: {missing_crops}",
+    ]
 
     sections = [
         ("UNMAPPED SOURCE IMAGES", [str(path.relative_to(image_root)) for path in unmapped_sources]),
@@ -150,16 +150,25 @@ def main() -> int:
         if not items:
             continue
         problems = True
-        print(f"\n{title} ({len(items)})")
-        for item in items:
-            print(f"- {item}")
+        lines.extend(["", f"{title} ({len(items)})"])
+        lines.extend(f"- {item}" for item in items)
 
-    if problems:
-        print("\nSTATUS: CHECK ITEMS ABOVE BEFORE BATCH ALIGNMENT")
-        return 1
+    lines.extend(["", "STATUS: CHECK ITEMS ABOVE BEFORE BATCH ALIGNMENT" if problems else "STATUS: READY FOR BATCH ALIGNMENT"])
+    return lines, problems
 
-    print("\nSTATUS: READY FOR BATCH ALIGNMENT")
-    return 0
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
+    parser.add_argument("--report", type=Path, default=DEFAULT_REPORT)
+    args = parser.parse_args()
+
+    lines, problems = build_report(load_config(args.config))
+    text = "\n".join(lines) + "\n"
+    print(text, end="")
+    args.report.parent.mkdir(parents=True, exist_ok=True)
+    args.report.write_text(text, encoding="utf-8")
+    return 1 if problems else 0
 
 
 if __name__ == "__main__":
