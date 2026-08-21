@@ -43,6 +43,33 @@ class CsvCasefoldContractTests(unittest.TestCase):
             problems = validate(*paths)
             self.assertTrue(any("case-insensitive Type collision" in item for item in problems))
 
+    def test_underscore_boundary_collision_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            paths = self.write_project(
+                Path(temp),
+                "Experiment,Set,GridCols,Column,Strain\n"
+                "E1,A_B,1,1,WT\n"
+                "E1_A,B,1,1,mut1\n",
+                "Filename,Experiment,Set,Type\n"
+                "plate1.jpg,E1,A_B,YPDA\n",
+                "Order,Type\n1,YPDA\n",
+            )
+            problems = validate(*paths)
+            self.assertTrue(any("ambiguous Pillow lookup prefix" in item for item in problems))
+            self.assertTrue(any("E1/A_B/YPDA" in item and "E1_A/B/YPDA" in item for item in problems))
+
+    def test_unambiguous_underscores_remain_supported(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            paths = self.write_project(
+                Path(temp),
+                "Experiment,Set,GridCols,Column,Strain\n"
+                "EXP_1,SET_A,1,1,WT\n",
+                "Filename,Experiment,Set,Type\n"
+                "plate1.jpg,EXP_1,SET_A,YPDA_CONTROL\n",
+                "Order,Type\n1,YPDA_CONTROL\n",
+            )
+            self.assertEqual(validate(*paths), [])
+
     def test_distinct_identifiers_remain_valid(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             paths = self.write_project(
