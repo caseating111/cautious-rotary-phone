@@ -106,7 +106,7 @@ def expected_crop_prefixes(grid_path: Path, images_path: Path) -> set[str]:
     return prefixes
 
 
-def validate_unique_crop_matches(root: Path, grid_path: Path, images_path: Path) -> None:
+def validate_unique_crop_matches(root: Path, grid_path: Path, images_path: Path) -> list[Path]:
     if not root.is_dir():
         raise SystemExit(f"Crop output folder not found: {root}")
 
@@ -117,11 +117,14 @@ def validate_unique_crop_matches(root: Path, grid_path: Path, images_path: Path)
     )
     prefixes = expected_crop_prefixes(grid_path, images_path)
     ambiguous: list[tuple[str, list[Path]]] = []
+    selected: list[Path] = []
 
     for prefix in sorted(prefixes):
         matches = [path for path in files if path.stem.lower().startswith(prefix)]
         if len(matches) > 1:
             ambiguous.append((prefix, matches))
+        elif len(matches) == 1:
+            selected.append(matches[0])
 
     if ambiguous:
         lines = [
@@ -135,8 +138,16 @@ def validate_unique_crop_matches(root: Path, grid_path: Path, images_path: Path)
             lines.append(f"... plus {len(ambiguous) - 20} more ambiguous logical cells")
         raise SystemExit("\n".join(lines))
 
+    return sorted(set(selected))
 
-def normalize_crop_orientation(root: Path, crop_width: int, crop_height: int) -> tuple[int, int, int]:
+
+def normalize_crop_orientation(
+    root: Path,
+    crop_width: int,
+    crop_height: int,
+    paths: list[Path] | None = None,
+    strict: bool = False,
+) -> tuple[int, int, int]:
     if not root.is_dir():
         raise SystemExit(f"Crop output folder not found: {root}")
     if crop_width == crop_height:
@@ -146,9 +157,10 @@ def normalize_crop_orientation(root: Path, crop_width: int, crop_height: int) ->
     rotated_size = (crop_height, crop_width)
     rotated = 0
     already_ready = 0
-    unexpected = 0
+    unexpected_paths: list[Path] = []
 
-    for path in sorted(root.rglob("*.png")):
+    candidates = paths if paths is not None else sorted(root.rglob("*.png"))
+    for path in candidates:
         if not path.is_file():
             continue
         try:
@@ -156,20 +168,36 @@ def normalize_crop_orientation(root: Path, crop_width: int, crop_height: int) ->
                 size = image.size
                 if size == unrotated:
                     turned = image.transpose(Image.Transpose.ROTATE_90)
-                    turned.save(path)
+                    if path.suffix.lower() in {".jpg", ".jpeg"}:
+                        if turned.mode not in ("RGB", "L"):
+                            turned = turned.convert("RGB")
+                        turned.save(path, quality=95)
+                    else:
+                        turned.save(path)
                     rotated += 1
                 elif size == rotated_size:
                     already_ready += 1
                 else:
-                    unexpected += 1
+                    unexpected_paths.append(path)
         except OSError as exc:
             raise SystemExit(f"Could not inspect/rotate crop {path}: {exc}") from exc
 
+    if strict and unexpected_paths:
+        details = "\n".join(
+            f"  - {path.relative_to(root)}" for path in unexpected_paths[:20]
+        )
+        if len(unexpected_paths) > 20:
+            details += f"\n  ... plus {len(unexpected_paths) - 20} more"
+        raise SystemExit(
+            "Current crop inputs have dimensions that match neither the configured crop size "
+            f"{unrotated} nor its rotated size {rotated_size}:\n{details}"
+        )
+
     print(
         "Crop orientation: "
-        f"rotated {rotated}, already ready {already_ready}, unexpected-size PNGs {unexpected}"
+        f"rotated {rotated}, already ready {already_ready}, unexpected-size inputs {len(unexpected_paths)}"
     )
-    return rotated, already_ready, unexpected
+    return rotated, already_ready, len(unexpected_paths)
 
 
 def child_directories(root: Path) -> set[Path]:
@@ -205,8 +233,18 @@ def main() -> None:
 
     config = load_config()
     crop_root = Path(config["crop_output"])
-    validate_unique_crop_matches(crop_root, Path(config["grid_csv"]), Path(config["images_csv"]))
-    normalize_crop_orientation(crop_root, config["crop_width"], config["crop_height"])
+    selected_crops = validate_unique_crop_matches(
+        crop_root,
+        Path(config["grid_csv"]),
+        Path(config["images_csv"]),
+    )
+    normalize_crop_orientation(
+        crop_root,
+        config["crop_width"],
+        config["crop_height"],
+        paths=selected_crops,
+        strict=True,
+    )
 
     output_root = Path(config["matrix_output"])
     before = child_directories(output_root)
