@@ -133,6 +133,19 @@ def validate(grid_path: Path, images_path: Path, conditions_path: Path) -> list[
             problems.append(f"grid.csv row {line_no}: empty Strain")
         groups[key].append((declared, column, row["Strain"]))
 
+    folded_grid_keys: dict[tuple[str, str], tuple[str, str]] = {}
+    for key in groups:
+        folded = (key[0].casefold(), key[1].casefold())
+        previous = folded_grid_keys.get(folded)
+        if previous is not None and previous != key:
+            problems.append(
+                "grid.csv: case-insensitive Experiment/Set collision "
+                f"{previous[0]}/{previous[1]} vs {key[0]}/{key[1]}; "
+                "the reused Pillow crop lookup lowercases filename prefixes and cannot distinguish these safely"
+            )
+        else:
+            folded_grid_keys[folded] = key
+
     for (exp, set_name), entries in sorted(groups.items()):
         declared_values = {entry[0] for entry in entries}
         if len(declared_values) != 1:
@@ -157,6 +170,7 @@ def validate(grid_path: Path, images_path: Path, conditions_path: Path) -> list[
 
     condition_orders: dict[int, str] = {}
     condition_names: set[str] = set()
+    folded_condition_names: dict[str, str] = {}
     for line_no, row in enumerate(conditions, 2):
         output_filename_unsafe(problems, "condition_order.csv", line_no, row, ["Type"])
         name = row["Type"]
@@ -174,6 +188,15 @@ def validate(grid_path: Path, images_path: Path, conditions_path: Path) -> list[
             )
         if name in condition_names:
             problems.append(f"condition_order.csv: duplicate Type {name!r}")
+        folded = name.casefold()
+        previous = folded_condition_names.get(folded)
+        if previous is not None and previous != name:
+            problems.append(
+                "condition_order.csv: case-insensitive Type collision "
+                f"{previous!r} vs {name!r}; the reused Pillow crop lookup lowercases condition prefixes and would treat them as the same condition"
+            )
+        else:
+            folded_condition_names[folded] = name
         condition_orders[order] = name
         condition_names.add(name)
 
