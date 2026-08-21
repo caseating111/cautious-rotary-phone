@@ -6,6 +6,7 @@ import json
 import math
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 APP_DIR = Path.home() / ".cautious-rotary-phone"
@@ -148,6 +149,12 @@ def ensure_crop_output_root(config: dict) -> Path:
         raise SystemExit(f"Could not create crop output folder {root}: {exc}") from exc
     if not root.is_dir():
         raise SystemExit(f"Configured crop_output is not a directory: {root}")
+
+    try:
+        with tempfile.TemporaryDirectory(prefix=".workflow-write-test-", dir=root) as probe_dir:
+            Path(probe_dir, "probe.txt").write_text("ok\n", encoding="utf-8")
+    except OSError as exc:
+        raise SystemExit(f"Crop output folder is not writable: {root}: {exc}") from exc
     return root
 
 
