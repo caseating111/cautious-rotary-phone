@@ -27,10 +27,7 @@ START_MARKER = "        // ====================================================\
 END_MARKER = "        setBatchMode(false);"
 
 
-def load_config(
-    require_fiji: bool = True,
-    require_fiji_handoff_paths: bool = True,
-) -> dict:
+def load_config(require_fiji: bool = True, require_fiji_handoff_paths: bool = True) -> dict:
     if not CONFIG_FILE.is_file():
         raise SystemExit(f"Config not found: {CONFIG_FILE}")
     try:
@@ -39,27 +36,16 @@ def load_config(
         raise SystemExit(f"Could not read config.json: {exc}") from exc
     if not isinstance(data, dict):
         raise SystemExit("config.json must contain a JSON object of named settings.")
-
-    required = [
-        "image_root",
-        "crop_output",
-        "grid_csv",
-        "images_csv",
-        "condition_order_csv",
-    ]
+    required = ["image_root", "crop_output", "grid_csv", "images_csv", "condition_order_csv"]
     if require_fiji:
         required.insert(0, "fiji_executable")
     missing = [key for key in required if not str(data.get(key, "")).strip()]
     if missing:
         raise SystemExit("Missing config values: " + ", ".join(missing))
-
     if require_fiji_handoff_paths:
         for key in ("grid_csv", "crop_output"):
             if ";" in str(data[key]):
-                raise SystemExit(
-                    f"Configured {key} contains a semicolon, which conflicts with the composed Fiji macro-argument delimiter: {data[key]}"
-                )
-
+                raise SystemExit(f"Configured {key} contains a semicolon, which conflicts with the composed Fiji macro-argument delimiter: {data[key]}")
     try:
         data["alignment_tolerance"] = float(data.get("alignment_tolerance", 0.08))
         data["crop_width"] = int(data.get("crop_width", 130))
@@ -80,7 +66,6 @@ def validate_runtime_files(config: dict, require_fiji: bool, legacy: bool = Fals
     missing = [path for path in required_files if not path.is_file()]
     if missing:
         raise SystemExit("Required workflow file(s) missing:\n" + "\n".join(str(path) for path in missing))
-
     if require_fiji:
         fiji = Path(config.get("fiji_executable", ""))
         if not fiji.is_file():
@@ -88,18 +73,7 @@ def validate_runtime_files(config: dict, require_fiji: bool, legacy: bool = Fals
 
 
 def validate_csvs(config: dict) -> None:
-    result = subprocess.run(
-        [
-            sys.executable,
-            str(VALIDATOR),
-            str(config["grid_csv"]),
-            str(config["images_csv"]),
-            str(config["condition_order_csv"]),
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    result = subprocess.run([sys.executable, str(VALIDATOR), str(config["grid_csv"]), str(config["images_csv"]), str(config["condition_order_csv"])], capture_output=True, text=True, check=False)
     if result.returncode != 0:
         output = (result.stdout + result.stderr).strip()
         raise SystemExit(output or "CSV validation failed.")
@@ -112,28 +86,19 @@ def validate_legacy_grid_widths(config: dict) -> None:
     widths = sorted({int((row.get("GridCols") or "0").strip()) for row in rows})
     unsupported = [value for value in widths if value not in (10, 12)]
     if unsupported:
-        raise SystemExit(
-            "The preserved four-point fallback only supports its original 10- or 12-column grids. "
-            "Unsupported GridCols: " + ", ".join(str(value) for value in unsupported)
-        )
+        raise SystemExit("The preserved four-point fallback only supports its original 10- or 12-column grids. Unsupported GridCols: " + ", ".join(str(value) for value in unsupported))
 
 
-def run_preflight(legacy: bool = False) -> int:
-    args = [
-        sys.executable,
-        str(PREFLIGHT),
-        "--report",
-        str(PREFLIGHT_REPORT),
-        "--pending-images-csv",
-        str(PENDING_IMAGES_CSV),
-    ]
+def run_preflight(legacy: bool = False, require_fiji_handoff_paths: bool | None = None) -> int:
+    if require_fiji_handoff_paths is not None:
+        legacy = not require_fiji_handoff_paths
+    args = [sys.executable, str(PREFLIGHT), "--report", str(PREFLIGHT_REPORT), "--pending-images-csv", str(PENDING_IMAGES_CSV)]
     if legacy:
         args.append("--no-fiji-handoff-path-rules")
     result = subprocess.run(args, capture_output=True, text=True, check=False)
     output = (result.stdout + result.stderr).strip()
     if result.returncode != 0:
         raise SystemExit(output or f"Batch preflight failed. See {PREFLIGHT_REPORT}")
-
     with PENDING_IMAGES_CSV.open("r", encoding="utf-8-sig", newline="") as handle:
         pending = sum(1 for _ in csv.DictReader(handle))
     if pending == 0:
@@ -149,7 +114,6 @@ def ensure_crop_output_root(config: dict) -> Path:
         raise SystemExit(f"Could not create crop output folder {root}: {exc}") from exc
     if not root.is_dir():
         raise SystemExit(f"Configured crop_output is not a directory: {root}")
-
     try:
         with tempfile.TemporaryDirectory(prefix=".workflow-write-test-", dir=root) as probe_dir:
             Path(probe_dir, "probe.txt").write_text("ok\n", encoding="utf-8")
@@ -162,7 +126,7 @@ def macro_path(value: str | Path) -> str:
     return str(Path(value)).replace("\\", "/").replace('"', '\\"')
 
 
-def replace_once(source: str, old: str, new: str) -> str:
+def replace_once(source: str, old: str, new: str, *_compat: object) -> str:
     count = source.count(old)
     if count != 1:
         raise SystemExit(f"Expected one source setting, found {count}: {old}")
@@ -180,7 +144,7 @@ def configure_source_settings(source: str, config: dict) -> str:
         "CROP_H = 546;": f'CROP_H = {config["crop_height"]};',
     }
     for old, new in replacements.items():
-        source = replace_once(source, old, new, 1)
+        source = replace_once(source, old, new)
     return source
 
 
@@ -193,31 +157,17 @@ def build_legacy_macro(config: dict) -> Path:
 
 def build_macro(config: dict) -> Path:
     source = configure_source_settings(SOURCE_MACRO.read_text(encoding="utf-8"), config)
-
-    # The production source macro's original four-point route only understood
-    # 10/12-column layouts. Full-column geometry is generic for any validated
-    # GridCols >= 2, so neutralize only that legacy source guard here. The
-    # preserved fallback continues to use the original guard unchanged.
-    source = replace_once(
-        source,
-        "        if (gridCols != 10 && gridCols != 12) {",
-        "        if (gridCols < 2) {",
-    )
-
+    source = replace_once(source, "        if (gridCols != 10 && gridCols != 12) {", "        if (gridCols < 2) {")
     if source.count(START_MARKER) != 1 or source.count(END_MARKER) != 1:
         raise SystemExit("Production macro calibration markers changed; refusing to guess where to patch.")
-
     start = source.index(START_MARKER)
     end = source.index(END_MARKER, start) + len(END_MARKER)
-
     composed = f'''        // ====================================================
         // FULL-COLUMN COMPOSED ROUTE
         // Existing folder/CSV lookup above and close/logging below are preserved.
         // Completed images were removed from the temporary metadata preflight.
         // ====================================================
 
-        // Keep plate identity visible without adding a redundant modal acknowledgement.
-        // The first-column wait dialog below remains the first required user action.
         showStatus(
             cleanFolderName + " | " + sourceTitle + " | " +
             experiment + "/" + setName + "/" + typeName +
@@ -239,7 +189,6 @@ def build_macro(config: dict) -> Path:
             "type=" + typeName + ";" +
             "crop_w=" + CROP_W + ";crop_h=" + CROP_H
         );'''
-
     source = source[:start] + composed + source[end:]
     APP_DIR.mkdir(parents=True, exist_ok=True)
     CONFIGURED_MACRO.write_text(source, encoding="utf-8")
@@ -248,22 +197,10 @@ def build_macro(config: dict) -> Path:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--prepare-only",
-        action="store_true",
-        help="validate/preflight and build the configured Fiji macro without requiring or launching Fiji",
-    )
-    parser.add_argument(
-        "--legacy",
-        action="store_true",
-        help="use the preserved original four-point calibration/export block as the fallback route",
-    )
+    parser.add_argument("--prepare-only", action="store_true", help="validate/preflight and build the configured Fiji macro without requiring or launching Fiji")
+    parser.add_argument("--legacy", action="store_true", help="use the preserved original four-point calibration/export block as the fallback route")
     args = parser.parse_args()
-
-    config = load_config(
-        require_fiji=not args.prepare_only,
-        require_fiji_handoff_paths=not args.legacy,
-    )
+    config = load_config(require_fiji=not args.prepare_only, require_fiji_handoff_paths=not args.legacy)
     validate_runtime_files(config, require_fiji=not args.prepare_only, legacy=args.legacy)
     validate_csvs(config)
     if args.legacy:
@@ -271,14 +208,12 @@ def main() -> None:
     pending = run_preflight(legacy=args.legacy)
     ensure_crop_output_root(config)
     macro = build_legacy_macro(config) if args.legacy else build_macro(config)
-
     if args.prepare_only:
         if args.legacy:
             print(f"Prepared four-point fallback batch for {pending} pending image(s): {macro}")
         else:
             print(f"Prepared composed batch for {pending} pending image(s): {macro}")
         return
-
     fiji = Path(config["fiji_executable"])
     subprocess.Popen([str(fiji), "-macro", str(macro)])
 
