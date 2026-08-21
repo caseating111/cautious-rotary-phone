@@ -92,20 +92,31 @@ class StandardPillowPreviewTests(unittest.TestCase):
                 result.cleanup()
                 self.assertFalse(preview_root.exists())
 
-    def test_label_individual_preview_stages_one_crop_and_outputs_one_labelled_image(self) -> None:
+    def test_label_individual_preview_outputs_one_disposable_image_without_touching_real_crops(self) -> None:
+        before = {
+            path.name: (path.read_bytes(), path.stat().st_mtime_ns)
+            for path in self.crop_folder.glob("*.png")
+        }
         patches = self.runtime_patches()
         with patches[0], patches[1], patches[2], patches[3]:
             result = preview.build_preview("label-individual")
+            preview_root = result.image.parents[2]
             try:
                 self.assertTrue(result.image.is_file())
-                all_images = [
-                    path for path in result.image.parents[2].rglob("*")
+                output_images = [
+                    path for path in (preview_root / "output").rglob("*")
                     if path.is_file() and path.suffix.lower() in pillow_adapter.IMAGE_EXTENSIONS
                 ]
-                self.assertEqual(len(all_images), 2)  # one staged input + one labelled preview output
+                self.assertEqual(output_images, [result.image])
                 self.assertFalse(self.outputs.exists())
+                after = {
+                    path.name: (path.read_bytes(), path.stat().st_mtime_ns)
+                    for path in self.crop_folder.glob("*.png")
+                }
+                self.assertEqual(after, before)
             finally:
                 result.cleanup()
+                self.assertFalse(preview_root.exists())
 
 
 if __name__ == "__main__":
