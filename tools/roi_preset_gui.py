@@ -120,6 +120,8 @@ def configured_fiji_root(config_path: Path = CONFIG_FILE) -> Path | None:
         data = json.loads(config_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return None
+    if not isinstance(data, dict):
+        return None
     raw = str(data.get("fiji_executable", "")).strip()
     if not raw:
         return None
