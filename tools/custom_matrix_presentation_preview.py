@@ -25,6 +25,8 @@ def build_preview(selection: dict) -> PreviewResult:
     inspect_selected_inputs(config, selection)
     preview_selection = representative_selection(selection)
     range_dir = custom.APP_DIR / "display-ranges"
+    image_root_value = str(config.get("image_root", "")).strip()
+    image_root = Path(image_root_value) if image_root_value else None
 
     custom.APP_DIR.mkdir(parents=True, exist_ok=True)
     temp = tempfile.TemporaryDirectory(prefix="matrix-presentation-preview-", dir=custom.APP_DIR)
@@ -53,7 +55,7 @@ def build_preview(selection: dict) -> PreviewResult:
             filtered["grid_csv"],
             filtered["images_csv"],
             range_dir,
-            image_root=Path(config["image_root"]),
+            image_root=image_root,
         )
         configured = pillow_adapter.configured_copy("matrices", preview_config, image_root=staged_root)
         custom.patch_matrix_states(configured, preview_selection["states"])
