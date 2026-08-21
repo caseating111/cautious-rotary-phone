@@ -24,14 +24,17 @@ class ControllerExtensionContractTests(unittest.TestCase):
     def test_one_plate_proof_uses_dedicated_thin_adapter(self) -> None:
         text = EXTENDED.read_text(encoding="utf-8")
         self.assertIn("run_one_plate_validation as one_plate_validation", text)
-        self.assertIn('text="Run one-plate full-column proof (first pending image only)"', text)
+        self.assertIn('text="Run one-plate full-column proof (choose plate)"', text)
         start = text.index("def run_one_plate_validation")
         end = text.index("def standard_output_count", start)
         block = text[start:end]
-        self.assertIn("selected = one_plate_validation.run()", block)
+        self.assertIn("one_plate_validation.proof_is_running()", block)
+        self.assertIn("filedialog.askopenfilename(", block)
+        self.assertIn('filename = Path(chosen).name', block)
+        self.assertIn("selected = one_plate_validation.run(filename)", block)
         self.assertIn("authoritative prepare-only results remain available", block)
-        self.assertIn("proof uses a separate one-row CSV and separate macro copy", block)
-        self.assertIn("normal batch remains complete rather than being truncated", block)
+        self.assertIn("normal pending list remains complete", block)
+        self.assertIn("no second Fiji instance was launched", block)
 
     def test_standard_multi_output_jobs_preview_first_by_default_with_opt_out(self) -> None:
         text = EXTENDED.read_text(encoding="utf-8")
