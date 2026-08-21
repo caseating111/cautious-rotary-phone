@@ -35,18 +35,17 @@ A task/commit/checkpoint is not a reason to create another branch. If work is sa
 - The original four-point macro remains untouched as fallback.
 - CSV semantic validation runs before Fiji starts.
 - Saved crop width/height and alignment tolerance are consumed only where metadata already supplies the grid column count.
+- `--prepare-only` now performs CSV validation, preflight, pending-image generation, exact source-marker checks and configured macro construction without launching Fiji. This provides a cheap integration checkpoint before interactive desktop testing.
 
 ### Batch preflight / resume
 - `tools/preflight_batch.py` mirrors production immediate-subfolder, basename metadata and exact output-name semantics.
 - It reports discovered/mapped/unmapped images, duplicate source basenames, stale metadata rows, missing grid definitions and expected/existing/missing crop counts.
-- It now blocks when two distinct source images would claim the same derived crop pathname in the same output folder. This catches the dangerous case where repeated Experiment/Set/Type metadata inside one source folder would otherwise cause one image's crops to overwrite another's while still looking complete.
-- Same metadata in different immediate source folders remains valid because production writes those crops to separate corresponding output folders.
+- It blocks when two distinct source images would claim the same derived crop pathname in the same output folder. Same metadata in different immediate source folders remains valid because production writes those crops to separate corresponding output folders.
 - It writes `~/.cautious-rotary-phone/last_preflight.txt` and pending-only `pending_images.csv`.
 - The composed batch uses pending-only metadata, so the unchanged production macro naturally skips fully completed plates on rerun.
 - Partially complete plates remain pending as a whole plate; no fragile per-crop resume path is introduced.
 - Controller checks preflight before AHK/Fiji and launches nothing when the batch is already complete.
 - `tests/test_preflight_batch.py` covers missing, complete, duplicate-basename, same-folder output-collision and separate-folder non-collision cases.
-- The newly added collision logic was also exercised independently against synthetic temporary folders: collision and non-collision cases passed. No GitHub Actions workflow is currently attached to these direct branch commits, so this local stdlib check is the available non-user execution check for this slice.
 
 ### Metadata reconciliation
 - `tools/reconcile_images_csv.py` scans the production source folders, preserves existing authoritative metadata, leaves new metadata blank rather than guessed, and preserves manual draft metadata across rescans.
@@ -62,6 +61,8 @@ A task/commit/checkpoint is not a reason to create another branch. If work is sa
 
 ### CSV validation
 - `tools/validate_project_csvs.py` checks required headers, grid completeness/duplicates, consistent GridCols, unique source filenames, image->grid references and condition-order coverage.
+- It now rejects comma-bearing Experiment/Set/Type/Strain metadata that Python's CSV parser accepts but the reused ImageJ macros would misread via simple comma splitting. Comma-containing filenames remain allowed because the production macro explicitly handles quoted filenames containing commas.
+- `tests/test_csv_validation.py` covers unsafe comma-bearing metadata and the supported comma-in-filename case.
 
 ### Lightweight controller / conda
 - `tools/workflow_controller.py` persists paths/settings, validates CSVs, launches Fiji/AHK/Pillow helpers and ROI presets.
@@ -69,6 +70,7 @@ A task/commit/checkpoint is not a reason to create another branch. If work is sa
 - Quick buttons open the configured source-image, crop-output and matrix-output folders directly; this is deliberately simple Explorer navigation rather than custom file-management UI.
 - Controller window is titled `Image workflow controller` to avoid conflating this clean workflow with older similarly named implementations.
 - `tools/run_fiji_macro_from_config.py` is a thin visibility launcher using ImageJ's macro argument mechanism and supports dry-run command inspection.
+- Official ImageJ documentation confirms the launcher form `-macro path [arg]`; the optional argument is retrievable with `getArgument()`. The previously deferred uncertainty about the config-driven visibility argument therefore does not require user testing.
 - `environment.yml` remains minimal (`python`, `pillow`).
 
 ## Branch cleanup status
@@ -80,8 +82,7 @@ Many historical milestone branches are already fully represented by `workflow-de
 ## Pending manual validation (not a stop condition)
 - Desktop Fiji interaction for ROI preset patch and whole-column placement/QC.
 - Visual confirmation of vertical row-average peak selection on representative real plates.
-- End-to-end composed batch on representative images, including the new pre-export bounds guard.
-- Confirm the installed Fiji desktop launcher accepts a fourth command-line macro argument for the config-driven visibility shortcut; direct dialog launch remains fallback.
+- End-to-end composed batch on representative images, including the pre-export bounds guard.
 
 ## Research notes / stop-loss
 - ImageJ documentation confirms `Array.findMaxima(array, tolerance)` returns peak positions ordered by descending strength; retaining the strongest expected count and then sorting spatially is therefore a valid small native-tool route for initial validation.
@@ -90,8 +91,8 @@ Many historical milestone branches are already fully represented by `workflow-de
 - ImageJ itself supports installed macro keyboard shortcuts, but the current AHK helper remains preferable for the present modal-dialog flow because it provides global keys while the image window does not necessarily have focus. Avoid adding more AHK workflow logic.
 
 ## Highest-value next routes
-1. Validate the smallest real desktop end-to-end route when user testing becomes available; keep the old four-point fallback intact.
-2. Add only cheap output-safety guards where they prevent wrong outputs without changing established geometry or naming.
-3. If native peak selection fails representative plates, test BAR Find Peaks as the first mature replacement; do not build a custom colony detector first.
-4. Reduce repeated batch navigation/cleanup only where it composes with existing output folders and does not obscure files.
+1. Use `--prepare-only` with real configured metadata before requesting interactive Fiji validation; keep the old four-point fallback intact.
+2. Validate the smallest real desktop whole-column route when user testing becomes available.
+3. Add only cheap safety guards where they prevent wrong outputs without changing established geometry or naming.
+4. If native peak selection fails representative plates, test BAR Find Peaks as the first mature replacement; do not build a custom colony detector first.
 5. Keep metadata inference conservative unless real data demonstrates a stable, verifiable pattern worth exploiting.
