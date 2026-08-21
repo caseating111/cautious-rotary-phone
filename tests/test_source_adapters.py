@@ -85,6 +85,25 @@ class SourceAdapterTests(unittest.TestCase):
             second = pillow_adapter.normalize_crop_orientation(root, 130, 546)
             self.assertEqual(second, (0, 2, 1))
 
+    def test_scoped_orientation_rejects_bad_current_crop_but_ignores_unrelated_png(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            selected = root / "E1_A_YPDA_01_Top_WT.png"
+            unrelated = root / "notes.png"
+            Image.new("L", (100, 100), 10).save(selected)
+            Image.new("L", (100, 100), 20).save(unrelated)
+
+            with self.assertRaises(SystemExit) as caught:
+                pillow_adapter.normalize_crop_orientation(
+                    root, 130, 546, paths=[selected], strict=True
+                )
+            self.assertIn("Current crop inputs have dimensions", str(caught.exception))
+
+            result = pillow_adapter.normalize_crop_orientation(
+                root, 130, 546, paths=[], strict=True
+            )
+            self.assertEqual(result, (0, 0, 0))
+
     def test_pillow_input_guard_rejects_multiple_files_for_one_logical_cell(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -114,7 +133,7 @@ class SourceAdapterTests(unittest.TestCase):
             self.assertIn("old/E1_A_YPDA_01_Top_old.png", message)
             self.assertIn("current/E1_A_YPDA_01_Top_WT.png", message)
 
-    def test_pillow_input_guard_allows_single_match_per_logical_cell(self) -> None:
+    def test_pillow_input_guard_returns_only_current_logical_matches(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             crop_root = root / "crops"
@@ -131,10 +150,16 @@ class SourceAdapterTests(unittest.TestCase):
                 "plate1.jpg,E1,A,YPDA\n",
                 encoding="utf-8",
             )
-            Image.new("L", (546, 130), 10).save(crop_root / "E1_A_YPDA_01_Top_WT.png")
-            Image.new("L", (546, 130), 20).save(crop_root / "E1_A_YPDA_01_Low_WT.png")
+            top = crop_root / "E1_A_YPDA_01_Top_WT.png"
+            low = crop_root / "E1_A_YPDA_01_Low_WT.png"
+            unrelated = crop_root / "notes.png"
+            Image.new("L", (546, 130), 10).save(top)
+            Image.new("L", (546, 130), 20).save(low)
+            Image.new("L", (100, 100), 30).save(unrelated)
 
-            pillow_adapter.validate_unique_crop_matches(crop_root, grid_csv, images_csv)
+            selected = pillow_adapter.validate_unique_crop_matches(crop_root, grid_csv, images_csv)
+            self.assertEqual(selected, sorted([top, low]))
+            self.assertNotIn(unrelated, selected)
 
 
 if __name__ == "__main__":
