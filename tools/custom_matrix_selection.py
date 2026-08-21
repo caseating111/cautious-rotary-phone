@@ -94,6 +94,11 @@ def normalize_selection(selection: dict) -> dict:
     return {"groups": clean_groups, "conditions": clean_conditions, "states": clean_states}
 
 
+def save_last_selection(selection: dict) -> None:
+    APP_DIR.mkdir(parents=True, exist_ok=True)
+    LAST_SELECTION_FILE.write_text(json.dumps(normalize_selection(selection), indent=2) + "\n", encoding="utf-8")
+
+
 def filter_project_csvs(config: dict, selection: dict, destination: Path) -> dict[str, Path]:
     selection = normalize_selection(selection)
     grid_fields, grid_rows = read_rows(Path(config["grid_csv"]))
@@ -177,7 +182,6 @@ def run_selection(selection: dict, no_open_output: bool = False) -> Path:
     pillow_adapter.validate_csvs(config)
 
     APP_DIR.mkdir(parents=True, exist_ok=True)
-    LAST_SELECTION_FILE.write_text(json.dumps(selection, indent=2) + "\n", encoding="utf-8")
     output_root = pillow_adapter.ensure_matrix_output_root(config)
     before = pillow_adapter.child_directories(output_root)
 
@@ -190,8 +194,7 @@ def run_selection(selection: dict, no_open_output: bool = False) -> Path:
 
         selected_crops = pillow_adapter.validate_unique_crop_matches(
             Path(config["crop_output"]),
-            filtered["grid_csv"],
-            filtered["images_csv"],
+            filtered["grid_csv"], filtered["images_csv"],
             allow_missing=False,
         )
         staged_root = temp_root / "crops"
@@ -214,6 +217,7 @@ def run_selection(selection: dict, no_open_output: bool = False) -> Path:
     output = pillow_adapter.newest_new_directory(before, after)
     if output is None or not pillow_adapter.directory_has_content(output):
         raise SystemExit("Custom matrix job returned success but produced no non-empty output folder.")
+    save_last_selection(selection)
     pillow_adapter.record_output(output)
     if not no_open_output:
         pillow_adapter.open_output(output)
