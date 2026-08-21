@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import os
 import subprocess
 import sys
+from collections import defaultdict
 from pathlib import Path
 
 from PIL import Image
@@ -14,6 +16,7 @@ CONFIG_FILE = APP_DIR / "config.json"
 LAST_OUTPUT_FILE = APP_DIR / "last_pillow_output.txt"
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT_DIR = REPO_ROOT / "existing scripts clean"
+IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".tif", ".tiff"}
 
 SCRIPTS = {
     "matrices": "make_matrices.py",
@@ -69,6 +72,68 @@ def configured_copy(alias: str, config: dict) -> Path:
     out = APP_DIR / f"{source_path.stem}.configured.py"
     out.write_text(source, encoding="utf-8")
     return out
+
+
+def read_csv_rows(path: Path) -> list[dict[str, str]]:
+    if not path.is_file():
+        raise SystemExit(f"CSV not found: {path}")
+    with path.open("r", encoding="utf-8-sig", newline="") as handle:
+        return [
+            {key: (value or "").strip() for key, value in row.items()}
+            for row in csv.DictReader(handle)
+        ]
+
+
+def expected_crop_prefixes(grid_path: Path, images_path: Path) -> set[str]:
+    grid = read_csv_rows(grid_path)
+    images = read_csv_rows(images_path)
+    columns_by_grid: dict[tuple[str, str], set[int]] = defaultdict(set)
+    for row in grid:
+        try:
+            column = int(row.get("Column", ""))
+        except ValueError as exc:
+            raise SystemExit(f"Invalid grid column in {grid_path}: {row.get('Column', '')!r}") from exc
+        columns_by_grid[(row.get("Experiment", ""), row.get("Set", ""))].add(column)
+
+    prefixes: set[str] = set()
+    for row in images:
+        exp = row.get("Experiment", "")
+        set_name = row.get("Set", "")
+        type_name = row.get("Type", "")
+        for column in columns_by_grid.get((exp, set_name), set()):
+            for state in ("Top", "Low"):
+                prefixes.add(f"{exp}_{set_name}_{type_name}_{column:02d}_{state}_".lower())
+    return prefixes
+
+
+def validate_unique_crop_matches(root: Path, grid_path: Path, images_path: Path) -> None:
+    if not root.is_dir():
+        raise SystemExit(f"Crop output folder not found: {root}")
+
+    files = sorted(
+        path
+        for path in root.rglob("*")
+        if path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS
+    )
+    prefixes = expected_crop_prefixes(grid_path, images_path)
+    ambiguous: list[tuple[str, list[Path]]] = []
+
+    for prefix in sorted(prefixes):
+        matches = [path for path in files if path.stem.lower().startswith(prefix)]
+        if len(matches) > 1:
+            ambiguous.append((prefix, matches))
+
+    if ambiguous:
+        lines = [
+            "Ambiguous crop inputs: the reused Pillow scripts would choose the first matching file.",
+            "Remove/archive stale duplicates or correct metadata before generating outputs.",
+        ]
+        for prefix, matches in ambiguous[:20]:
+            lines.append(f"{prefix}")
+            lines.extend(f"  - {path.relative_to(root)}" for path in matches)
+        if len(ambiguous) > 20:
+            lines.append(f"... plus {len(ambiguous) - 20} more ambiguous logical cells")
+        raise SystemExit("\n".join(lines))
 
 
 def normalize_crop_orientation(root: Path, crop_width: int, crop_height: int) -> tuple[int, int, int]:
@@ -140,6 +205,7 @@ def main() -> None:
 
     config = load_config()
     crop_root = Path(config["crop_output"])
+    validate_unique_crop_matches(crop_root, Path(config["grid_csv"]), Path(config["images_csv"]))
     normalize_crop_orientation(crop_root, config["crop_width"], config["crop_height"])
 
     output_root = Path(config["matrix_output"])
