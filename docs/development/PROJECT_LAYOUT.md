@@ -28,7 +28,7 @@ The controller then sets:
 - `crop_output` -> `Crops`
 - `matrix_output` -> `Matrices`
 
-Existing exact-named project CSVs are also picked up automatically when found in `Metadata`, the project root, or the original image-root parent. Existing nonblank CSV selections are never overwritten.
+Existing exact-named project CSVs are also picked up automatically when found in `Metadata`, the project root, or the original image-root parent. Existing nonblank CSV selections are preserved. If a configured CSV path was physically inside the selected image root, that path is rebased to the same relative file under the moved `Raw/MyImages` folder so the move does not leave a broken config path. External CSV paths are unchanged.
 
 ## Prefix
 
