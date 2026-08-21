@@ -27,6 +27,18 @@ class AlignmentMacroContractTests(unittest.TestCase):
         self.assertIn("Array.findMaxima", text)
         self.assertIn("getProfile()", text)
 
+    def test_profile_fallback_uses_native_roi_statistics_not_custom_pixel_reads(self) -> None:
+        text = ALIGNMENT_MACRO.read_text(encoding="utf-8")
+        fallback_at = text.index("function getVerticalAverageProfileFallback")
+        fallback_block = text[fallback_at : text.index("function findExpectedPeaks", fallback_at)]
+
+        self.assertIn("makeRectangle(x, y + yy, w, 1);", fallback_block)
+        self.assertIn("getStatistics(area, mean);", fallback_block)
+        self.assertIn("profile[yy] = mean;", fallback_block)
+        self.assertIn("makeRectangle(x, y, w, h);", fallback_block)
+        self.assertNotIn("getValue(", fallback_block)
+        self.assertNotIn("getPixel(", fallback_block)
+
     def test_previous_span_only_prepositions_last_roi_before_manual_confirmation(self) -> None:
         text = ALIGNMENT_MACRO.read_text(encoding="utf-8")
         first_bounds_at = text.index("getSelectionBounds(lx, ly, lw, lh);")
