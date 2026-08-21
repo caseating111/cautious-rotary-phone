@@ -17,7 +17,11 @@ if not errorlevel 1 (
     call conda run --no-capture-output -n cautious-rotary-phone python tools\workflow_controller_extended.py
     if not errorlevel 1 exit /b 0
     echo.
-    echo Named conda environment was unavailable or failed; trying the Windows Python launcher.
+    echo Named conda environment was unavailable or failed; trying Anaconda base.
+    call conda run --no-capture-output -n base python tools\workflow_controller_extended.py
+    if not errorlevel 1 exit /b 0
+    echo.
+    echo Anaconda base could not run the controller; trying the Windows Python launcher.
 )
 
 where py >nul 2>nul
