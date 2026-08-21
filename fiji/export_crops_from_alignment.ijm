@@ -90,8 +90,8 @@ for (i = 1; i < gridLines.length; i++) {
     matched++;
 }
 
-if (matched == 0)
-    exit("No grid rows matched experiment " + experiment + " set " + setName + ". No crops were exported.");
+if (matched != gridCols)
+    exit("Expected " + gridCols + " matching grid rows but found " + matched + ". Fix grid.csv or re-run project validation; no crops were exported.");
 
 exported = 0;
 setBatchMode(true);
