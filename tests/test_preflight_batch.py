@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-import os
 import csv
+import os
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+
+from PIL import Image
 
 from tools import preflight_batch
 from tools.preflight_batch import build_report, expected_output_names
@@ -40,10 +42,23 @@ class PreflightBatchTests(unittest.TestCase):
             "crop_output": str(self.crop_root),
             "grid_csv": str(self.grid_csv),
             "images_csv": str(self.images_csv),
+            "crop_width": 130,
+            "crop_height": 546,
         }
 
     def tearDown(self) -> None:
         self.temp.cleanup()
+
+    def save_expected_png(self, path: Path, size: tuple[int, int] = (130, 546)) -> None:
+        Image.new("L", size, 10).save(path)
+
+    def expected_names(self) -> list[str]:
+        meta = {"Experiment": "E1", "Set": "A", "Type": "YPDA"}
+        grid_rows = [
+            {"Column": "1", "Strain": "WT"},
+            {"Column": "2", "Strain": "mut1"},
+        ]
+        return expected_output_names(meta, grid_rows)
 
     def test_preflight_semantic_validation_failure_is_blocking(self) -> None:
         validator = self.root / "validator.py"
@@ -77,15 +92,10 @@ class PreflightBatchTests(unittest.TestCase):
     def test_exact_existing_outputs_mark_image_complete(self) -> None:
         output_dir = self.crop_root / "setA"
         output_dir.mkdir()
-        meta = {"Experiment": "E1", "Set": "A", "Type": "YPDA"}
-        grid_rows = [
-            {"Column": "1", "Strain": "WT"},
-            {"Column": "2", "Strain": "mut1"},
-        ]
         source_mtime = (self.source_folder / "plate1.jpg").stat().st_mtime_ns
-        for index, name in enumerate(expected_output_names(meta, grid_rows), 1):
+        for index, name in enumerate(self.expected_names(), 1):
             path = output_dir / name
-            path.write_bytes(b"derived placeholder")
+            self.save_expected_png(path)
             os.utime(path, ns=(source_mtime + index, source_mtime + index))
 
         lines, problems, pending = build_report(self.config)
@@ -94,16 +104,40 @@ class PreflightBatchTests(unittest.TestCase):
         self.assertIn("Already complete images: 1", lines)
         self.assertIn("Crops still to produce/rebuild: 0", lines)
 
+    def test_rotated_existing_outputs_are_also_current(self) -> None:
+        output_dir = self.crop_root / "setA"
+        output_dir.mkdir()
+        source_mtime = (self.source_folder / "plate1.jpg").stat().st_mtime_ns
+        for index, name in enumerate(self.expected_names(), 1):
+            path = output_dir / name
+            self.save_expected_png(path, (546, 130))
+            os.utime(path, ns=(source_mtime + index, source_mtime + index))
+
+        lines, problems, pending = build_report(self.config)
+        self.assertFalse(problems)
+        self.assertEqual(pending, [])
+        self.assertIn("Already complete images: 1", lines)
+
+    def test_wrong_dimension_expected_crop_marks_plate_pending(self) -> None:
+        output_dir = self.crop_root / "setA"
+        output_dir.mkdir()
+        source_mtime = (self.source_folder / "plate1.jpg").stat().st_mtime_ns
+        for index, name in enumerate(self.expected_names(), 1):
+            path = output_dir / name
+            self.save_expected_png(path, (130, 546) if index > 1 else (100, 100))
+            os.utime(path, ns=(source_mtime + index, source_mtime + index))
+
+        lines, problems, pending = build_report(self.config)
+        self.assertFalse(problems)
+        self.assertEqual([row["Filename"] for row in pending], ["plate1.jpg"])
+        self.assertIn("INCOMPATIBLE EXPECTED CROPS — WILL REBUILD (1)", lines)
+        self.assertIn("Crops still to produce/rebuild: 1", lines)
+
     def test_source_newer_than_existing_outputs_marks_plate_pending_for_rebuild(self) -> None:
         output_dir = self.crop_root / "setA"
         output_dir.mkdir()
-        meta = {"Experiment": "E1", "Set": "A", "Type": "YPDA"}
-        grid_rows = [
-            {"Column": "1", "Strain": "WT"},
-            {"Column": "2", "Strain": "mut1"},
-        ]
-        for name in expected_output_names(meta, grid_rows):
-            (output_dir / name).write_bytes(b"old derived placeholder")
+        for name in self.expected_names():
+            self.save_expected_png(output_dir / name)
 
         source = self.source_folder / "plate1.jpg"
         future = max(source.stat().st_mtime_ns, *(p.stat().st_mtime_ns for p in output_dir.iterdir())) + 10_000_000_000
@@ -119,14 +153,8 @@ class PreflightBatchTests(unittest.TestCase):
     def test_partially_complete_plate_warns_about_whole_plate_rerun_without_blocking(self) -> None:
         output_dir = self.crop_root / "setA"
         output_dir.mkdir()
-        meta = {"Experiment": "E1", "Set": "A", "Type": "YPDA"}
-        grid_rows = [
-            {"Column": "1", "Strain": "WT"},
-            {"Column": "2", "Strain": "mut1"},
-        ]
-        names = expected_output_names(meta, grid_rows)
-        existing = output_dir / names[0]
-        existing.write_bytes(b"derived placeholder")
+        existing = output_dir / self.expected_names()[0]
+        self.save_expected_png(existing)
         source_mtime = (self.source_folder / "plate1.jpg").stat().st_mtime_ns
         os.utime(existing, ns=(source_mtime + 1, source_mtime + 1))
 
@@ -134,7 +162,7 @@ class PreflightBatchTests(unittest.TestCase):
         self.assertFalse(problems)
         self.assertEqual([row["Filename"] for row in pending], ["plate1.jpg"])
         self.assertIn("PARTIALLY COMPLETE PLATES — NON-BLOCKING (1)", lines)
-        self.assertIn("- setA/plate1.jpg: 1 current, 3 missing/stale", lines)
+        self.assertIn("- setA/plate1.jpg: 1 current, 3 missing/stale/incompatible", lines)
 
     def test_unexpected_crop_png_is_reported_but_not_blocking(self) -> None:
         output_dir = self.crop_root / "setA"
