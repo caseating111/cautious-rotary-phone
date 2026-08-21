@@ -148,16 +148,12 @@ def build_macro(config: dict) -> Path:
         // Completed images were removed from the temporary metadata preflight.
         // ====================================================
 
-        showMessage(
-            "Next plate",
-            "Folder: " + cleanFolderName + "\\n\\n" +
-            "Image: " + sourceTitle + "\\n\\n" +
-            "Experiment: " + experiment + "\\n" +
-            "Set: " + setName + "\\n" +
-            "Type: " + typeName + "\\n" +
-            "Grid: 8 x " + gridCols + "\\n" +
-            "Exports: " + (nWanted * 2) + "\\n\\n" +
-            "Next: position the FIRST and LAST whole-column ROIs."
+        // Keep plate identity visible without adding a redundant modal acknowledgement.
+        // The first-column wait dialog below remains the first required user action.
+        showStatus(
+            cleanFolderName + " | " + sourceTitle + " | " +
+            experiment + "/" + setName + "/" + typeName +
+            " | grid 8x" + gridCols + " | exports " + (nWanted * 2)
         );
 
         runMacro(
