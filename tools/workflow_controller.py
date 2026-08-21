@@ -104,6 +104,16 @@ def preflight_dialog_text(returncode: int, pending: int, output: str, report_exi
     return output or "Batch preflight failed without a saved report or error message."
 
 
+def preparation_error_text(output: str, report_exists: bool) -> str:
+    if report_exists and "BATCH PREFLIGHT" in output:
+        return (
+            "Batch preparation stopped at preflight.\n\n"
+            "Open the saved preflight report for the full actionable list:\n"
+            f"{PREFLIGHT_REPORT}"
+        )
+    return output
+
+
 class Controller(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
@@ -361,7 +371,10 @@ class Controller(tk.Tk):
                 messagebox.showinfo("Batch", output)
                 self.status.set("Batch already complete.")
             else:
-                messagebox.showerror("Batch preparation", output)
+                messagebox.showerror(
+                    "Batch preparation",
+                    preparation_error_text(output, PREFLIGHT_REPORT.is_file()),
+                )
                 self.status.set(f"{route_name} batch not started: preparation needs attention.")
             return
 
