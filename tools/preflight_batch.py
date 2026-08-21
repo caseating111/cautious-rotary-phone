@@ -109,6 +109,7 @@ def build_report(config: dict) -> tuple[list[str], bool, list[dict[str, str]]]:
     complete_images = 0
     pending_rows: list[dict[str, str]] = []
     grid_missing: list[str] = []
+    output_claims: dict[Path, list[Path]] = defaultdict(list)
 
     for source in sources:
         metadata_rows = metadata_by_name.get(source.name, [])
@@ -127,7 +128,9 @@ def build_report(config: dict) -> tuple[list[str], bool, list[dict[str, str]]]:
         output_dir = crop_root / source.parent.name
         image_missing = 0
         for name in names:
-            if (output_dir / name).is_file():
+            output_path = output_dir / name
+            output_claims[output_path].append(source)
+            if output_path.is_file():
                 existing_crops += 1
             else:
                 missing_crops += 1
@@ -137,6 +140,14 @@ def build_report(config: dict) -> tuple[list[str], bool, list[dict[str, str]]]:
             pending_rows.append({field: meta.get(field, "") for field in IMAGE_FIELDS})
         else:
             complete_images += 1
+
+    output_collisions = []
+    for output_path, claimants in sorted(output_claims.items(), key=lambda item: str(item[0])):
+        unique_claimants = sorted({path.relative_to(image_root) for path in claimants}, key=str)
+        if len(unique_claimants) > 1:
+            rel_output = output_path.relative_to(crop_root)
+            sources_text = ", ".join(str(path) for path in unique_claimants)
+            output_collisions.append(f"{rel_output} <- {sources_text}")
 
     lines = [
         "BATCH PREFLIGHT",
@@ -156,6 +167,7 @@ def build_report(config: dict) -> tuple[list[str], bool, list[dict[str, str]]]:
         ("DUPLICATE SOURCE BASENAMES", duplicate_source_names),
         ("DUPLICATE images.csv FILENAMES", duplicate_csv_names),
         ("MAPPED IMAGES WITH NO GRID DEFINITION", sorted(set(grid_missing))),
+        ("OUTPUT FILENAME COLLISIONS", output_collisions),
     ]
 
     problems = False
