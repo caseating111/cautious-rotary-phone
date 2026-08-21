@@ -27,7 +27,7 @@ class FijiLauncherTests(unittest.TestCase):
         command = build_command(config)
         self.assertEqual(command[0], "C:/Fiji/ImageJ-win64.exe")
         self.assertEqual(command[1], "-macro")
-        self.assertTrue(command[2].endswith("apply_global_visibility.ijm"))
+        self.assertTrue(command[2].endswith("apply_global_visibility_and_archive.ijm"))
         self.assertEqual(
             command[3],
             "band=50;black_offset=3;high_percentile=99.5",
