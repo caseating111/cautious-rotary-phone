@@ -1,9 +1,17 @@
 # Workflow controller
 
-`tools/workflow_controller.py` is intentionally orchestration-only.
+`tools/workflow_controller.py` is intentionally orchestration-only. It stores paths/settings in `~/.cautious-rotary-phone/config.json` and coordinates the existing Fiji, AHK and Pillow routes rather than moving their processing into Tkinter.
 
-It stores paths in `~/.cautious-rotary-phone/config.json`, validates the three CSV headers, launches Fiji macros via Fiji's supported `-macro` interface, opens the ROI preset manager, and starts/stops the lightweight AHK alignment helper.
+Current controls include:
+- CSV semantic validation and metadata review;
+- ROI presets, synthetic Fiji test plate, direct full-column alignment and configured global visibility;
+- batch preflight and full-column batch launch;
+- the four existing Pillow output jobs through their thin config adapter;
+- start/stop for the lightweight AHK alignment helper;
+- direct opening of source, crop, matrix and config folders.
 
-It does not reimplement Fiji, ROI 1-Click Tools, Pillow processing or AHK logic. If launched from Anaconda/conda, child Python helpers use that same interpreter.
+For **Run full-column batch**, the controller now runs `run_full_column_batch_from_config.py --prepare-only` synchronously first. CSV validation, preflight, pending-image generation, source-marker checks and configured-macro construction therefore finish before AHK starts. If preparation succeeds, the controller verifies Fiji and launches the already-built `~/.cautious-rotary-phone/batch_full_column.configured.ijm` directly instead of repeating preparation in a second helper process.
 
-Current buttons cover the synthetic test plate, full-column alignment and global visibility. Existing matrix scripts remain untouched until their hard-coded settings are adapted through a narrow config-aware route.
+The controller does not reimplement Fiji/ImageJ operations, ROI 1-Click Tools, the existing Pillow composition logic or AHK workflow logic. Child Python helpers use the same Python/conda interpreter as the controller.
+
+Root `start_controller.cmd` is the thin Windows double-click entry point and prefers the repository's named conda environment when available.
