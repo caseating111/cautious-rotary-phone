@@ -2,15 +2,16 @@
 
 These are non-blocking questions discovered while auditing reused Pillow scripts. They must not stop unrelated workflow work.
 
-## Extra-WT-removed control source
+## Extra-WT-removed control source and output naming
 
 `existing scripts clean/allstrainmatrix extra WT removed.py` has inconsistent legacy intent markers:
 
 - comments say to prefer the `E2/B` WT controls;
 - the implemented selection condition actually prefers `E2/A`;
-- the output filename is `WT_EXP2A_ALL_<state>.png`, which also points toward `E2/A`.
+- the output filename is `WT_EXP2A_ALL_<state>.png`, which also points toward `E2/A`;
+- if the implemented preferred control is unavailable, the script falls back to the first available WT control but still uses the fixed `WT_EXP2A...` output name, so that filename can overstate which control source was actually selected.
 
-Do **not** change this biological/output-selection behavior based on comments alone. Keep the current executable behavior until the intended preferred control source is confirmed from real workflow requirements or a stronger authoritative artifact.
+Do **not** change this biological/output-selection behavior or established naming based on comments alone. Keep the current executable behavior until the intended preferred control source/naming is confirmed from real workflow requirements or a stronger authoritative artifact.
 
 ## Standard matrix optional WT highlight
 
