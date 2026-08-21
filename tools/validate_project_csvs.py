@@ -18,10 +18,21 @@ def rows(path: Path, required: list[str]) -> list[dict[str, str]]:
         raise ValueError(f"file not found: {path}")
     with path.open("r", encoding="utf-8-sig", newline="") as handle:
         reader = csv.DictReader(handle)
-        actual = [h.strip() for h in (reader.fieldnames or [])]
+        raw_headers = reader.fieldnames or []
+        actual = [h.strip() for h in raw_headers]
+        duplicates = sorted({h for h in actual if h and actual.count(h) > 1})
+        if duplicates:
+            raise ValueError(
+                f"{path.name}: duplicate columns after trimming header whitespace: {', '.join(duplicates)}"
+            )
         missing = [h for h in required if h not in actual]
         if missing:
             raise ValueError(f"{path.name}: missing columns: {', '.join(missing)}")
+
+        # Keep the forgiving whitespace behavior intentional and consistent:
+        # once trimmed names pass the header contract, normalize DictReader's
+        # row keys to those same names rather than later indexing raw headers.
+        reader.fieldnames = actual
         return [{k: (v or "").strip() for k, v in row.items()} for row in reader]
 
 
