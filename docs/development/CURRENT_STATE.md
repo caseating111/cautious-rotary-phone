@@ -40,10 +40,15 @@ None of these conveniences auto-accept geometry. `tests/test_alignment_macro_con
 - normal route replaces only the old four-point calibration/export block with `full_column_alignment.ijm` + `export_crops_from_alignment.ijm`;
 - `--prepare-only` validates/preflights/builds pending-only configured work before Fiji/AHK starts and does not require a Fiji path;
 - `--legacy` keeps the original four-point calibration/export block and supports its original 10/12-column contract only;
-- controller exposes **Run full-column batch** and **Run 4-point fallback** through the same prepare-before-AHK path.
+- controller exposes **Run full-column batch** and **Run 4-point fallback** through the same prepare-before-AHK path;
+- after validation and clean preflight, preparation creates the configured `crop_output` root if needed and performs a real temporary directory/file write probe before Fiji starts. A missing/unwritable output root therefore fails before any manual alignment time is spent. `tests/test_batch_prepare_end_to_end.py` and `tests/test_batch_crop_output_root.py` protect this first-run/writeability contract.
 
 ## Preflight / metadata
 `tools/preflight_batch.py` is the source/crop readiness authority. It checks source mapping, duplicate basenames/metadata rows, grid availability, output collisions, source freshness, crop readability/dimensions, source/crop tree separation and plate-level resume state.
+
+Additional platform/runtime safeguards:
+- malformed/unreadable/non-object `config.json` now fails with a concise configuration error rather than a Python traceback;
+- derived output path claims are compared with **Windows case-insensitive path semantics** as well as the logical-name checks. Two different source images that would write paths differing only by case are blocking before Fiji; `tests/test_preflight_windows_collisions.py` protects the collision/non-collision cases.
 
 Diagnostics distinguish stale/incompatible expected crops, superseded prefix crops, unrelated PNGs and blocking misplaced exact-current crops. Report: `~/.cautious-rotary-phone/last_preflight.txt`.
 
@@ -69,14 +74,15 @@ Before running an established Pillow job it:
 2. reuses source/crop preflight when `image_root` is configured;
 3. derives exact current crop filenames;
 4. blocks duplicate/missing exact-current inputs;
-5. stages only validated exact crops into a disposable directory;
-6. normalizes orientation on staged copies only;
-7. disables/retains disabled legacy in-place rotation in the configured child copy;
-8. runs the established composition script;
-9. requires one new **non-empty** top-level output directory;
-10. removes staging automatically.
+5. creates/verifies `matrix_output` and performs a temporary directory/file write probe before staging any crops;
+6. stages only validated exact crops into a disposable directory;
+7. normalizes orientation on staged copies only;
+8. disables/retains disabled legacy in-place rotation in the configured child copy;
+9. runs the established composition script;
+10. requires one new **non-empty** top-level output directory;
+11. removes staging automatically.
 
-Real `crop_output` files are not rotated or rewritten. `matrix_output` must be outside both `crop_output` and configured `image_root`.
+Real `crop_output` files are not rotated or rewritten. `matrix_output` must be outside both `crop_output` and configured `image_root`. `tests/test_pillow_matrix_output_root.py` protects the first-run/writeability setup helper.
 
 The old unsafe `tools/run_matrices_from_config.py` direct route is removed and guarded against reintroduction.
 
@@ -110,16 +116,22 @@ Controller remains a lightweight control surface for paths, sibling CSV discover
 
 Recent setup/feedback hardening remains deliberately presentation-only:
 - **Batch preflight** shows a short readiness/pending summary instead of duplicating the full saved report into a modal;
-- **Run full-column batch** / **Run 4-point fallback** also collapse only actual preflight-generated preparation failures to the saved report, while CSV/configuration errors remain visible directly;
+- **Run full-column batch** / **Run 4-point fallback** also collapse only actual current preflight-generated preparation failures to the saved report, while CSV/configuration errors remain visible directly; an old report file does not hide a current non-preflight error;
 - Processing Settings rejects `NaN`/infinite values at save time, matching the downstream wrappers instead of persisting bad state;
 - ROI preset values are normalized before the patched ROI 1-Click Tools handoff. Non-numeric/non-finite presets and non-positive width/height values are rejected/ignored rather than written to the active preset file. `tests/test_roi_preset_discovery.py` protects this numeric contract.
 
 Root `start_controller.cmd` remains deliberately thin: active named conda -> `conda run` -> Windows `py` -> PATH Python. No automatic environment/Fiji/AHK installation layer.
 
-## Mature peak fallback / stop-loss
+## Mature reuse candidates / stop-loss
+### Peak selection
 BAR **Find Peaks** was re-verified against official ImageJ documentation in August 2026 and remains the first peak-selection fallback, but is deliberately not pre-integrated.
 
 If native `Array.findMaxima()` fails on a representative plate after one sensible reposition/retry, keep the manual ROI + native wide-line profile route and test BAR as the peak-selection substitution before any custom detector work. The original four-point route remains immediately available regardless.
+
+### Quantitative yeast-growth measurement
+`docs/development/STOWERS_PLATE_MEASUREMENT_CANDIDATE.md` records a mature downstream measurement candidate: Jay Unruh/Stowers `plate analysis jru v1` and its batch companion. The plugin uses a four-corner polygon, bilinear grid interpolation, circular spot measurements/background options and table output; the batch variant can load a saved ROI and recurse a directory.
+
+This is **research only, not integrated**. Accepted `last_alignment.txt` already stores the left/right X positions and every left/right row Y needed to derive the four corner colony centres without changing the alignment schema. If quantitative growth scoring becomes the next end-product need, prove this plugin on one representative accepted plate before any bespoke scoring implementation or controller integration. Keep measurement on unmodified source pixels and abandon the route if it requires compatibility-surgery/retest cycles.
 
 ## Automated checks / environment limitation
 `.github/workflows/python-glue-tests.yml` runs compileall plus unittest discovery on pushes to `workflow-dev` and PRs with Pillow installed.
@@ -141,5 +153,6 @@ If it succeeds, one same-sized next plate checks both suggestion-only geometry c
 1. Run `--prepare-only` with real configured metadata when available.
 2. Perform the minimal representative desktop route in `MINIMAL_DESKTOP_VALIDATION.md`.
 3. If native peaks remain weak after one sensible retry, test BAR Find Peaks before custom detection.
-4. Continue deterministic setup/output/user-time improvements that can be proven without repeated manual testing.
-5. Keep metadata inference conservative; resolve deferred legacy semantics only from authoritative workflow evidence.
+4. If quantitative growth measurement becomes a concrete output need after alignment works, test the Stowers plate-analysis plugin on one plate before custom scoring.
+5. Continue deterministic setup/output/user-time improvements that can be proven without repeated manual testing.
+6. Keep metadata inference conservative; resolve deferred legacy semantics only from authoritative workflow evidence.
