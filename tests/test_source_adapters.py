@@ -41,7 +41,7 @@ class SourceAdapterTests(unittest.TestCase):
             self.assertNotIn("1 / 4 — R1C1", text)
             self.assertNotIn("4 / 4 — R5C", text)
 
-    def test_pillow_adapter_only_replaces_shared_path_block(self) -> None:
+    def test_all_pillow_aliases_only_replace_shared_path_block(self) -> None:
         config = {
             "crop_output": "C:/project/crops",
             "matrix_output": "C:/project/matrices",
@@ -51,16 +51,16 @@ class SourceAdapterTests(unittest.TestCase):
         }
         with tempfile.TemporaryDirectory() as temp:
             with patch.object(pillow_adapter, "APP_DIR", Path(temp)):
-                configured = pillow_adapter.configured_copy("matrices", config)
-
-            text = configured.read_text(encoding="utf-8")
-            self.assertIn("IMAGE_ROOT = Path('C:/project/crops')", text)
-            self.assertIn("GRID_CSV = Path('C:/project/grid.csv')", text)
-            self.assertIn("IMAGES_CSV = Path('C:/project/images.csv')", text)
-            self.assertIn("CONDITION_ORDER_CSV = Path('C:/project/condition_order.csv')", text)
-            self.assertIn("MATRIX_ROOT = Path('C:/project/matrices')", text)
-            self.assertIn("def build_matrix(", text)
-            self.assertNotIn('Path(r"path here")', text)
+                for alias in pillow_adapter.SCRIPTS:
+                    with self.subTest(alias=alias):
+                        configured = pillow_adapter.configured_copy(alias, config)
+                        text = configured.read_text(encoding="utf-8")
+                        self.assertIn("IMAGE_ROOT = Path('C:/project/crops')", text)
+                        self.assertIn("GRID_CSV = Path('C:/project/grid.csv')", text)
+                        self.assertIn("IMAGES_CSV = Path('C:/project/images.csv')", text)
+                        self.assertIn("CONDITION_ORDER_CSV = Path('C:/project/condition_order.csv')", text)
+                        self.assertIn("MATRIX_ROOT = Path('C:/project/matrices')", text)
+                        self.assertNotIn('Path(r"path here")', text)
 
 
 if __name__ == "__main__":
