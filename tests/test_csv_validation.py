@@ -19,6 +19,33 @@ class CsvValidationTests(unittest.TestCase):
         conditions_path.write_text(conditions, encoding="utf-8")
         return grid_path, images_path, conditions_path, temp
 
+    def test_header_whitespace_is_normalized_consistently(self) -> None:
+        paths = self.write_project(
+            ' Experiment , Set , GridCols , Column , Strain \nE1,A,1,1,WT\n',
+            ' Filename , Experiment , Set , Type \nplate1.jpg,E1,A,YPDA\n',
+            ' Order , Type \n1,YPDA\n',
+        )
+        grid, images, conditions, temp = paths
+        try:
+            problems = validate(grid, images, conditions)
+        finally:
+            temp.cleanup()
+        self.assertEqual(problems, [])
+
+    def test_duplicate_headers_after_trimming_are_rejected_cleanly(self) -> None:
+        paths = self.write_project(
+            'Experiment, Experiment ,Set,GridCols,Column,Strain\nE1,E1,A,1,1,WT\n',
+            'Filename,Experiment,Set,Type\nplate1.jpg,E1,A,YPDA\n',
+            'Order,Type\n1,YPDA\n',
+        )
+        grid, images, conditions, temp = paths
+        try:
+            problems = validate(grid, images, conditions)
+        finally:
+            temp.cleanup()
+        self.assertEqual(len(problems), 1)
+        self.assertIn("duplicate columns after trimming header whitespace: Experiment", problems[0])
+
     def test_quoted_comma_in_strain_is_rejected_for_imagej_handoff(self) -> None:
         paths = self.write_project(
             'Experiment,Set,GridCols,Column,Strain\nE1,A,1,1,"strain,alpha"\n',
