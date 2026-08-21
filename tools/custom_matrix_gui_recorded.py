@@ -4,6 +4,7 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 
 try:
+    from tools.custom_crop_inventory import inventory_summary, selected_inventory
     from tools.custom_matrix_gui import CustomMatrixBuilder
     from tools.custom_matrix_preview import build_preview as build_raw_preview, output_count
     from tools.custom_matrix_presentation_preview import build_preview as build_presentation_preview
@@ -11,6 +12,7 @@ try:
     from tools.run_custom_matrix_presentation import run_job as run_presentation_job
     from tools.run_existing_pillow_from_config import open_output
 except ModuleNotFoundError:
+    from custom_crop_inventory import inventory_summary, selected_inventory
     from custom_matrix_gui import CustomMatrixBuilder
     from custom_matrix_preview import build_preview as build_raw_preview, output_count
     from custom_matrix_presentation_preview import build_preview as build_presentation_preview
@@ -42,6 +44,18 @@ class RecordedCustomMatrixBuilder(CustomMatrixBuilder):
             text="Preview first when multiple outputs",
             variable=self.preview_first,
         ).pack(side="right")
+
+    def check_availability(self) -> None:
+        try:
+            selection = self.current_selection()
+            items = selected_inventory(self.config_data, selection)
+        except SystemExit as exc:
+            messagebox.showerror("Crop availability", str(exc))
+            return
+        summary = inventory_summary(items)
+        current = sum(item.status == "current" for item in items)
+        self.status.set(f"Selected crop availability: {current} / {len(items)} current.")
+        messagebox.showinfo("Selected crop availability", summary)
 
     def build_matrix(self) -> None:
         preview = None
