@@ -32,6 +32,12 @@ DEFAULTS = {
     "visibility_high_percentile": "99.5",
 }
 
+PROJECT_CSV_FILES = {
+    "grid_csv": "grid.csv",
+    "images_csv": "images.csv",
+    "condition_order_csv": "condition_order.csv",
+}
+
 PILLOW_JOBS = {
     "Matrices": "matrices",
     "All strains": "all-strains",
@@ -66,6 +72,15 @@ def load_config() -> dict[str, str]:
 def save_config(data: dict[str, str]) -> None:
     APP_DIR.mkdir(parents=True, exist_ok=True)
     CONFIG_FILE.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+
+
+def sibling_project_csvs(selected: Path) -> dict[str, Path]:
+    folder = selected.parent
+    return {
+        key: candidate
+        for key, name in PROJECT_CSV_FILES.items()
+        if (candidate := folder / name).is_file()
+    }
 
 
 class Controller(tk.Tk):
@@ -147,8 +162,19 @@ class Controller(tk.Tk):
             chosen = filedialog.askdirectory(initialdir=current or None)
         else:
             chosen = filedialog.askopenfilename(initialdir=str(Path(current).parent) if current else None)
-        if chosen:
-            self.vars[key].set(chosen)
+        if not chosen:
+            return
+
+        self.vars[key].set(chosen)
+        if key in PROJECT_CSV_FILES:
+            filled = 0
+            for sibling_key, sibling_path in sibling_project_csvs(Path(chosen)).items():
+                if sibling_key == key or self.vars[sibling_key].get().strip():
+                    continue
+                self.vars[sibling_key].set(str(sibling_path))
+                filled += 1
+            if filled:
+                self.status.set(f"Found {filled} sibling project CSV path(s) in the same folder.")
 
     def save(self) -> None:
         save_config({key: var.get().strip() for key, var in self.vars.items()})
