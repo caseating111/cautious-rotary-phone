@@ -53,6 +53,15 @@ class MetadataCandidateAdoptionTests(unittest.TestCase):
             self.assertIsNone(backup)
             self.assertEqual(destination.read_text(encoding="utf-8"), "new\n")
 
+    def test_candidate_cannot_adopt_onto_itself(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            candidate = Path(temp) / "images.csv"
+            candidate.write_text("new\n", encoding="utf-8")
+            with self.assertRaises(ValueError) as caught:
+                adopt_candidate(candidate, candidate)
+            self.assertIn("same file", str(caught.exception))
+            self.assertEqual(candidate.read_text(encoding="utf-8"), "new\n")
+
 
 if __name__ == "__main__":
     unittest.main()
