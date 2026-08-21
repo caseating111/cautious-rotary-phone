@@ -19,7 +19,7 @@ The reused labelled-individual script had two evidenced handoff defects; both ar
 
 The script declares `ROTATE_IMAGES_90_CCW = False` only to satisfy the shared adapter contract; it has no internal rotation function. Orientation remains owned by the wrapper on disposable staged copies.
 
-`tests/test_label_individual_output.py` protects these contracts. `tests/test_label_individual_end_to_end.py` uses underscore-bearing Experiment/Set/Type metadata to prove wrapper -> staged orientation -> metadata-first lookup -> one non-empty labelled output tree with zero skipped current crops.
+`tests/test_label_individual_output.py` protects these contracts. `tests/test_label_individual_end_to_end.py` uses underscore-bearing Experiment/Set/Type metadata to prove wrapper -> staged orientation -> metadata-first lookup -> one non-empty labelled output tree with zero skipped current crops while real crops remain unchanged.
 
 Before any Pillow output job, the adapter runs the authoritative project CSV validator and derives the exact crop contract produced by the current Fiji exporter from `grid.csv` + `images.csv`.
 
@@ -46,6 +46,11 @@ Each successful job must create one new non-empty top-level output directory. A 
 
 Malformed/non-object `config.json` produces a targeted wrapper error instead of a traceback. `tests/test_output_tree_layout.py` protects both config handling and source/crop/matrix tree separation.
 
-Regression coverage includes exact/stale filename handling, duplicate-exact rejection, non-destructive staged rotation, source-readiness reuse, strict/partial input behavior, output postconditions, a full synthetic matrix route, and the metadata-first labelled-individual route.
+All four controller Pillow choices now have representative synthetic end-to-end routes in the regression suite:
+- `tests/test_pillow_wrapper_end_to_end.py` — standard experiment/set matrices, including stale-prefix exclusion and unchanged real crops;
+- `tests/test_all_strains_end_to_end.py` — both all-strains variants through staging, with expected outputs and unchanged real crops;
+- `tests/test_label_individual_end_to_end.py` — metadata-first individual labels with underscore-bearing metadata, zero skipped current crops and unchanged real crops.
+
+These complement the lower-level exact/stale filename, duplicate-exact, source-readiness, strict/partial input, staged-rotation and output-postcondition tests.
 
 This remains a thin glue layer: established Pillow composition behavior stays authoritative; the wrapper validates and prepares a clean disposable input handoff, with only narrowly evidenced legacy defects patched rather than replaced.
