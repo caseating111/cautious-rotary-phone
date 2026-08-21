@@ -48,7 +48,13 @@ def run_job(selection: dict, no_open_output: bool = False) -> Path:
             paths=staged_crops,
             strict=True,
         )
-        normalize_staged_crops(staged_crops, filtered["grid_csv"], filtered["images_csv"], range_dir)
+        normalize_staged_crops(
+            staged_crops,
+            filtered["grid_csv"],
+            filtered["images_csv"],
+            range_dir,
+            image_root=Path(config["image_root"]),
+        )
         configured = pillow_adapter.configured_copy("matrices", custom_config, image_root=staged_root)
         custom.patch_matrix_states(configured, selection["states"])
         result = subprocess.run([sys.executable, str(configured)], check=False)
