@@ -3,150 +3,112 @@ from __future__ import annotations
 import argparse
 import csv
 import json
-import math
+import os
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
+try:
+    from tools import preflight_batch
+    from tools.validate_project_csvs import validate as validate_csvs
+except ModuleNotFoundError:
+    import preflight_batch
+    from validate_project_csvs import validate as validate_csvs
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 APP_DIR = Path.home() / ".cautious-rotary-phone"
 CONFIG_FILE = APP_DIR / "config.json"
-REPO_ROOT = Path(__file__).resolve().parents[1]
-SOURCE_MACRO = REPO_ROOT / "existing scripts clean" / "roibox RUN ALL IN PARENT.ijm"
-ALIGNMENT_MACRO = REPO_ROOT / "fiji" / "full_column_alignment.ijm"
-CROP_HELPER = REPO_ROOT / "fiji" / "export_crops_from_alignment.ijm"
-VALIDATOR = REPO_ROOT / "tools" / "validate_project_csvs.py"
-PREFLIGHT = REPO_ROOT / "tools" / "preflight_batch.py"
-PREFLIGHT_REPORT = APP_DIR / "last_preflight.txt"
 PENDING_IMAGES_CSV = APP_DIR / "pending_images.csv"
 CONFIGURED_MACRO = APP_DIR / "batch_full_column.configured.ijm"
 CONFIGURED_LEGACY_MACRO = APP_DIR / "batch_four_point_fallback.configured.ijm"
-LEGACY_STATE_FILE = APP_DIR / "four_point_fallback.state.txt"
+LEGACY_STATE_FILE = APP_DIR / "batch_state.csv"
+PREFLIGHT_REPORT = APP_DIR / "last_preflight.txt"
+SOURCE_MACRO = REPO_ROOT / "existing scripts clean" / "roibox RUN ALL IN PARENT.ijm"
+FULL_COLUMN_MACRO = REPO_ROOT / "fiji" / "full_column_alignment.ijm"
 
-START_MARKER = "        // ====================================================\n        // IDENTIFY CURRENT PLATE"
-END_MARKER = "        setBatchMode(false);"
+START_MARKER = "        // 1 / 4 — R1C1"
+END_MARKER = "        // 4 / 4 — R5C"
 
 
-def load_config(
-    require_fiji: bool = True,
-    require_fiji_handoff_paths: bool = True,
-) -> dict:
+def load_config() -> dict:
     if not CONFIG_FILE.is_file():
         raise SystemExit(f"Config not found: {CONFIG_FILE}")
     try:
         data = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        raise SystemExit(f"Could not read config.json: {exc}") from exc
+        raise SystemExit(f"Could not read config: {exc}") from exc
     if not isinstance(data, dict):
-        raise SystemExit("config.json must contain a JSON object of named settings.")
-
-    required = [
-        "image_root",
-        "crop_output",
-        "grid_csv",
-        "images_csv",
-        "condition_order_csv",
-    ]
-    if require_fiji:
-        required.insert(0, "fiji_executable")
-    missing = [key for key in required if not str(data.get(key, "")).strip()]
-    if missing:
-        raise SystemExit("Missing config values: " + ", ".join(missing))
-
-    if require_fiji_handoff_paths:
-        for key in ("grid_csv", "crop_output"):
-            if ";" in str(data[key]):
-                raise SystemExit(
-                    f"Configured {key} contains a semicolon, which conflicts with the composed Fiji macro-argument delimiter: {data[key]}"
-                )
-
-    try:
-        data["alignment_tolerance"] = float(data.get("alignment_tolerance", 0.08))
-        data["crop_width"] = int(data.get("crop_width", 130))
-        data["crop_height"] = int(data.get("crop_height", 546))
-    except (TypeError, ValueError) as exc:
-        raise SystemExit(f"Invalid processing setting: {exc}") from exc
-    if not math.isfinite(data["alignment_tolerance"]):
-        raise SystemExit("Alignment tolerance must be a finite number.")
-    if data["alignment_tolerance"] <= 0 or data["crop_width"] <= 0 or data["crop_height"] <= 0:
-        raise SystemExit("Alignment tolerance and crop dimensions must be positive.")
+        raise SystemExit("Config must be a JSON object.")
     return data
 
 
-def validate_runtime_files(config: dict, require_fiji: bool, legacy: bool = False) -> None:
-    required_files = [SOURCE_MACRO, VALIDATOR, PREFLIGHT]
-    if not legacy:
-        required_files.extend([ALIGNMENT_MACRO, CROP_HELPER])
-    missing = [path for path in required_files if not path.is_file()]
-    if missing:
-        raise SystemExit("Required workflow file(s) missing:\n" + "\n".join(str(path) for path in missing))
-
-    if require_fiji:
-        fiji = Path(config.get("fiji_executable", ""))
-        if not fiji.is_file():
-            raise SystemExit(f"Fiji executable not found: {fiji}")
-
-
-def validate_csvs(config: dict) -> None:
-    result = subprocess.run(
-        [
-            sys.executable,
-            str(VALIDATOR),
-            str(config["grid_csv"]),
-            str(config["images_csv"]),
-            str(config["condition_order_csv"]),
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if result.returncode != 0:
-        output = (result.stdout + result.stderr).strip()
-        raise SystemExit(output or "CSV validation failed.")
+def required_path(config: dict, key: str, *, directory: bool = False) -> Path:
+    raw = str(config.get(key, "")).strip()
+    if not raw:
+        raise SystemExit(f"Missing configured path: {key}")
+    path = Path(raw)
+    if directory:
+        if not path.is_dir():
+            raise SystemExit(f"Configured {key} is not a directory: {path}")
+    elif not path.is_file():
+        raise SystemExit(f"Configured {key} is not a file: {path}")
+    return path
 
 
-def validate_legacy_grid_widths(config: dict) -> None:
-    path = Path(config["grid_csv"])
+def read_csv(path: Path) -> list[dict[str, str]]:
     with path.open("r", encoding="utf-8-sig", newline="") as handle:
-        rows = list(csv.DictReader(handle))
-    widths = sorted({int((row.get("GridCols") or "0").strip()) for row in rows})
-    unsupported = [value for value in widths if value not in (10, 12)]
-    if unsupported:
-        raise SystemExit(
-            "The preserved four-point fallback only supports its original 10- or 12-column grids. "
-            "Unsupported GridCols: " + ", ".join(str(value) for value in unsupported)
-        )
+        return list(csv.DictReader(handle))
 
 
-def run_preflight(legacy: bool = False) -> int:
-    args = [
-        sys.executable,
-        str(PREFLIGHT),
-        "--report",
-        str(PREFLIGHT_REPORT),
-        "--pending-images-csv",
-        str(PENDING_IMAGES_CSV),
+def write_pending_images(rows: list[dict[str, str]], destination: Path) -> None:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    headers = ["Filename", "Experiment", "Set", "Type"]
+    with destination.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=headers)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({header: row.get(header, "") for header in headers})
+
+
+def source_image_paths(image_root: Path) -> dict[str, list[Path]]:
+    mapped: dict[str, list[Path]] = {}
+    for folder in sorted(path for path in image_root.iterdir() if path.is_dir()):
+        for path in sorted(folder.iterdir()):
+            if path.is_file() and path.suffix.lower() in preflight_batch.IMAGE_EXTENSIONS:
+                mapped.setdefault(path.name, []).append(path)
+    return mapped
+
+
+def pending_rows_from_report(config: dict, report: preflight_batch.PreflightReport) -> list[dict[str, str]]:
+    images_path = required_path(config, "images_csv")
+    rows = read_csv(images_path)
+    pending_names = set(report.pending_images)
+    pending = [row for row in rows if row.get("Filename", "") in pending_names]
+    discovered = source_image_paths(required_path(config, "image_root", directory=True))
+
+    missing_or_ambiguous = [
+        row.get("Filename", "")
+        for row in pending
+        if len(discovered.get(row.get("Filename", ""), [])) != 1
     ]
-    if legacy:
-        args.append("--no-fiji-handoff-path-rules")
-    result = subprocess.run(args, capture_output=True, text=True, check=False)
-    output = (result.stdout + result.stderr).strip()
-    if result.returncode != 0:
-        raise SystemExit(output or f"Batch preflight failed. See {PREFLIGHT_REPORT}")
-
-    with PENDING_IMAGES_CSV.open("r", encoding="utf-8-sig", newline="") as handle:
-        pending = sum(1 for _ in csv.DictReader(handle))
-    if pending == 0:
-        raise SystemExit(f"All expected crops already exist. See {PREFLIGHT_REPORT}")
+    if missing_or_ambiguous:
+        raise SystemExit(
+            "Pending image list contains missing or ambiguous source file(s): "
+            + ", ".join(missing_or_ambiguous)
+        )
     return pending
 
 
-def ensure_crop_output_root(config: dict) -> Path:
-    root = Path(config["crop_output"])
+def ensure_configured_output_root(config: dict) -> Path:
+    raw = str(config.get("crop_output", "")).strip()
+    if not raw:
+        raise SystemExit("Missing configured path: crop_output")
+    root = Path(raw)
     try:
         root.mkdir(parents=True, exist_ok=True)
     except OSError as exc:
-        raise SystemExit(f"Could not create crop output folder {root}: {exc}") from exc
+        raise SystemExit(f"Could not create configured crop_output: {root}: {exc}") from exc
     if not root.is_dir():
         raise SystemExit(f"Configured crop_output is not a directory: {root}")
 
@@ -180,7 +142,7 @@ def configure_source_settings(source: str, config: dict) -> str:
         "CROP_H = 546;": f'CROP_H = {config["crop_height"]};',
     }
     for old, new in replacements.items():
-        source = replace_once(source, old, new, 1)
+        source = replace_once(source, old, new)
     return source
 
 
@@ -210,78 +172,65 @@ def build_macro(config: dict) -> Path:
     start = source.index(START_MARKER)
     end = source.index(END_MARKER, start) + len(END_MARKER)
 
+    full_column = FULL_COLUMN_MACRO.read_text(encoding="utf-8")
     composed = f'''        // ====================================================
         // FULL-COLUMN COMPOSED ROUTE
         // Existing folder/CSV lookup above and close/logging below are preserved.
-        // Completed images were removed from the temporary metadata preflight.
         // ====================================================
 
-        // Keep plate identity visible without adding a redundant modal acknowledgement.
-        // The first-column wait dialog below remains the first required user action.
-        showStatus(
-            cleanFolderName + " | " + sourceTitle + " | " +
-            experiment + "/" + setName + "/" + typeName +
-            " | grid 8x" + gridCols + " | exports " + (nWanted * 2)
-        );
-
-        runMacro(
-            "{macro_path(ALIGNMENT_MACRO)}",
-            "cols=" + gridCols + ";rows=8;tolerance={config['alignment_tolerance']};" +
-            "context=" + experiment + "/" + setName + "/" + typeName
-        );
-
-        runMacro(
-            "{macro_path(CROP_HELPER)}",
-            "grid_csv={macro_path(config['grid_csv'])};" +
-            "output_dir=" + outDir + ";" +
-            "experiment=" + experiment + ";" +
-            "set=" + setName + ";" +
-            "type=" + typeName + ";" +
-            "crop_w=" + CROP_W + ";crop_h=" + CROP_H
-        );'''
-
+{full_column}
+'''
     source = source[:start] + composed + source[end:]
     APP_DIR.mkdir(parents=True, exist_ok=True)
     CONFIGURED_MACRO.write_text(source, encoding="utf-8")
     return CONFIGURED_MACRO
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--prepare-only",
-        action="store_true",
-        help="validate/preflight and build the configured Fiji macro without requiring or launching Fiji",
-    )
-    parser.add_argument(
-        "--legacy",
-        action="store_true",
-        help="use the preserved original four-point calibration/export block as the fallback route",
-    )
-    args = parser.parse_args()
+def launch_fiji(config: dict, macro: Path) -> int:
+    fiji = required_path(config, "fiji_executable")
+    return subprocess.call([str(fiji), "-macro", str(macro)])
 
-    config = load_config(
-        require_fiji=not args.prepare_only,
-        require_fiji_handoff_paths=not args.legacy,
+
+def run_preflight(config: dict) -> preflight_batch.PreflightReport:
+    csv_problems = validate_csvs(
+        required_path(config, "grid_csv"),
+        required_path(config, "images_csv"),
+        required_path(config, "condition_order_csv"),
     )
-    validate_runtime_files(config, require_fiji=not args.prepare_only, legacy=args.legacy)
-    validate_csvs(config)
-    if args.legacy:
-        validate_legacy_grid_widths(config)
-    pending = run_preflight(legacy=args.legacy)
-    ensure_crop_output_root(config)
+    if csv_problems:
+        raise SystemExit("CSV validation failed:\n- " + "\n- ".join(csv_problems))
+
+    report = preflight_batch.preflight(config)
+    APP_DIR.mkdir(parents=True, exist_ok=True)
+    PREFLIGHT_REPORT.write_text(report.render(), encoding="utf-8")
+    if report.blocking_problems:
+        raise SystemExit(report.render())
+    return report
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--legacy", action="store_true", help="Use preserved four-point alignment route")
+    parser.add_argument("--prepare-only", action="store_true", help="Prepare pending metadata/configured macro without launching Fiji")
+    return parser.parse_args()
+
+
+def main() -> int:
+    args = parse_args()
+    config = load_config()
+    report = run_preflight(config)
+    ensure_configured_output_root(config)
+    pending = pending_rows_from_report(config, report)
+    write_pending_images(pending, PENDING_IMAGES_CSV)
+
     macro = build_legacy_macro(config) if args.legacy else build_macro(config)
+    label = "four-point fallback" if args.legacy else "composed batch"
+    print(f"Prepared {label} for {len(pending)} pending image(s): {macro}")
 
     if args.prepare_only:
-        if args.legacy:
-            print(f"Prepared four-point fallback batch for {pending} pending image(s): {macro}")
-        else:
-            print(f"Prepared composed batch for {pending} pending image(s): {macro}")
-        return
-
-    fiji = Path(config["fiji_executable"])
-    subprocess.Popen([str(fiji), "-macro", str(macro)])
+        return 0
+    return launch_fiji(config, macro)
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
