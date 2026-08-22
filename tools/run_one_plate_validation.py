@@ -6,8 +6,10 @@ import sys
 from pathlib import Path
 
 try:
+    from tools import patch_roi_click_toolset
     from tools import run_full_column_batch_from_config as batch
 except ModuleNotFoundError:
+    import patch_roi_click_toolset
     import run_full_column_batch_from_config as batch
 
 
@@ -112,10 +114,12 @@ def patch_roi_click_interaction(source: str) -> str:
             '        accepted = 0;\n'
             '        makeRectangle(round(viewW / 2 - CLICK_ROI / 2), round(viewH / 2 - CLICK_ROI / 2), CLICK_ROI, CLICK_ROI);',
             '        // Alignment visibility only. Read the ROI 1-click rectangle size from the\n'
-            '        // plugin preference, derive a roughly 3.3x CLAHE block size, and run the\n'
-            '        // user-proven CLAHE settings twice on this disposable duplicate.\n'
+            '        // plugin preferences, derive a roughly 3.3x CLAHE block size from its\n'
+            '        // larger dimension, and run the user-proven CLAHE settings twice.\n'
             '        roiBoxW = call("ij.Prefs.get", "rect.width", 108);\n'
-            '        claheBlock = round(roiBoxW * 3.3);\n'
+            '        roiBoxH = call("ij.Prefs.get", "rect.height", 108);\n'
+            '        roiBoxSize = maxOf(roiBoxW, roiBoxH);\n'
+            '        claheBlock = round(roiBoxSize * 3.3);\n'
             '        if (claheBlock < 1) claheBlock = 356;\n'
             '        claheOptions = "blocksize=" + claheBlock + " histogram=256 maximum=1000 mask=*None* fast_(less_accurate)";\n'
             '        run("Enhance Local Contrast (CLAHE)", claheOptions);\n'
@@ -196,11 +200,20 @@ def run(filename: str | None = None, *, legacy: bool = False) -> dict[str, str]:
             "Finish or close that plate before launching the same proof again. Other open Fiji images do not block this action."
         )
 
-    macro, selected = prepare(filename, legacy=legacy)
     config = batch.load_config(require_fiji=True, require_fiji_handoff_paths=not legacy)
     fiji = Path(config["fiji_executable"])
     if not fiji.is_file():
         raise SystemExit(f"Fiji executable not found: {fiji}")
+
+    if legacy:
+        toolset, changed = patch_roi_click_toolset.ensure_patched(fiji)
+        if changed:
+            raise SystemExit(
+                "ROI 1-click Tools was patched successfully so its saved rectangle and click-behaviour settings are restored automatically. "
+                f"Close/restart Fiji once so it reloads the patched toolset, then run the proof again. Patched file: {toolset}"
+            )
+
+    macro, selected = prepare(filename, legacy=legacy)
     try:
         _ACTIVE_FIJI_PROCESS = subprocess.Popen([str(fiji), "-macro", str(macro)])
     except OSError as exc:
