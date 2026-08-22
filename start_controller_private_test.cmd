@@ -3,6 +3,7 @@ setlocal
 
 rem Image-blind/private desktop-test launcher.
 rem Pixel-bearing temp/output data stays outside the Git worktree.
+rem This private-test path deliberately does NOT use Anaconda/conda.
 
 set "PRIVATE_ROOT=C:\LocalWorkflowData"
 set "PRIVATE_TEMP=%PRIVATE_ROOT%\PrivateTemp"
@@ -36,6 +37,7 @@ if not errorlevel 1 (
     exit /b 2
 )
 
-call "%~dp0start_controller.cmd"
+rem Use the explicit non-Anaconda Windows Python 3.14 launcher.
+call "%~dp0start_controller_no_anaconda.cmd"
 set "RC=%ERRORLEVEL%"
 endlocal & exit /b %RC%
