@@ -49,22 +49,24 @@ class OnePlateValidationTests(unittest.TestCase):
             with self.assertRaises(SystemExit):
                 proof.patch_prepared_macro("other = 1;\n", target)
 
-    def test_roi_click_adapter_uses_whole_image_double_clahe_and_rotated_qc(self) -> None:
+    def test_roi_click_adapter_uses_whole_image_double_clahe_rotated_qc_and_shows_fiji(self) -> None:
         source = proof.batch.enhance_four_point_macro(proof.batch.SOURCE_MACRO.read_text(encoding="utf-8"))
         patched = proof.patch_roi_click_interaction(source)
         self.assertNotIn("CLICK_ROI = 108", patched)
         self.assertNotIn("makeRectangle(round(viewW / 2 - CLICK_ROI", patched)
         self.assertNotIn('run("Enhance Contrast", "saturated=0.35")', patched)
+        self.assertNotIn("sampleW =", patched)
+        self.assertNotIn("sampleH =", patched)
+        self.assertNotIn("sampleX =", patched)
+        self.assertNotIn("sampleY =", patched)
         self.assertIn('roiBoxW = call("ij.Prefs.get", "rect.width", 108)', patched)
         self.assertIn('roiBoxH = call("ij.Prefs.get", "rect.height", 108)', patched)
         self.assertIn("roiBoxSize = maxOf(roiBoxW, roiBoxH)", patched)
         self.assertIn("claheBlock = round(roiBoxSize * 3.3)", patched)
-        first_select_none = patched.index('run("Select None")')
-        first_clahe = patched.index('run("Enhance Local Contrast (CLAHE)", claheOptions)')
-        self.assertLess(first_select_none, first_clahe)
         self.assertEqual(patched.count('run("Enhance Local Contrast (CLAHE)", claheOptions)'), 2)
         self.assertIn('" histogram=256 maximum=1000 mask=*None* fast_(less_accurate)"', patched)
         self.assertIn('run("Install...", "install=[" + roiToolsetPath + "]")', patched)
+        self.assertIn('run("Show All")', patched)
         self.assertIn("for (toolCandidate = 15; toolCandidate <= 21; toolCandidate++)", patched)
         self.assertIn('startsWith(IJ.getToolName, "Rotated Rectangle Click Tool")', patched)
         self.assertIn("gridHX =", patched)
@@ -79,7 +81,7 @@ class OnePlateValidationTests(unittest.TestCase):
         with patch.object(
             proof,
             "open_window_titles",
-            return_value=["Fiji", "other.jpg", "PLATE1.JPG", "plate1.jpg - notes"],
+            return_value=["(Fiji Is Just) ImageJ", "other.jpg", "PLATE1.JPG", "plate1.jpg - notes"],
         ):
             self.assertTrue(proof.fiji_is_open())
             self.assertTrue(proof.proof_plate_is_open("plate1.jpg"))
