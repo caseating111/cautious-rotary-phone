@@ -1,171 +1,140 @@
-# Whole-plate rotation prototype handoff
+# Whole-plate orientation prototype handoff
 
 Status: Planned
 
 ## Goal
 
-Research and prototype **physical whole-plate rotation/orientation estimation** independently of the colony/grid alignment system. The purpose is to estimate the overall plate/image rotation from the plate itself so a downstream workflow can optionally deskew the entire plate before or alongside logical grid alignment.
+Build an optional **preprocessing** component that straightens the overall plate/image orientation before the current four-click grid registration step.
 
-Primary interface:
+This is separate from grid/colony alignment. Its purpose is visual normalization of the plate as a physical object so later cropping/annotation/processing starts from a less crooked image.
 
-`estimate_plate_rotation(path) -> RotationResult`
+The working four-click route remains authoritative for actual culture/grid coordinates. Failure or uncertainty in this preprocessing step must **never block** that route.
 
-This is a research/proof component, not a replacement for the current authoritative manual four-click grid alignment route.
+## Preferred first route: simple two-click orientation
+
+The first practical prototype should favor a reliable interactive two-click route over a large automatic CV system.
+
+Expected interaction:
+
+1. user clicks two suitable points defining an intended horizontal or vertical plate reference edge/axis;
+2. derive the plate tilt angle from those points;
+3. rotate a **working copy/derived image**, not the raw source;
+4. return/save the angle/transform for the following plate-crop step;
+5. allow quick accept/retry if the result is visibly poor.
+
+The exact reference convention should be made explicit in the mini-app/UI so the user knows what two points to click.
+
+Primary conceptual interface:
+
+`capture_plate_orientation(points, image_geometry, options) -> RotationResult`
+
+A later automatic estimator may share the same `RotationResult` contract.
+
+## Optional automatic estimator
+
+Automatic physical-plate orientation remains useful as a later convenience, but do not let it delay the reliable two-click route.
+
+Before writing custom CV, compare mature Fiji/ImageJ, OpenCV, scikit-image or other established rectangle/edge/deskew methods. Stop once a practical approach is found; perfect automation is not required.
+
+Automatic behavior should:
+
+- estimate plate/image orientation from outer plate/image structure rather than colony-grid assumptions where practical;
+- provide confidence/manual-review information;
+- fall back cleanly to the two-click interaction when uncertain;
+- never silently override a user-accepted manual orientation.
 
 ## Critical separation from grid alignment
 
 Keep these concepts separate:
 
-- **whole-plate physical rotation:** estimate the orientation of the plate/image as a physical object;
-- **grid/colony alignment:** determine the logical colony/grid geometry and reference positions.
+- **whole-plate orientation preprocessing:** straighten the physical plate/image;
+- **grid registration:** determine the culture spot/grid coordinates using the working four-click route.
 
-A whole-plate rotation estimate may later make images easier to view/process, but it must not silently override or remove the current manual alignment authority.
+Orientation preprocessing happens earlier. Grid registration must still work when preprocessing is skipped entirely.
 
-Do not modify the production Fiji four-click alignment, ROI tool, AHK lifecycle, or controller runtime in this branch.
+Do not modify the production Fiji four-click ROI/grid logic from this branch.
 
-## Mature-tool-first research requirement
+## Result contract
 
-Before writing custom computer-vision logic, search and compare established routes, including where relevant:
+`RotationResult` should represent at least:
 
-- Fiji/ImageJ built-ins and update-site plugins;
-- ImageJ/Fiji deskew, edge, threshold, Hough/line/rectangle, registration, template, or shape-analysis tooling;
-- OpenCV contour/min-area rectangle/Hough/line-orientation facilities;
-- scikit-image edge/Hough/region/transform facilities;
-- other mature scientific-image packages or desktop tools that already estimate rectangular-object orientation;
-- combinations of simple preprocessing plus a mature estimator.
+- correction angle in degrees;
+- angle convention/sign;
+- method (`two_click`, automatic method name, etc.);
+- source image identity/UID where applicable;
+- accepted/needs-review state;
+- optional confidence for automatic methods;
+- non-pixel diagnostics;
+- enough transform information for the plate-crop step to account for any known orientation correction.
 
-Search exact plate-orientation solutions first, then functionally equivalent rectangular-object/document/tray/plate deskew methods if exact solutions are weak.
-
-Record meaningful searches/findings in `docs/research/` if they materially affect the route, following the shared research-memory policy.
-
-## Privacy/test data
-
-- Never inspect or commit real confidential plate images as part of Gemini prototype development.
-- Use synthetic images and, where genuinely helpful, public/non-confidential example images.
-- Keep test fixtures small and clearly synthetic/public.
-- Do not derive conclusions about production-image quality from synthetic-only testing; record that limitation explicitly.
-
-## Desired result contract
-
-`RotationResult` should be able to represent at least:
-
-- estimated angle in degrees;
-- method used;
-- optional confidence/quality score where the method supports a meaningful one;
-- `needs_manual_review` or equivalent;
-- concise non-pixel diagnostics explaining weak/ambiguous estimates;
-- no requirement to store derived image pixels in the result.
-
-The estimator should be callable independently of any GUI.
-
-## Practical behavior
-
-Prefer a robust modest estimator over a complex "fully automatic" vision system. It is acceptable to return low confidence/manual review when the plate boundary/orientation is not reliably detectable.
-
-Potential practical routes may include:
-
-- finding the dominant plate/tray rectangle or long outer edges;
-- threshold/edge preprocessing followed by a mature minimum-area rectangle or line-angle estimator;
-- using multiple candidate edges and robustly combining their orientation;
-- allowing a small manual confirmation/fallback later if automatic estimation is uncertain.
-
-Do not assume colonies themselves form reliable straight lines for this component; this estimator is intended to use the plate/image structure rather than the logical colony grid where possible.
+Do not require the result itself to embed image pixels.
 
 ## Angle conventions
 
-Choose and document one deterministic convention, for example:
+Choose one deterministic convention and test it explicitly:
 
-- positive/negative direction;
-- whether returned angle means "observed rotation" or "correction to apply";
-- expected canonical range (for example around -45..45 or another justified range).
+- define clockwise/counter-clockwise sign;
+- define whether the result is observed tilt or correction-to-apply;
+- keep downstream crop/annotation consumers from reversing the sign accidentally.
 
-Tests must make this convention explicit so later integration does not reverse the sign accidentally.
+## Source/output behavior
 
-## Optional corrected-image proof
+- raw source images remain untouched;
+- preprocessing operates on/creates a working image;
+- optional preview should be non-destructive;
+- accepted orientation can be persisted as project state so later steps do not ask for the same points again;
+- rerun/reset must remain possible.
 
-The core contract is angle estimation. A small helper may optionally demonstrate applying the returned correction with Pillow/OpenCV/Fiji to a **derived** synthetic output, but do not make image rewriting the estimator's core responsibility.
+## Mini-app role
 
-Source files must remain unchanged.
+A focused mini-app may:
 
-## Failure/ambiguity behavior
+- display one working/source image;
+- collect the two clicks;
+- preview corrected orientation;
+- accept/retry/reset;
+- optionally offer an automatic-estimate button later;
+- save the `RotationResult`/working output for the crop step.
 
-Do not return a confident-looking arbitrary angle when evidence is weak. Detect/report cases such as:
+It should not implement V10 parsing, grid registration, visibility adjustment or annotation.
 
-- no usable plate boundary/edge structure;
-- several incompatible dominant angles;
-- nearly square/ambiguous geometry where orientation is not identifiable;
-- strong unrelated image borders or labels dominating the detector;
-- estimate outside sensible configured bounds.
+## Privacy/test data
 
-A clean `needs_manual_review=true` result is preferable to brittle automatic correction.
+Use synthetic/public images only for Gemini development. Do not inspect confidential plate pixels.
 
-## Relationship to later workflow
+## Mature-tool-first automatic research
 
-A later integrator may choose to use the estimate to:
+If/when automatic estimation is explored, compare only a bounded set of mature routes such as:
 
-- rotate a derived working image before grid alignment;
-- suggest/preview a correction for user acceptance;
-- normalize visual orientation across images;
-- pass the transform to annotation/composition tools.
+- Fiji/ImageJ edge/deskew/shape tools or established plugins;
+- OpenCV contour/min-area rectangle/Hough facilities;
+- scikit-image edge/Hough/region facilities;
+- simple preprocessing plus those estimators.
 
-That integration decision belongs to `workflow-C` later. This prototype should remain a narrow estimator/result contract.
-
-## Mini-app option
-
-A tiny evaluation applet is acceptable if useful for comparing methods. It may:
-
-- load a synthetic/public image;
-- show the estimated angle/method/confidence;
-- preview a derived corrected image;
-- allow switching among a small number of mature-method candidates.
-
-Do not build a general image editor or duplicate main-controller functionality.
-
-## Required prototype comparison
-
-Compare a small number of promising mature approaches rather than committing immediately to the first custom method. Prefer evidence such as:
-
-- correctness on known synthetic rotations;
-- stability across contrast/background variation;
-- runtime/setup burden;
-- dependency maturity;
-- ease of later integration on Windows/Python 3.14/Fiji where applicable.
-
-Stop once a practical best-supported route is established; do not turn this into exhaustive CV benchmarking.
-
-## Required synthetic proofs
-
-At minimum include images with known rotations and demonstrate:
-
-1. near-zero rotation;
-2. modest clockwise rotation;
-3. modest counter-clockwise rotation;
-4. contrast/background variation;
-5. an intentionally ambiguous/failed case that returns manual-review/low-confidence rather than a misleading result;
-6. deterministic angle-sign convention.
+A good-enough automatic suggestion plus immediate manual fallback is preferable to a complex brittle detector.
 
 ## Out of scope
 
-- current four-click Fiji/grid alignment implementation;
-- colony segmentation;
-- V10 parsing;
+- culture/grid-coordinate determination;
+- replacing the four-click route;
+- plate-size/crop-box selection (separate crop prototype);
+- visibility adjustments;
 - annotation rendering;
-- live confidential image testing;
-- automatic cropping/grid derivation;
-- replacing manual alignment authority.
+- V10 parsing.
+
+## Required proofs
+
+1. synthetic image with modest clockwise tilt -> correct two-click correction;
+2. counter-clockwise tilt -> correct correction/sign;
+3. near-zero tilt;
+4. preview/accept/retry without modifying raw source;
+5. saved result can be consumed by a later crop step;
+6. skipping orientation leaves downstream grid route conceptually valid;
+7. if automatic method is prototyped, weak case falls back/manual-review rather than blocking.
 
 ## Success criteria
 
-The prototype is `Proven` when:
-
-1. mature approaches have been compared with concise evidence;
-2. one practical default route is selected or a small fallback chain is justified;
-3. `estimate_plate_rotation(path) -> RotationResult` works on synthetic/public examples;
-4. angle convention is explicit and tested;
-5. weak cases are reported rather than silently corrected;
-6. source images are not modified;
-7. targeted tests pass;
-8. the implementation remains independent of current Fiji/AHK/controller runtime.
+The prototype is `Proven` once a small two-click app/API reliably captures and applies orientation to derived working images, persists a clear transform/result, remains optional/non-blocking for four-click grid registration, and has targeted synthetic tests. Automatic estimation is bonus/future work, not required for first proof.
 
 ## Completion record
 
@@ -173,14 +142,12 @@ When proven, update with:
 
 - Branch:
 - Commit:
-- Interface: `estimate_plate_rotation(path) -> RotationResult`
-- Methods researched/compared:
-- Selected method/fallback:
+- Interface:
 - Angle convention:
+- Preview/accept behavior:
 - Tests:
 - Dependencies:
-- Proven synthetic/public cases:
-- Failure/manual-review behavior:
+- Optional automatic methods researched:
 - Known limitations:
 - Contract changes proposed:
 - Integration/cherry-pick notes:
