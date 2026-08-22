@@ -19,11 +19,25 @@ Within the active objective, the agent may without routine approval:
 
 ## Normal stopping condition
 
-A session/task should stop when the requested objective is implemented and the feasible validation for that objective has completed, or when further progress genuinely requires user-only information/desktop judgement/authorization.
+A session/task should stop when the requested objective is implemented and the feasible validation for that objective has completed, or when further progress genuinely requires user-only information/desktop judgement/authorization **and no other task-relevant work can proceed safely without that result**.
 
 A completed task, test pass, commit, milestone or manual-validation gate is **not automatically a reason to continue into new work**.
 
 After completing the requested objective, the agent may perform only directly related verification, regression checks, necessary cleanup and concise handoff/state updates. It should then stop and report.
+
+## Manual validation should be deferred and batched
+
+A manual Fiji/desktop/visual checkpoint should not interrupt otherwise productive task-relevant work merely because it exists.
+
+When a required check needs user-only point placement, visual judgement, hardware interaction or another non-automatable desktop action:
+
+1. complete all feasible static, generated-artifact, image-blind and telemetry checks first;
+2. record the exact pending check in `docs/development/MANUAL_VALIDATION_BACKLOG.md`;
+3. continue other safe work within the same requested objective that does not depend on the pending result;
+4. accumulate/batch related manual checks where possible;
+5. ask the user for the backlog checks when their results become genuinely blocking or at the natural end of the current task scope.
+
+Do not use this as permission to start unrelated roadmap work. Continue only work that remains within the active requested objective or directly required validation/cleanup.
 
 ## Do not continue automatically into
 
@@ -55,6 +69,8 @@ Otherwise record it and leave it for a later task.
 ## User-testing budget
 
 Do not hand the user successive speculative builds. Before requesting manual testing, exhaust feasible automated/static/generated-artifact/local checks for the current objective. If repeated patch -> user test -> failure cycles appear, reassess the route instead of continuing indefinitely.
+
+For real-image/Fiji testing, the image-blind privacy gate in `docs/development/IMAGE_BLIND_TESTING.md` is mandatory before any real Fiji verification attempt. A failed privacy gate blocks that test but does not automatically block unrelated safe work within the active task.
 
 ## Token/context budget
 
