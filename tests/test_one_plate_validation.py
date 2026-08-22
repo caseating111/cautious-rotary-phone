@@ -82,6 +82,12 @@ class OnePlateValidationTests(unittest.TestCase):
         self.assertIn("Overlay.drawLine(topX, topY, bottomX, bottomY)", patched)
         self.assertNotIn("Overlay.drawRect(qcX", patched)
 
+    def test_fiji_main_title_contract_includes_observed_desktop_title(self) -> None:
+        self.assertTrue(proof._is_fiji_main_title("(Fiji Is Just) ImageJ"))
+        self.assertTrue(proof._is_fiji_main_title("Fiji"))
+        self.assertTrue(proof._is_fiji_main_title("ImageJ"))
+        self.assertFalse(proof._is_fiji_main_title("plate1.jpg"))
+
     def test_selected_plate_window_match_is_exact_and_case_insensitive(self) -> None:
         with patch.object(
             proof,
@@ -119,12 +125,13 @@ class OnePlateValidationTests(unittest.TestCase):
             proof.batch, "load_config", return_value=fake_config
         ), patch.object(
             proof.subprocess, "Popen", return_value=launched
-        ) as popen:
+        ) as popen, patch.object(proof, "ensure_fiji_main_window_visible", return_value=True) as visible:
             self.assertFalse(proof.proof_is_running())
             result = proof.run("plate1.jpg")
 
         self.assertEqual(result, selected)
         prepare.assert_called_once_with("plate1.jpg", legacy=False)
+        visible.assert_called_once_with()
         command = popen.call_args.args[0]
         self.assertIn("--no-splash", command)
         self.assertIn("-macro", command)
@@ -138,9 +145,12 @@ class OnePlateValidationTests(unittest.TestCase):
             proof, "fiji_is_open", return_value=True
         ), patch.object(proof, "prepare", return_value=(macro, selected)), patch.object(
             proof.batch, "load_config", return_value=fake_config
-        ), patch.object(proof.subprocess, "Popen") as popen:
+        ), patch.object(proof.subprocess, "Popen") as popen, patch.object(
+            proof, "ensure_fiji_main_window_visible", return_value=True
+        ) as visible:
             result = proof.run("plate1.jpg")
         self.assertEqual(result, selected)
+        visible.assert_called_once_with()
         self.assertEqual(
             popen.call_args.args[0],
             [str(fake_fiji), "--no-splash", "--run", "Macro_Runner", str(macro)],
