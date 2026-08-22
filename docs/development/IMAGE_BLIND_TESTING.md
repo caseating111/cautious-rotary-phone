@@ -46,11 +46,15 @@ That directory must contain text/JSON/CSV/log/geometry data only. Never place sc
 
 ## Temp redirection
 
-For privacy-sensitive local tests, launch the controller/Fiji from `start_controller_private_test.cmd`. It sets process-local `TEMP`, `TMP`, and Java `java.io.tmpdir` to the external `C:\LocalWorkflowData\PrivateTemp` tree before invoking the normal controller launcher. Child processes launched by the controller inherit these locations.
+For privacy-sensitive controller tests, launch from `start_controller_private_test.cmd`. It sets process-local `TEMP`, `TMP`, and Java `java.io.tmpdir` to the external `C:\LocalWorkflowData\PrivateTemp` tree before invoking the normal controller launcher. Child processes launched by the controller inherit these locations.
+
+For a direct Fiji test that does not start through the controller, use `tools/start_fiji_private_test.ps1 -FijiExecutable <path> [Fiji args...]`. It applies the same private TEMP/TMP/java.io.tmpdir boundary to the Fiji process without globally changing Windows or Java settings.
 
 Do not globally modify the user's Windows TEMP/TMP or Java configuration merely for this project.
 
-A Fiji process that was already running before the private launcher started did **not** inherit these process-local temp settings. For image-blind/private automated testing, close existing Fiji first and let the private launcher start the Fiji instance used for the test.
+A Fiji process that was already running before either private launcher started did **not** inherit these process-local temp settings. Both private launch routes therefore refuse an already-running `ImageJ-win64` process. Close Fiji first and let the private launcher start the test instance.
+
+The launchers redirect conventional Windows/Java temporary storage. Fiji plugins can still choose their own explicit output paths; any plugin/script that writes pixel-bearing intermediates must be configured to use the external private tree rather than the repository or telemetry directory.
 
 ## Agent behavior around external image paths
 
@@ -63,6 +67,8 @@ The fact that the agent's OS account technically has filesystem permission to a 
 ## Git/exfiltration guard
 
 `.gitignore` rejects common image formats and known local/private test directories. This is defense in depth, not the primary rule. Before any push after privacy-sensitive testing, inspect `git status --short` and the staged diff. Do not stage binary/image files, private local paths containing identifying information, screenshots, or raw Fiji image outputs.
+
+Run `tools/check_image_blind_paths.py <local-config.json>` before privacy-sensitive testing and again before a push after such testing. It checks paths/Git state only and does not open image contents. It fails if configured image/crop/matrix or private temp roots are inside the worktree, or if image-format files are tracked/staged.
 
 External reviewer/model packets (including Antigravity/Gemini) must contain only bounded source diffs, generated script text, sanitized logs, geometry/telemetry and explicit review questions. Never send real/sample images or screenshots of them.
 
@@ -86,6 +92,8 @@ Prefer telemetry records such as:
 
 The model may reason about these values. It must not request or generate a screenshot merely to make automated testing easier.
 
-## Scope
+## Scope and security boundary
 
 This privacy rule outranks convenience, debugging speed and the normal desire to automate desktop validation. A visual-only problem may remain for the user; that is preferable to exposing the images to model context.
+
+This repository policy plus path/Git guards strongly prevents accidental model/Git exposure, but it is not an operating-system access-control boundary: a Codex process running as the same Windows user may technically have filesystem permission to external files. The rule is therefore that the agent must not exercise that capability. A true OS-enforced separation would require a separate Windows identity/sandbox for Fiji versus Codex, which is intentionally not introduced unless the user asks for that additional complexity.
