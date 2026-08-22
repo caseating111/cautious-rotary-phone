@@ -4,107 +4,91 @@ Status: Planned
 
 ## Goal
 
-Build a focused preprocessing step that derives a consistent whole-plate crop from an already orientation-corrected working image before the current four-click culture-grid registration step.
+Build a focused preprocessing mini-app that replaces manual Photoshop whole-plate cropping before the current four-click culture-grid registration.
 
-This replaces manual Photoshop whole-plate cropping while keeping a fast preview/accept/retry path.
+The key rule is to separate **reusable crop-size calibration** from **per-image crop placement**. Plates may share the same imaged dimensions while appearing at different x/y offsets, so crop size can be reused but crop center/translation generally cannot.
 
 See `docs/gemini/FUTURE_WORKFLOW.md` and `docs/development/PROJECT_ASSET_CONTRACT.md`.
 
 ## Do not use the colony ROI-box plugin
 
-The ROI 1-click rotated-rectangle colony tool is not appropriate here. This step needs plate-boundary coordinates, not a fixed-size 108x108 colony ROI.
+The ROI 1-click 108x108 rotated-rectangle colony tool is not appropriate here. Whole-plate cropping needs simple boundary/edge references, not a fixed-size colony ROI.
 
-Use precise crosshair/point clicks or equivalent native point events.
+Use crosshair/point clicks plus a visible crop overlay.
 
-## Preferred interaction: four boundary points first
+## A. Reusable crop-size calibration
 
-The default interaction should require **four crosshair clicks** on the already-straightened working plate:
+Calibration is required for the first representative plate of a compatible group and again only when the plate/image scale materially changes or the user explicitly chooses recalibration.
 
-1. leftmost useful plate boundary;
-2. rightmost useful plate boundary;
-3. topmost useful plate boundary;
-4. bottommost useful plate boundary.
+Calibration flow:
 
-These points are intentionally forgiving: the user does not need to find corners. Each click supplies one useful extreme coordinate.
+1. Display the orientation-corrected working plate.
+2. User clicks four forgiving boundary references: leftmost useful plate edge, rightmost useful plate edge, topmost useful plate edge, bottommost useful plate edge.
+3. Exact corners are not required.
+4. Derive measured width and height from those four coordinates.
+5. Default crop shape is square.
+6. Use a conservative side-length basis that avoids adding blank background; slight loss of nonessential plate edge is acceptable.
+7. Round the proposed square side **down to the nearest 50 px by default**.
+8. Rounding increment/behavior is configurable.
+9. Save the accepted size as a reusable `CropSizeCalibration`/preset.
+10. Use that calibration immediately for the current image's placement step.
 
-Display each marker and label it (`L`, `R`, `T`, `B`) so obvious misclicks are easy to spot.
-
-## Crop proposal from four points
-
-After the fourth click, calculate immediately:
-
-- measured horizontal extent from L/R;
-- measured vertical extent from T/B;
-- estimated plate center;
-- default square side;
-- proposed crop rectangle.
-
-A good first default is to use the smaller trustworthy plate extent as the square side basis so the crop does not expand into blank background, then round it **down to nearest 50 px**.
-
-Conceptually:
+Recommended first rule:
 
 `side = floor(min(measured_width, measured_height) / increment) * increment`
 
-with `increment=50` by default.
+with `increment = 50` by default, unless practical testing shows a better equally simple conservative rule.
 
-The exact rule may be adjusted if synthetic/manual testing shows a better equally-simple conservative calculation, but round-down/no-added-blank-space is the governing intent.
+## B. Per-image placement is always separate
 
-Cropping slightly into nonessential plate edges is acceptable; introducing extra blank space is undesirable.
+A reusable crop size does **not** imply a reusable crop center. Another plate may have identical dimensions but be shifted in the camera frame.
 
-## Optional re-anchor rather than mandatory extra clicks
+For each image:
 
-The originally requested left-edge + top-edge two-click placement should be retained, but as an **optional correction mode** rather than required on every plate.
+1. Reuse the current calibrated crop width/height.
+2. User clicks **somewhere on the left physical plate edge**. Only the x coordinate is authoritative for horizontal placement.
+3. User clicks **somewhere on the top physical plate edge**. Only the y coordinate is authoritative for vertical placement.
+4. Place the calibrated crop rectangle from those independent x/y anchors using the configured inset/offset rule.
+5. Show the proposed crop overlay and/or cropped preview.
+6. User chooses `Accept`, `Retry placement`, `Recalibrate size`, or `Skip/Cancel` as appropriate.
+7. On Accept, persist this image's crop rectangle/translation and write the derived working crop.
 
-Normal fast path:
+This deliberately avoids exact-corner clicking. Finding a precise top-left corner can be difficult; identifying any clear point on the left edge and any clear point on the top edge is easier and more robust.
 
-`4 boundary clicks -> proposed crop -> Accept`
+Do not silently reuse the previous plate's x/y placement.
 
-If crop size is right but placement is off:
+## Routine interaction cost
 
-1. choose `Re-anchor/Adjust position`;
-2. click somewhere along the desired left edge (x anchor);
-3. click somewhere along the desired top edge (y anchor);
-4. reposition the existing square using those x/y anchors without remeasuring its size;
-5. preview again.
+When a valid crop-size calibration already exists, the normal path should be:
 
-This preserves manual control while reducing routine crop interaction from six clicks to four.
+`left-edge click -> top-edge click -> preview -> Accept`
 
-## Residual tilt handling
+Only recalibration adds the four boundary clicks.
 
-The orientation mini-app should already remove the meaningful plate tilt. Do not make crop logic another alignment system.
+The UI should remember the current size calibration until changed rather than asking the user to choose a scope every image. A simple `Reuse current crop size` / `Recalibrate crop size` control is sufficient initially.
 
-If a small known residual/orientation transform exists, use the saved transform mathematically where useful for coordinate conversion/overlay. Do not require another complex rotated ROI interaction merely to chase tiny residual tilt.
+Future optional scope controls (selected images / experiment / Set / image only) are acceptable if they reduce effort, but are not required for first proof.
 
-If the proposed axis-aligned crop is visibly poor, Retry/return to orientation is preferable to creating fragile crop-specific rotation logic.
+## Relationship to orientation preprocessing
 
-## Square default, not hard limitation
+The plate-orientation app normally runs first using one straight-line drag along a top or bottom plate edge. Crop placement then operates in that orientation-corrected coordinate space.
 
-Square is the default first implementation because it gives predictable dimensions and matches the intended plate presentation.
+If small residual tilt remains, use the saved transform mathematically only when useful. Do not add extra routine interactions merely to chase tiny residual tilt.
 
-Keep options extensible enough for rectangular/aspect-ratio modes later, but do not implement arbitrary polygon cropping before the square route is proven.
+Skipping orientation must not make crop or four-click grid registration unavailable.
 
-## Step-by-step user function
+## Preview / verification
 
-1. Receive/open accepted orientation-corrected working image.
-2. Crosshair cursor asks for L/R/T/B boundary clicks.
-3. Show markers as clicked.
-4. Calculate square side and round down using configured increment (50 default).
-5. Draw proposed crop overlay and/or cropped preview.
-6. User chooses:
-   - `Accept/Save`;
-   - `Retry boundaries`;
-   - `Re-anchor` (optional L+T clicks);
-   - `Cancel/Skip`.
-7. Accept writes a derived working crop and persists `CropResult`/transform.
-8. Later four-click grid registration receives that accepted working image.
+Preview is required before the final working crop is written. It should make it obvious whether:
 
-The interaction should be hotkeyable where easy: e.g. Enter/A = accept, R = retry, optional P = reposition/re-anchor. Exact keys may follow existing controller conventions.
+- blank background has entered the crop;
+- useful plate area was removed excessively;
+- the reused size no longer fits this plate;
+- x/y placement is wrong.
 
-## Preview behavior
+Fast/hotkeyable actions are desirable: accept, retry placement, recalibrate size.
 
-Preview must not require destructive save/delete cycles. The user should see the proposed boundary/overlay or derived preview before the working crop is committed.
-
-No multi-dialog sequence is needed if one image window plus a compact status/action UI is sufficient.
+Retrying placement should **not** require recalibrating size.
 
 ## Source/output behavior
 
@@ -113,63 +97,86 @@ No multi-dialog sequence is needed if one image window plus a compact status/act
 - preview is non-destructive;
 - accepted crop writes an explicit working derivative;
 - preserve Image UID/canonical identity;
-- persist crop geometry and source->crop transform as reusable project state;
-- rerun/reset must be possible;
-- changing crop after downstream grid registration should mark that old grid state stale/incompatible rather than silently applying it to different geometry.
+- persist crop-size calibration separately from per-image crop placement;
+- rerun/reset/recalibrate remains possible.
 
-## Result contract
+## State contract
 
-Conceptually:
+Conceptually keep two layers of state.
 
-`derive_plate_crop(image, orientation_result, boundary_points, options) -> CropResult`
+### `CropSizeCalibration`
 
-Result should include:
+- calibrated square side / width / height;
+- measured calibration extents;
+- rounding increment/rule;
+- scale/context where needed;
+- calibration method/version;
+- optional future reuse scope.
+
+### Per-image `CropResult`
 
 - image UID/reference;
-- L/R/T/B points;
-- optional re-anchor points;
-- measured width/height;
-- crop rectangle/shape;
-- rounding increment and pre/post-rounded size;
+- calibration ID/version used;
+- left-edge x anchor;
+- top-edge y anchor;
+- final crop rectangle;
 - source/output dimensions;
 - accepted/skipped state;
-- output path when saved;
+- output path;
 - source->crop transform/version.
+
+Do not collapse crop size and crop translation into one supposedly reusable rectangle.
+
+## Relationship to four-click grid registration
+
+The existing four-click culture-grid route receives the accepted cropped working image.
+
+Changing crop geometry after grid registration must mark that coordinate asset stale/incompatible or explicitly transform it. Never silently reuse old grid coordinates in a new crop coordinate space.
+
+Do not derive culture coordinates here.
+
+## Mini-app boundary
+
+The applet may:
+
+- show the current crop-size calibration;
+- perform four-boundary calibration/recalibration;
+- collect per-image left/top placement anchors;
+- show crop overlay/preview;
+- accept/retry/recalibrate;
+- save crop state and derived working image.
+
+It should not parse V10, perform culture-grid registration, adjust visibility, export culture crops, or annotate.
 
 ## Required synthetic proofs
 
-1. four known boundary points produce expected center/extents;
-2. square defaults from the conservative extent;
-3. 50 px default round-down is correct;
-4. configurable rounding increment works;
-5. normal four-click proposal can be accepted with no extra anchor clicks;
-6. optional left/top re-anchor moves crop without changing side size;
-7. preview writes nothing;
-8. accept writes derived working output while raw remains unchanged;
-9. retry/reset works;
-10. transform/result state persists;
-11. skipped preprocessing does not block later four-click culture-grid registration.
+1. four boundary points derive the expected reusable square size;
+2. square side rounds down to nearest 50 by default;
+3. configurable rounding increment works;
+4. a second image with the same plate size but different x/y offset reuses the size while producing a different crop rectangle from left/top anchors;
+5. exact corner clicking is unnecessary;
+6. preview writes nothing;
+7. accept writes derived output while raw source remains unchanged;
+8. retry placement does not require recalibration;
+9. recalibration cleanly replaces/versions the current size calibration;
+10. crop-size state and per-image translation state remain distinct;
+11. changing crop geometry correctly invalidates downstream grid state when applicable;
+12. skipping crop preprocessing does not block the four-click route.
 
-## Out of scope
+## Success criteria
 
-- culture/grid detection;
-- visibility/levels adjustment;
-- strain/culture crop export;
-- annotation rendering;
-- V10 parsing;
-- adapting the colony ROI-box plugin;
-- automatic arbitrary plate-boundary segmentation before the interactive route works.
+`Proven` means one crop-size calibration can be reused across compatible plates while every image is independently positioned with only a left-edge and top-edge click, with fast preview/accept/retry/recalibrate behavior and explicit reusable state.
 
 ## Completion record
 
 - Branch:
 - Commit:
-- Interface:
-- Point/cursor interaction:
+- Interface(s):
 - Tests:
 - Dependencies:
-- Crop/rounding rule:
-- Re-anchor behavior:
+- Crop-size calibration behavior:
+- Per-image placement behavior:
+- Rounding behavior:
 - Preview/accept behavior:
 - Known limitations:
 - Contract changes proposed:
