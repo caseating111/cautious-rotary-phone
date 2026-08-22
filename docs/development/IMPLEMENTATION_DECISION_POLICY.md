@@ -112,6 +112,103 @@ Before substantial custom implementation:
 10. check wrappers, macros, patching, preprocessing/postprocessing, file exchange, coordinate conversion and CSV translation;
 11. repeat the search using alternate terminology before concluding that the route is unavailable.
 
+## Mandatory research-before-second-attempt rule
+
+One failed implementation or integration attempt is enough to trigger research before another speculative patch. This applies both to a specific component and to the overall end goal: a later failure with a technically different error message still counts when it prevents the same user outcome.
+
+After that first failure:
+
+1. stop further trial-and-error implementation temporarily;
+2. run a bounded, targeted online search for an existing solution to the exact failure or function;
+3. prioritize authoritative documentation and source, established projects and plugins, GitHub issues/code, Stack Overflow, Image.sc or the relevant specialist/user discussion hubs;
+4. compare version, platform, execution context and maintenance evidence before adopting a result;
+5. if no exact solution is found, search again by the underlying function and by similar, parallel or analogous problems, using alternate terminology and broader categories;
+6. select the best-supported practical route and verify it locally with the smallest relevant test before requesting user validation.
+
+For example, if no useful result exists for “count apples,” search for established ways to count fruit, produce or similar objects. The purpose is to reuse transferable solutions, not to require identical wording or an identical application.
+
+Keep research proportional and evidence-driven. This is a research-before-repetition rule, not permission for an exhaustive literature review. Record the decisive source or conclusion concisely when it materially affects implementation. If bounded research finds nothing applicable, proceed with the smallest justified experiment rather than repeating equivalent searches or tests.
+
+## Research memory and duplicate-search avoidance
+
+Research should accumulate as reusable project evidence rather than being rediscovered in each agent session.
+
+Before starting online research, check `docs/research/INDEX.md`. If a matching topic exists, read only that topic file first. Reuse prior conclusions and do not repeat substantially equivalent searches unless at least one of these is true:
+
+- the prior evidence is stale for the relevant software/version/platform;
+- the prior search was explicitly incomplete;
+- a new failure provides materially different evidence or changes the question;
+- a new implementation route requires a distinct search;
+- the user explicitly asks for fresh or broader research.
+
+When research materially affects an implementation decision, maintain a concise topic-specific file under `docs/research/`. Do not create a development diary and do not log every trivial query. Record only enough to prevent repeated work and preserve useful evidence:
+
+- the concrete goal/problem;
+- exact or near-exact search phrases that were meaningfully tried;
+- decisive useful findings and sources;
+- plausible routes ruled out and why;
+- relevant local implementation attempts/results;
+- the current preferred route or current unknown;
+- explicit conditions that would justify searching again.
+
+Keep `docs/research/INDEX.md` deliberately small. It is a routing/index document, not a research or failure log. Each topic gets one row containing a short stable topic name, compact status, endpoint-history route count when warranted, last-checked date, a current conclusion normally no longer than 30 words, and a link to the topic file. Search queries, individual errors, test chronology, source lists, and detailed failure explanations belong in the topic file, not the index.
+
+Do not fabricate or reconstruct exact historical search queries that were not actually recorded. For older work, log known conclusions/local failures and mark prior search terms as unrecorded. Prefer prospective logging from this point onward.
+
+Research-memory maintenance is part of the same bounded task that triggered the research. Keep it concise enough that writing or reading the log does not become a significant token/time cost itself.
+
+## Endpoint failure memory
+
+Durable failure memory tracks practical user outcomes/endpoints, not incidental test failures. Treat technically different errors as part of the same endpoint when they prevent the same intended user result.
+
+When the same practical endpoint has failed through three or more materially distinct implementation or integration routes, its existing `docs/research/<topic>.md` file must contain an `Endpoint debugging / failure history` section before another implementation attempt. This history is separate from the topic's search/research history but lives in the same file so the repository does not grow a second parallel logging hierarchy.
+
+Record materially distinct routes and debugging evidence that would help a future agent avoid rediscovering the same facts. Do not record every syntax mistake, typo, transient environment error, individual failing unit test, or routine edit unless it reveals a reusable integration/runtime lesson.
+
+Before implementing or substantially changing an endpoint that already has an indexed topic—or a sufficiently similar endpoint where the same lesson plausibly applies—read that topic's endpoint-failure history and compare the proposed approach with prior failed routes. Do not repeat a materially equivalent route merely under different naming, helper structure, or implementation detail unless new evidence gives a concrete reason it should now succeed.
+
+Preserve debugging steps when they establish reusable information about the endpoint, integration boundaries, tool/runtime behavior, validation limits, or why a plausible route should not be repeated. It is acceptable for a topic file to be detailed when that detail is cheaper than re-debugging the same route. Omit or consolidate iterations that add no materially new information.
+
+Do not impose an aggressive total word limit on topic files. When a file becomes large, consolidate entries only when they represent the same route and reached the same conclusion. Preserve materially different attempts, decisive evidence, and debugging facts that would help recognize or avoid a failed approach. Raw verbose logs should normally be reduced to the unique facts they establish rather than copied wholesale.
+
+A materially distinct endpoint-failure entry should normally state:
+- what architecture/integration/debugging route was tried;
+- the observed practical endpoint result;
+- the decisive evidence or debugging steps that established what happened;
+- the reusable lesson for future agents;
+- disposition such as `active`, `superseded`, `ruled out`, or `worth revisiting only if ...`.
+
+### Example of useful endpoint debugging memory
+
+Useful:
+
+1. **Existing Fiji detection based indirectly on AHK/window geometry.**
+   - Repeatedly failed to identify/reuse the intended Fiji instance reliably.
+   - Later attempts produced second-instance launches.
+   - Lesson: do not return to indirect geometry-based main-window inference without materially new evidence.
+
+2. **Relaunch after the first four-point attempt.**
+   - Controller attempted another Fiji launch despite an existing instance.
+   - `Launching Fiji...` remained visible.
+   - `File not found: Macro_Runner` appeared.
+   - Established that launch-state cleanup and macro invocation were not reliably coordinated.
+
+3. **Generator/proof validation.**
+   - Synthetic/generated-artifact checks passed.
+   - Actual Fiji subsequently rejected the generated IJM.
+   - Established that generator-level validation alone is insufficient proof of the real Fiji endpoint.
+
+Not useful as durable endpoint memory unless it establishes a broader reusable lesson:
+
+- ran test;
+- changed one line;
+- ran test again;
+- fixed a syntax typo;
+- reran unchanged tests;
+- changed a comment.
+
+Preserve debugging steps when they establish reusable information. Consolidate repetitive steps that establish the same fact instead of deleting distinct lessons merely to reduce file size.
+
 ## Immediate practicality test
 
 Prefer routes that can be demonstrated quickly as a small end-to-end working slice using representative synthetic/test data.
@@ -123,6 +220,20 @@ A solution that requires substantial compatibility surgery, legacy dependency re
 A less elegant route that works immediately or nearly immediately has a strong advantage over a theoretically superior route with uncertain integration and testing cost.
 
 ## Testing budget and stop-loss rule
+
+### Validation-efficiency policy
+
+Optimize for the fastest route to a practically usable and testable product, not exhaustive validation. This policy explicitly overrides overly conservative or exhaustive testing behavior.
+
+Do not perform redundant, exhaustive, or low-value testing by default. Reuse valid existing test evidence and do not rerun unchanged tests without a concrete reason. Prefer targeted tests of changed or affected runtime paths and a small representative set of integration checks.
+
+Expand testing beyond those targeted paths only when a test fails, runtime behavior contradicts expectations, evidence indicates a broader regression, or the user explicitly requests broader regression or audit testing.
+
+Do not spend substantial time polishing documentation, unrelated refactoring, hypothetical edge cases, or repeatedly reviewing already-validated components unless directly required by the current task.
+
+Batch manual and visual validation for the user rather than repeatedly interrupting development.
+
+Required behavior explicitly named by the user must still be implemented and verified sufficiently to reach a practical user-testable checkpoint.
 
 The user's testing burden has previously exceeded the manual work the automation was supposed to replace. That is an explicit failure condition and must not be normalized.
 
