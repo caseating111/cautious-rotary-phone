@@ -18,7 +18,9 @@ Read only:
 
 Do not reconstruct the full repository history or ingest the current runtime broadly.
 
-Before online research, check `docs/research/INDEX.md`; if a matching topic exists, read only that topic file first and follow the implementation policy's duplicate-search/logging rules.
+Before online research, check `docs/research/INDEX.md`; if a matching endpoint/topic exists, read only that topic file first and follow the implementation policy's duplicate-search/logging rules.
+
+**Avoid tunnel vision after a failed endpoint.** Do not frame follow-up research only around repairing the library/protocol/architecture that just failed. Restate the user-visible endpoint without that implementation terminology, search current official/mature end-to-end solutions and architectural alternatives first, then prove the smallest uncertain property before integration. Different technical errors blocking the same outcome remain one endpoint failure.
 
 ## Ownership
 
