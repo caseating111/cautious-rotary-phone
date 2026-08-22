@@ -20,14 +20,14 @@ if not errorlevel 1 (
 
 where py >nul 2>nul
 if not errorlevel 1 (
-    py -3 tools\custom_matrix_gui_recorded.py
+    py -3.14 tools\custom_matrix_gui_recorded.py
     if not errorlevel 1 exit /b 0
 )
 
 python tools\custom_matrix_gui_recorded.py
 if errorlevel 1 (
     echo.
-    echo Could not start Custom matrices. Create the conda environment from environment.yml or make Python 3 available on PATH.
+    echo Could not start Custom matrices. Current supported target is Windows with Python 3.14.
     pause
     exit /b 1
 )
