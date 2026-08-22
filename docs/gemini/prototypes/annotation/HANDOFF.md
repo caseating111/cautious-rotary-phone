@@ -4,145 +4,199 @@ Status: Planned
 
 ## Goal
 
-Build an isolated annotation/composition component that consumes shared canonical metadata plus `PlateLayout` and produces useful labeled/composite outputs without depending on the current Fiji/AHK/controller runtime. Prefer Pillow and mature existing image/graphics facilities; Fiji may be used where it is clearly the better mature tool, but do not recreate mature rendering/layout features from scratch unnecessarily.
+Build an isolated annotation/composition component that consumes shared canonical metadata, saved grid coordinates and `PlateLayout` and produces useful labeled/composite outputs without depending on the current Fiji/AHK/controller runtime.
 
-This prototype may expose both a narrow callable API and a focused mini-app. The eventual main controller can launch/orchestrate it, but the current controller must not be refactored during prototype work.
+The key change from the old Photoshop workflow is that annotation placement should now be **primarily automatic**, because the working four-click grid route gives actual spot coordinates and V10 metadata gives the identity/order of strains and vertical labels. Manual repositioning should be an exception, not the normal workflow.
 
-## Intended role in the larger architecture
+Prefer Pillow and mature existing image/graphics facilities; Fiji may be used where it is clearly better. Do not recreate mature rendering/layout features from scratch unnecessarily.
 
-The main controller should remain responsible for project/file selection, validation, shared state, and launch buttons. Annotation/composition can be a focused subordinate tool that receives a canonical project/layout payload and returns/saves outputs.
-
-The component must therefore be usable independently of the GUI. GUI code should wrap reusable rendering/composition functions rather than contain the core logic.
+This prototype may expose both a narrow callable API and a focused mini-app. The eventual overall controller can launch/orchestrate it, but the current controller must not be refactored during prototype work.
 
 ## Inputs
 
-Use synthetic inputs only during this prototype. The component should consume normalized structures rather than workbook-specific tables.
+Use synthetic inputs during this prototype. The component should consume normalized structures rather than workbook-specific tables.
 
 Expected information includes:
 
 - image/session identity;
 - experiment/date/session labels;
 - media/condition/set/replicate fields when requested for display;
-- `PlateLayout` row/column dimensions;
-- ordered strain bands and strain labels;
+- `PlateLayout` row/column dimensions and ordered strain bands;
+- saved pixel grid/spot coordinates for the target image;
 - ordered vertical labels;
 - annotation options/preset;
 - optional source image/canvas path for synthetic/public test images only.
 
-The annotation renderer should not need to reopen V10 or parse filenames to rediscover metadata already supplied structurally.
+The renderer should not reopen V10 or parse filenames to rediscover metadata already supplied structurally.
 
-## Required annotation behavior
+## Automatic placement from grid coordinates
+
+The saved grid/spot coordinates are the placement authority for strain/vertical labels.
+
+Required behavior:
+
+- strain labels map automatically to known logical strain columns/bands and measured spot coordinates;
+- vertical labels map automatically to physical row coordinates;
+- repeated vertical label text remains separate because `Pos`/row identity is distinct;
+- multiple strain-profile bands use their own row ranges and local widths;
+- spacing is derived from the measured grid/spot geometry rather than a fixed Photoshop-style template;
+- plate/date/description labels use configured anchor/offset rules relative to the image/grid/canvas.
+
+The old template workflow existed largely to avoid Photoshop lag and manual layer overload. It is **not** a required architecture now. Pillow/ImageJ rendering should generate labels directly and cheaply.
+
+Manual position overrides may exist as a fallback, but the default expected user experience is automatic placement with preview/accept rather than hand-moving every plate's labels.
+
+## Label orientation
+
+The historical strain-label convention should remain available as a preset/default option:
+
+- strain labels rotated 90 degrees clockwise;
+- top of strain text faces right;
+- bottom faces left;
+- vertical labels remain upright unless a preset explicitly changes them.
+
+Text orientation should remain independently configurable from image/plate rotation so labels can stay readable after preprocessing.
+
+## Reusable presentation presets
+
+Support reusable presentation presets for parameters such as:
+
+- font/family;
+- font size;
+- text color;
+- offsets from grid/spot anchors;
+- text orientation/rotation;
+- label-class visibility;
+- margins/padding;
+- figure-description/date anchor positions;
+- optional abbreviations/display formatting.
+
+Scientific identity/order remains in canonical metadata. Presentation presets must not mutate `Image UID`, strain identity, `Pos`, `Order`, Set, Condition, etc.
+
+Spacing of strain/vertical labels should normally come from the actual grid geometry, not from manually encoded per-template spacing.
+
+## Preview mode is required
+
+A preview function is required so the user can inspect fonts, sizes, labels, orientation, offsets and overall placement **without altering source files or committing an output**.
+
+The mini-app/API should support a cheap preview path that:
+
+- renders to memory or an explicit temporary/preview artifact;
+- never overwrites the source image;
+- does not require the user to create/process/delete a final file just to see layout changes;
+- can be regenerated quickly when a preset option changes.
+
+Final render/export is a separate explicit action.
+
+## Whole-plate label behavior
 
 Support at minimum:
 
-- strain labels in logical column order;
-- vertical labels in logical row order;
+- strain labels in logical column/band order;
+- vertical labels in physical row order;
 - date label;
-- plate/experiment/set/media/condition labels where configured;
+- experiment/plate/Set/media/Condition labels where configured;
 - optional session/replicate identifiers;
+- overall figure-description text derived from structured metadata/preset rules;
 - configurable visibility of label classes;
-- sensible margins/padding and deterministic placement;
-- independent text/orientation handling where needed;
-- preservation of user-facing label text exactly as supplied.
+- deterministic placement from grid coordinates + preset offsets;
+- preservation of supplied user-facing label text.
 
 `other` labels remain out of scope initially.
 
 ## Strain bands and layout awareness
 
-The renderer must understand that a plate may contain more than one ordered strain profile occupying different row bands.
-
-Required cases:
-
 ### 8 x 12 single-band
 
 - one strain profile spans rows 1-8;
-- strain labels positions 1-12 align to the 12 logical columns;
+- strain labels positions 1-12 align to the measured 12-column grid;
 - one vertical profile supplies 8 row labels.
 
 ### 8 x 10 two-band
 
-- upper strain profile (`Order=1`) occupies rows 1-4;
-- lower strain profile (`Order=2`) occupies rows 5-8;
-- each may have its own strain-label set;
-- overall grid width is 10.
+- upper strain profile (`Order=1`) defaults to rows 1-4;
+- lower strain profile (`Order=2`) defaults to rows 5-8;
+- each has its own strain-label set;
+- overall grid width is 10;
+- an explicit row-band override from `PlateLayout` must be honored.
 
 ### Unequal-width bands
 
-If the overall grid is 10 columns but a lower band contains only 4 strain positions, keep the overall plate width while placing that band's labels according to its local logical positions. Do not collapse the full layout to four columns merely because one band is narrower.
-
-The exact visual anchoring for narrower bands should be a configurable/deterministic layout choice rather than inferred from label text.
-
-## Vertical labels
-
-Use physical vertical `Pos` ordering. Repeated label text is valid and must render on separate rows. For example `0, -1, -2, -3, 0, -1, -2, -3` represents eight physical row positions, not four unique labels.
-
-Current scope assumes one vertical profile per plate/layout.
-
-## Rotation/orientation behavior
-
-The tool should allow annotation orientation to remain visually readable when images/layouts are rotated. Text orientation and image/grid orientation do not have to be coupled if decoupling them produces a clearer output.
-
-Do not embed assumptions from the current Fiji four-click implementation. Consume the logical layout and any later accepted image transform/rotation as inputs.
+If the overall grid is 10 columns but one band contains only 4 strain positions, preserve the overall grid and use that band's local logical/pixel positions. Do not collapse the full layout to four columns.
 
 ## Composition/matrix behavior
 
-The component should be designed so it can support small image compositions/matrices in addition to whole-plate annotation. The user may sometimes want to create a few small composites without editing a large master workbook.
+The component may also provide lightweight composition/matrix rendering because it already has metadata/label/rendering primitives. This should remain separable from whole-plate annotation.
 
-For the prototype, prove the rendering/composition boundary rather than implementing every future controller flow. Useful capabilities may include:
+Useful capabilities include:
 
-- arranging selected synthetic crops/images into a deterministic matrix;
+- arranging selected existing crops into a deterministic matrix;
 - preserving supplied condition/strain ordering;
 - adding row/column labels from structured metadata;
-- exporting a composed image without requiring Photoshop;
-- keeping source images unchanged and creating explicit derived outputs.
+- exporting a composed image without Photoshop;
+- keeping source images unchanged;
+- allowing modest manual selection/order override for quick small compositions rather than requiring the master workbook to be edited first.
 
-A later lightweight CSV controller may feed the same canonical request model, but that controller is out of scope for this prototype.
+A later small CSV controller may feed the same canonical request model.
+
+### Mixed crop-tier selection
+
+Matrix selection must not assume every selected strain uses the same crop tier. A future matrix request should be able to choose, for example:
+
+- WT1 -> `top` crop;
+- STRAIN2 -> `low` crop;
+- another strain -> another available tier;
+
+within the same matrix.
+
+The current all-top/all-low behavior should therefore not be baked into the composition contract.
 
 ## Output expectations
 
-Prefer explicit derived outputs. The renderer should be able to return enough information for callers to know what was produced, for example output path, dimensions, annotations used, and warnings.
-
-Possible output formats may include PNG/TIFF/JPEG as appropriate. Do not force lossy conversion when a lossless output is preferable.
-
-If a layered/editable intermediate representation is easy to obtain using mature software, it may be explored, but do not make editable layers a prerequisite if a reliable rendered output satisfies the workflow more efficiently.
+- source images remain unchanged;
+- final annotations/composites are explicit derived outputs;
+- output path/dimensions/annotations/preset/warnings should be reportable;
+- prefer lossless output where appropriate;
+- layered/editable intermediates are optional conveniences, not requirements.
 
 ## Mini-app behavior
 
-A focused mini-app is allowed and encouraged if it materially reduces user effort. It should remain narrow, e.g.:
+A focused mini-app is encouraged if it reduces user effort. It may:
 
-- choose/load a synthetic/canonical request;
-- preview annotation/composition;
-- toggle label classes/options;
-- adjust a few layout/padding/orientation parameters;
-- render/export.
+- receive/select a canonical image/request;
+- show fast annotation preview;
+- choose/reuse a presentation preset;
+- toggle label classes;
+- tweak font/size/offset/orientation;
+- optionally override a position only when needed;
+- render/export final output;
+- build a small composition/matrix with structured or manually selected crops.
 
-Do not duplicate project/file discovery, V10 parsing, or global controller settings inside the applet. Those should eventually be passed in by the main controller/shared model.
+Do not duplicate project discovery, V10 parsing or global controller settings inside the applet.
 
 ## Shared contract
 
-Use `contracts/project_model.schema.json`, `contracts/plate_layout.schema.json`, and `contracts/annotation_request.schema.json` as the intended boundary.
+Use `contracts/project_model.schema.json`, `contracts/plate_layout.schema.json`, `contracts/annotation_request.schema.json`, plus a narrowly defined saved-grid/coordinate input if needed.
 
-If the request contract lacks a necessary field, propose a narrow contract change in this HANDOFF rather than creating hidden controller-specific globals.
+Ideal boundary is conceptually:
 
-The eventual ideal boundary is conceptually:
+`render_plate_annotation(image, image_record, plate_layout, grid_coordinates, preset) -> AnnotationResult`
 
-`render_plate_annotation(image_or_canvas, image_record, plate_layout, options) -> AnnotationResult`
-
-and/or a similarly narrow composition call.
+and a similarly narrow composition call.
 
 ## Mature-tool-first implementation posture
 
-Before substantial custom rendering/layout code, check mature capabilities in Pillow, Fiji/ImageJ, and established Python imaging/layout packages. Use thin glue around proven primitives.
+Before substantial custom rendering/layout code, check mature capabilities in Pillow, Fiji/ImageJ and established Python imaging/layout packages. Use thin glue around proven primitives.
 
-Do not recreate text measurement, image resizing, affine transforms, or common composition operations from first principles when mature libraries already provide them.
+Do not recreate text measurement, image resizing, affine transforms or common composition operations from first principles when mature libraries already provide them.
 
 ## Data/scientific safety
 
-- Use synthetic/public images only during prototype development.
-- Never alter source pixels in-place by default.
-- Annotations and composites are derived outputs.
-- Quantitative measurements must not be taken from annotation-rendered/visibility-enhanced outputs unless explicitly designed for that purpose later.
-- Preserve original metadata text separately from rendered formatting choices.
+- use synthetic/public images only during prototype development;
+- never alter source pixels in place by default;
+- annotations/composites are derived outputs;
+- quantitative measurements must not be taken from annotation-rendered/visibility-enhanced outputs unless explicitly designed later;
+- preserve original metadata separately from rendered formatting choices.
 
 ## Out of scope
 
@@ -151,25 +205,27 @@ Do not recreate text measurement, image resizing, affine transforms, or common c
 - live filesystem reconciliation;
 - `other` labels;
 - quantitative colony/stress scoring;
-- automatic whole-plate physical rotation estimation;
+- automatic whole-plate physical orientation/cropping;
 - refactoring the existing main controller into mini-apps.
 
 ## Required synthetic proofs
 
 At minimum demonstrate:
 
-1. an 8x12 single-strain-profile plate annotation;
-2. an 8x10 two-strain-band plate annotation;
-3. repeated vertical labels placed by physical `Pos`;
-4. deterministic strain ordering from `Pos`/band order;
-5. a simple small composite/matrix from synthetic inputs with structured row/column labels;
-6. configurable date/plate/media/condition labels;
-7. source image remains unchanged and output is written separately;
-8. callable renderer works without launching the mini-app GUI.
+1. automatic 8x12 whole-plate annotation from saved grid coordinates;
+2. automatic 8x10 two-strain-band annotation;
+3. repeated vertical labels placed by physical row/`Pos`;
+4. strain labels rotated 90 degrees clockwise with top facing right as a preset;
+5. fast non-destructive preview with preset changes;
+6. deterministic date/figure-description/plate labels from metadata + saved offsets;
+7. a small composite/matrix with structured labels;
+8. mixed crop-tier selection within one matrix;
+9. source image remains unchanged and final output is separate;
+10. callable renderer works without launching the GUI.
 
 ## Success criteria
 
-The prototype is `Proven` when the renderer/compositor has a narrow reusable API, the required synthetic layouts render deterministically, a focused mini-app (if included) wraps rather than owns core logic, targeted tests pass, and downstream integration can occur through the shared model without importing current controller internals.
+The prototype is `Proven` when automatic grid-derived placement works for the required layouts, preview/presets work without modifying sources, the renderer/compositor has a narrow reusable API, targeted tests pass, and later integration can occur through shared contracts without importing current controller internals.
 
 ## Completion record
 
@@ -182,6 +238,7 @@ When proven, update with:
 - Tests:
 - Dependencies:
 - Proven layouts/compositions:
+- Preview/preset behavior:
 - Output formats:
 - Known limitations:
 - Contract changes proposed:
