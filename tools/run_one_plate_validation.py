@@ -104,7 +104,7 @@ def patch_roi_click_interaction(source: str) -> str:
     replacements = [
         (
             '            "A temporary boosted alignment view will open. Centre the 108x108 box four times."',
-            '            "A temporary boosted alignment view will open. The Rotated Rectangle Click Tool will be selected automatically for the four colony-centre clicks."',
+            '            "A temporary boosted alignment view will open. The ROI 1-click Rotated Rectangle Click Tool will be selected automatically for the four colony-centre clicks."',
         ),
         (
             '        run("Enhance Contrast", "saturated=0.35");\n\n'
@@ -113,24 +113,24 @@ def patch_roi_click_interaction(source: str) -> str:
             '        makeRectangle(round(viewW / 2 - CLICK_ROI / 2), round(viewH / 2 - CLICK_ROI / 2), CLICK_ROI, CLICK_ROI);',
             '        run("Enhance Contrast", "saturated=0.35");\n'
             '        run("Select None");\n'
-            '        setTool("Rotated Rectangle Click Tool");\n\n'
+            '        setTool("Rotated Rectangle Click Tool - Cf00R11cc");\n\n'
             '        accepted = 0;',
         ),
         (
             '                sourceTitle + "\\n\\nCentre box on ROW 1, COLUMN 1.\\n\\nReposition as needed, then click OK."',
-            '                sourceTitle + "\\n\\nClick the centre of ROW 1, COLUMN 1 with the Rotated Rectangle Click Tool, then click OK."',
+            '                sourceTitle + "\\n\\nClick the centre of ROW 1, COLUMN 1 with the ROI 1-click Rotated Rectangle Click Tool, then click OK."',
         ),
         (
             '                sourceTitle + "\\n\\nCentre box on ROW 1, COLUMN " + gridCols + ".\\n\\nReposition as needed, then click OK."',
-            '                sourceTitle + "\\n\\nClick the centre of ROW 1, COLUMN " + gridCols + " with the Rotated Rectangle Click Tool, then click OK."',
+            '                sourceTitle + "\\n\\nClick the centre of ROW 1, COLUMN " + gridCols + " with the ROI 1-click Rotated Rectangle Click Tool, then click OK."',
         ),
         (
             '                sourceTitle + "\\n\\nCentre box on ROW 5, COLUMN 1.\\n\\nReposition as needed, then click OK."',
-            '                sourceTitle + "\\n\\nClick the centre of ROW 5, COLUMN 1 with the Rotated Rectangle Click Tool, then click OK."',
+            '                sourceTitle + "\\n\\nClick the centre of ROW 5, COLUMN 1 with the ROI 1-click Rotated Rectangle Click Tool, then click OK."',
         ),
         (
             '                sourceTitle + "\\n\\nCentre box on ROW 5, COLUMN " + gridCols + ".\\n\\nReposition as needed, then click OK."',
-            '                sourceTitle + "\\n\\nClick the centre of ROW 5, COLUMN " + gridCols + " with the Rotated Rectangle Click Tool, then click OK."',
+            '                sourceTitle + "\\n\\nClick the centre of ROW 5, COLUMN " + gridCols + " with the ROI 1-click Rotated Rectangle Click Tool, then click OK."',
         ),
         (
             '            R1LX = x + w / 2;\n            R1LY = y + h / 2;',
@@ -194,9 +194,6 @@ def run(filename: str | None = None, *, legacy: bool = False) -> dict[str, str]:
     if not fiji.is_file():
         raise SystemExit(f"Fiji executable not found: {fiji}")
     try:
-        # Do not block merely because a Fiji process from an earlier proof is still open.
-        # Fiji may reuse its existing instance; if its own single-instance handoff is unavailable,
-        # launching the macro again remains preferable to a permanently stale controller lock.
         _ACTIVE_FIJI_PROCESS = subprocess.Popen([str(fiji), "-macro", str(macro)])
     except OSError as exc:
         raise SystemExit(f"Could not launch Fiji one-plate validation: {exc}") from exc
