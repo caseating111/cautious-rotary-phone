@@ -4,123 +4,172 @@ Status: Planned
 
 ## Goal
 
-Build a focused preprocessing step that derives a consistent whole-plate crop from an already orientation-corrected working image before the current four-click grid-registration step.
+Build a focused preprocessing step that derives a consistent whole-plate crop from an already orientation-corrected working image before the current four-click culture-grid registration step.
 
-This is intended to replace manual Photoshop whole-plate cropping while keeping a quick visual verification/retry path.
+This replaces manual Photoshop whole-plate cropping while keeping a fast preview/accept/retry path.
 
-## Intended interaction
+See `docs/gemini/FUTURE_WORKFLOW.md` and `docs/development/PROJECT_ASSET_CONTRACT.md`.
 
-The currently desired practical route is interactive and lightweight rather than fully automatic:
+## Do not use the colony ROI-box plugin
 
-1. establish approximate overall plate size from four side/extreme clicks or equivalent boundary points;
-2. derive a default square crop size from that extent;
-3. round the crop size **down to the nearest 50 pixels by default**;
-4. allow the rounding increment/behavior to be changed in options;
-5. collect a simple left-edge/top-edge reference (conceptually two clicks: somewhere on the left edge and somewhere along the top) to anchor/place the square;
-6. account mathematically for any small residual tilt using the saved orientation transform where useful;
-7. preview the resulting crop;
-8. accept/save to the working output or retry.
+The ROI 1-click rotated-rectangle colony tool is not appropriate here. This step needs plate-boundary coordinates, not a fixed-size 108x108 colony ROI.
 
-Cropping slightly into nonessential plate edges is preferable to introducing extra blank space, which is why round-down is the default.
+Use precise crosshair/point clicks or equivalent native point events.
+
+## Preferred interaction: four boundary points first
+
+The default interaction should require **four crosshair clicks** on the already-straightened working plate:
+
+1. leftmost useful plate boundary;
+2. rightmost useful plate boundary;
+3. topmost useful plate boundary;
+4. bottommost useful plate boundary.
+
+These points are intentionally forgiving: the user does not need to find corners. Each click supplies one useful extreme coordinate.
+
+Display each marker and label it (`L`, `R`, `T`, `B`) so obvious misclicks are easy to spot.
+
+## Crop proposal from four points
+
+After the fourth click, calculate immediately:
+
+- measured horizontal extent from L/R;
+- measured vertical extent from T/B;
+- estimated plate center;
+- default square side;
+- proposed crop rectangle.
+
+A good first default is to use the smaller trustworthy plate extent as the square side basis so the crop does not expand into blank background, then round it **down to nearest 50 px**.
+
+Conceptually:
+
+`side = floor(min(measured_width, measured_height) / increment) * increment`
+
+with `increment=50` by default.
+
+The exact rule may be adjusted if synthetic/manual testing shows a better equally-simple conservative calculation, but round-down/no-added-blank-space is the governing intent.
+
+Cropping slightly into nonessential plate edges is acceptable; introducing extra blank space is undesirable.
+
+## Optional re-anchor rather than mandatory extra clicks
+
+The originally requested left-edge + top-edge two-click placement should be retained, but as an **optional correction mode** rather than required on every plate.
+
+Normal fast path:
+
+`4 boundary clicks -> proposed crop -> Accept`
+
+If crop size is right but placement is off:
+
+1. choose `Re-anchor/Adjust position`;
+2. click somewhere along the desired left edge (x anchor);
+3. click somewhere along the desired top edge (y anchor);
+4. reposition the existing square using those x/y anchors without remeasuring its size;
+5. preview again.
+
+This preserves manual control while reducing routine crop interaction from six clicks to four.
+
+## Residual tilt handling
+
+The orientation mini-app should already remove the meaningful plate tilt. Do not make crop logic another alignment system.
+
+If a small known residual/orientation transform exists, use the saved transform mathematically where useful for coordinate conversion/overlay. Do not require another complex rotated ROI interaction merely to chase tiny residual tilt.
+
+If the proposed axis-aligned crop is visibly poor, Retry/return to orientation is preferable to creating fragile crop-specific rotation logic.
 
 ## Square default, not hard limitation
 
-A square crop is the default for the first useful implementation. Keep the result/options extensible enough that another aspect/box shape can be selected later without rebuilding the whole component.
+Square is the default first implementation because it gives predictable dimensions and matches the intended plate presentation.
 
-Do not add complexity for arbitrary shapes before the square workflow is proven.
+Keep options extensible enough for rectangular/aspect-ratio modes later, but do not implement arbitrary polygon cropping before the square route is proven.
+
+## Step-by-step user function
+
+1. Receive/open accepted orientation-corrected working image.
+2. Crosshair cursor asks for L/R/T/B boundary clicks.
+3. Show markers as clicked.
+4. Calculate square side and round down using configured increment (50 default).
+5. Draw proposed crop overlay and/or cropped preview.
+6. User chooses:
+   - `Accept/Save`;
+   - `Retry boundaries`;
+   - `Re-anchor` (optional L+T clicks);
+   - `Cancel/Skip`.
+7. Accept writes a derived working crop and persists `CropResult`/transform.
+8. Later four-click grid registration receives that accepted working image.
+
+The interaction should be hotkeyable where easy: e.g. Enter/A = accept, R = retry, optional P = reposition/re-anchor. Exact keys may follow existing controller conventions.
+
+## Preview behavior
+
+Preview must not require destructive save/delete cycles. The user should see the proposed boundary/overlay or derived preview before the working crop is committed.
+
+No multi-dialog sequence is needed if one image window plus a compact status/action UI is sufficient.
 
 ## Source/output behavior
 
 - raw source remains untouched;
-- operate on the working/orientation-corrected image;
+- operate on the working/orientation-corrected derivative;
 - preview is non-destructive;
-- accepted crop writes an explicit working/derived image;
-- preserve project image identity/UID across the transformation;
-- persist crop geometry/transform as reusable project state where practical;
-- rerun/reset must be possible.
-
-## Quick verification/hotkey behavior
-
-The production integration should support a very fast visual gate between crop proposal and save, ideally hotkeyable:
-
-- accept/save crop;
-- retry/reselect crop.
-
-Do not require a multi-dialog workflow for every plate if a compact preview + two actions is sufficient.
-
-## Relationship to later grid registration
-
-This preprocessing happens before the existing four-click culture-grid route.
-
-The four-click route should receive the accepted cropped working image. Crop/orientation preprocessing remains optional enough that failure must not require redesigning grid registration.
-
-Do not derive culture coordinates here.
+- accepted crop writes an explicit working derivative;
+- preserve Image UID/canonical identity;
+- persist crop geometry and source->crop transform as reusable project state;
+- rerun/reset must be possible;
+- changing crop after downstream grid registration should mark that old grid state stale/incompatible rather than silently applying it to different geometry.
 
 ## Result contract
 
 Conceptually:
 
-`derive_plate_crop(image, orientation_result, points, options) -> CropResult`
+`derive_plate_crop(image, orientation_result, boundary_points, options) -> CropResult`
 
-The result should include:
+Result should include:
 
 - image UID/reference;
+- L/R/T/B points;
+- optional re-anchor points;
+- measured width/height;
 - crop rectangle/shape;
-- default/actual rounding increment;
-- source dimensions;
-- accepted/review state;
+- rounding increment and pre/post-rounded size;
+- source/output dimensions;
+- accepted/skipped state;
 - output path when saved;
-- enough transform information for later coordinate mapping if needed.
+- source->crop transform/version.
 
-## Mini-app
+## Required synthetic proofs
 
-A focused applet may:
-
-- load one working image;
-- show the orientation-corrected plate;
-- collect side/boundary and anchor clicks;
-- show proposed square/box overlay;
-- preview crop;
-- accept/retry;
-- save result/project state.
-
-Keep it independent of V10 parsing and four-click grid logic.
-
-## Privacy/testing
-
-Gemini development uses synthetic/public images only. Required tests should include known image extents/tilts so crop math can be proven without confidential images.
-
-## Required proofs
-
-1. derive square from known synthetic plate extent;
-2. round down to nearest 50 by default;
-3. configurable alternative rounding increment;
-4. place crop using left/top references;
-5. consume a small residual orientation transform correctly;
-6. preview without file modification;
-7. accept writes derived working output while raw/source remains unchanged;
-8. retry/reset works;
-9. crop geometry persists in a small result/state object.
+1. four known boundary points produce expected center/extents;
+2. square defaults from the conservative extent;
+3. 50 px default round-down is correct;
+4. configurable rounding increment works;
+5. normal four-click proposal can be accepted with no extra anchor clicks;
+6. optional left/top re-anchor moves crop without changing side size;
+7. preview writes nothing;
+8. accept writes derived working output while raw remains unchanged;
+9. retry/reset works;
+10. transform/result state persists;
+11. skipped preprocessing does not block later four-click culture-grid registration.
 
 ## Out of scope
 
-- automatic colony/grid detection;
+- culture/grid detection;
 - visibility/levels adjustment;
 - strain/culture crop export;
 - annotation rendering;
-- V10 parsing itself;
-- replacing the four-click grid route.
+- V10 parsing;
+- adapting the colony ROI-box plugin;
+- automatic arbitrary plate-boundary segmentation before the interactive route works.
 
 ## Completion record
-
-When proven, update with:
 
 - Branch:
 - Commit:
 - Interface:
+- Point/cursor interaction:
 - Tests:
 - Dependencies:
-- Crop/rounding behavior:
+- Crop/rounding rule:
+- Re-anchor behavior:
 - Preview/accept behavior:
 - Known limitations:
 - Contract changes proposed:
