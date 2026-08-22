@@ -256,9 +256,7 @@ class OnePlateValidationTests(unittest.TestCase):
                 proof.batch, "CONFIGURED_LEGACY_MACRO", configured
             ), patch.object(proof, "PROOF_IMAGES_CSV", proof_csv), patch.object(
                 proof, "PROOF_LEGACY_MACRO", proof_macro
-            ), patch.object(proof, "patch_roi_click_interaction", side_effect=lambda text: text), patch.object(
-                proof.subprocess, "run", return_value=completed
-            ) as run_mock:
+            ), patch.object(proof.subprocess, "run", return_value=completed) as run_mock:
                 built, selected = proof.prepare("plate2.jpg", legacy=True)
 
             self.assertEqual(built, proof_macro)

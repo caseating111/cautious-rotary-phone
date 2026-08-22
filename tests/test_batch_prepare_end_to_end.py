@@ -8,6 +8,9 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
+
+from tools import run_one_plate_validation as proof
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -118,10 +121,39 @@ class BatchPrepareEndToEndTests(unittest.TestCase):
             self.assertIn("1 / 4 — R1C1", text)
             self.assertIn("4 / 4 — R5C", text)
             self.assertIn('Dialog.create("Full-grid QC")', text)
+            self.assertEqual(text.count('run("Enhance Local Contrast (CLAHE)", claheOptions)'), 2)
+            self.assertIn("claheBlock = round(roiBoxSize * 3.3)", text)
+            self.assertIn('histogram=256 maximum=1000 mask=*None* fast_(less_accurate)', text)
+            self.assertNotIn("CLICK_ROI = 108", text)
+            self.assertIn('roiBoxW = call("ij.Prefs.get", "rect.width", 108)', text)
+            self.assertIn('startsWith(IJ.getToolName, "Rotated Rectangle Click Tool")', text)
+            self.assertNotIn("makeRectangle(round(viewW / 2", text)
+            self.assertIn("Overlay.drawLine(p1x, p1y, p2x, p2y)", text)
             self.assertIn("CROP_W = 20;", text)
             self.assertIn("CROP_H = 48;", text)
             self.assertNotIn("FULL-COLUMN COMPOSED ROUTE", text)
             self.assertNotIn('"path here"', text)
+
+            proof_csv = app_dir / "one_plate_validation_images.csv"
+            proof_macro = app_dir / "one_plate_four_point_validation.configured.ijm"
+            completed = type("Completed", (), {"returncode": 0, "stdout": "ok", "stderr": ""})()
+            with patch.object(proof.batch, "PENDING_IMAGES_CSV", pending), patch.object(
+                proof.batch, "CONFIGURED_LEGACY_MACRO", configured
+            ), patch.object(proof, "PROOF_IMAGES_CSV", proof_csv), patch.object(
+                proof, "PROOF_LEGACY_MACRO", proof_macro
+            ), patch.object(proof.subprocess, "run", return_value=completed):
+                built, selected = proof.prepare("plate1.jpg", legacy=True)
+
+            self.assertEqual(built, proof_macro)
+            self.assertEqual(selected["Filename"], "plate1.jpg")
+            proof_text = proof_macro.read_text(encoding="utf-8")
+            self.assertEqual(proof_text.count('run("Enhance Local Contrast (CLAHE)", claheOptions)'), 2)
+            self.assertIn(proof.batch.macro_path(proof_csv), proof_text)
+
+            ahk_text = (REPO_ROOT / "ahk" / "full_column_alignment_hotkeys.ah2").read_text(encoding="utf-8")
+            self.assertIn("#Requires AutoHotkey v2.0", ahk_text)
+            for title in ("1 / 4", "2 / 4", "3 / 4", "4 / 4", "Full-grid QC"):
+                self.assertIn(f'"{title}"', ahk_text)
 
 
 if __name__ == "__main__":

@@ -399,9 +399,9 @@ def prepare(filename: str | None = None, *, legacy: bool = False) -> tuple[Path,
 
     if not configured.is_file():
         raise SystemExit(f"Prepared macro not found: {configured}")
+    # build_legacy_macro() is the source of truth for the complete current
+    # four-point interaction. The proof only narrows its metadata input.
     proof_text = patch_prepared_macro(configured.read_text(encoding="utf-8"), PROOF_IMAGES_CSV)
-    if legacy:
-        proof_text = patch_roi_click_interaction(proof_text)
     proof_macro.write_text(proof_text, encoding="utf-8")
     return proof_macro, selected
 
