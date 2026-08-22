@@ -8,15 +8,24 @@ Before implementation, read only:
 
 1. root `AGENTS.md`;
 2. `docs/development/IMPLEMENTATION_DECISION_POLICY.md`;
-3. `docs/development/CURRENT_STATE.md`;
-4. this file;
-5. `docs/development/CODEX_MIGRATION_PENDING_DESKTOP_ISSUES.md` for the concrete unresolved desktop evidence.
+3. `docs/development/AUTONOMY_SCOPE.md`;
+4. `docs/development/CURRENT_STATE.md`;
+5. this file;
+6. `docs/development/CODEX_MIGRATION_PENDING_DESKTOP_ISSUES.md` for the concrete unresolved desktop evidence.
 
 Do not reconstruct project history or read the whole repository by default.
 
+## Autonomy scope
+
+For Codex/local-agent work, `docs/development/AUTONOMY_SCOPE.md` narrows any older broad "continue autonomously" wording. Default behavior is **task-scoped autonomy**, not persistent/open-ended improvement.
+
+Complete the user's requested objective plus its necessary validation, directly required regression fixes, cleanup and concise state update. Then stop. Do not automatically roll into speculative features, unrelated optimizations, broad audits, future roadmap work or another improvement cycle merely because useful work remains possible. Record worthwhile adjacent ideas instead.
+
+The user can explicitly request a broader audit/continuous/improvement session; absent that, task-scoped autonomy is the default.
+
 ## Current migration state
 
-- Active durable branch: `workflow-dev`.
+- `workflow-dev` is the pre-Codex durable development line being cloned into `workflow-C` for local Codex work.
 - Required current runtime/CI target: Windows + Python 3.14.
 - AutoHotkey contract: **AHK v2 only**; AHK v1 compatibility is not required.
 - SDL-MCP has been installed globally on the user's Windows machine, including its native addon. At the latest manual check there was no repository SDL config/index yet; repo-local SDL initialization is intentionally being handed to Codex.
