@@ -1,6 +1,6 @@
 # Gemini start here
 
-This branch exists to let Gemini make useful parallel progress without interfering with the active `workflow-C` writer.
+This branch is an isolated Gemini implementation branch. It may make useful parallel progress without interfering with the active `workflow-C` writer.
 
 ## Read first
 
@@ -8,26 +8,26 @@ Read only:
 
 1. root `AGENTS.md`
 2. `docs/development/IMPLEMENTATION_DECISION_POLICY.md`
-3. `docs/gemini/PROTOTYPE_RULES.md`
-4. `contracts/README.md`
-5. `docs/gemini/GEMINI_INDEX.md`
-6. `docs/gemini/FUTURE_WORKFLOW.md` when the assigned prototype depends on or feeds another workflow stage
-7. `docs/development/PROJECT_ASSET_CONTRACT.md` when the assigned prototype creates/consumes reusable project state
-8. the HANDOFF for the prototype you are assigned
-9. only the narrow existing project docs/files actually needed for that prototype
+3. `docs/development/MULTI_AGENT_CONTRACT.md`
+4. `docs/gemini/PROTOTYPE_RULES.md`
+5. `contracts/README.md`
+6. `docs/gemini/GEMINI_INDEX.md`
+7. `docs/gemini/FUTURE_WORKFLOW.md` when the assigned prototype depends on or feeds another workflow stage
+8. `docs/development/PROJECT_ASSET_CONTRACT.md` when the assigned prototype creates/consumes reusable project state
+9. the HANDOFF for the prototype you are assigned
+10. only the narrow existing project docs/files actually needed for that prototype
 
 Do not reconstruct the full repository history or ingest the current runtime broadly.
 
-Before online research, check `docs/research/INDEX.md`; if a matching endpoint/topic exists, read only that topic file first and follow the implementation policy's duplicate-search/logging rules.
-
-**Avoid tunnel vision after a failed endpoint.** Do not frame follow-up research only around repairing the library/protocol/architecture that just failed. Restate the user-visible endpoint without that implementation terminology, search current official/mature end-to-end solutions and architectural alternatives first, then prove the smallest uncertain property before integration. Different technical errors blocking the same outcome remain one endpoint failure.
+Before online research, check `docs/research/INDEX.md`; if a matching endpoint/topic exists, read only that topic file first. **Avoid tunnel vision:** after a meaningful endpoint failure, reopen the solution space and research current official/mature end-to-end and architectural alternatives before repairing the failed mechanism.
 
 ## Ownership
 
-- `workflow-C` is the integration branch and is currently owned by another active writer.
-- Do not write to or merge into `workflow-C`.
-- Prototype work should stay isolated and mostly add new files.
-- `geminimain` is the shared Gemini specification/baseline branch. Dedicated implementation branches such as `gemini-v10` should preserve their proven work while periodically syncing relevant shared documentation/contracts.
+- `workflow-C` is the integration/product branch and is normally owned by Codex/current integrator.
+- Do not write to or merge into `workflow-C` from this prototype task.
+- `geminimain` is the shared Gemini specification/baseline branch.
+- Preserve proven work on this dedicated child branch while periodically syncing only relevant shared documentation/contracts.
+- Do not have multiple agents actively edit the same branch/implementation surface.
 
 ## Prototype order
 
@@ -54,7 +54,7 @@ When a prototype reaches a coherent proven state:
 1. run its targeted synthetic tests;
 2. update its HANDOFF;
 3. update the one-line entry in `GEMINI_INDEX.md`;
-4. commit/push that prototype branch;
+4. commit/push this prototype branch;
 5. stop rather than automatically integrating it into `workflow-C`.
 
-The active `workflow-C` owner later decides whether to cherry-pick, adapt or reject it.
+The active `workflow-C` integrator later decides whether to cherry-pick, adapt, reimplement around the contract, defer, or reject it.
