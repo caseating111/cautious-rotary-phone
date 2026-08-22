@@ -137,7 +137,7 @@ def patch_roi_click_interaction(source: str) -> str:
             '        // Reload/install the already-present ROI 1-click toolset, then select\n'
             '        // its custom toolbar slot. This reuses the mature plugin instead of\n'
             '        // reproducing its click behavior.\n'
-            '        roiToolsetPath = getDirectory("macros") + "toolsets" + File.separator + "Roi 1-Click Tools.ijm";\n'
+            '        roiToolsetPath = getDirectory("macros") + "toolsets/Roi 1-Click Tools.ijm";\n'
             '        if (File.exists(roiToolsetPath))\n'
             '            run("Install...", "install=[" + roiToolsetPath + "]");\n'
             '        roiClickToolFound = 0;\n'
