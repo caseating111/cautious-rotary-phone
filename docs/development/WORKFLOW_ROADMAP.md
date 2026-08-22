@@ -1,82 +1,142 @@
 # workflow-C implementation roadmap
 
-This roadmap is intentionally outcome-first and staged. Do not jump ahead merely because later work is interesting. Get each earlier stage reliable before expanding scope.
+This roadmap is outcome-first and staged. Do not jump ahead merely because later work is interesting. Get each earlier stage practically reliable before expanding scope.
 
-## Priority 1 — get the current workflow reliably running
+Detailed future behavior now lives in:
 
-Before adding major new functionality, stabilize the current Windows + Python 3.14 + Fiji + AHK v2 route and remove the known blockers that prevent dependable end-to-end use.
+- `docs/development/FUTURE_WORKFLOW_CONTRACT.md` — step-by-step intended user workflow and feature semantics;
+- `docs/development/PROJECT_ASSET_CONTRACT.md` — reusable state/coordinate contract, especially accepted grid/spot coordinates.
 
-Continue to obey the image-blind private-test contract and manual-validation backlog. Exhaust static/generated-artifact/telemetry checks before asking for desktop input.
+Use those documents when implementing a future stage. Do not reread them during unrelated bounded stabilization unless the current change affects those contracts.
 
-The first practical success target is deliberately narrow: process and composite/select strain matrices from the 14.08.26 and 15.08.26 sample sessions together. Both use annotationSet 1, one 12-column strain-label band, and an 8-row vertical layout. Do not let the more complex 16.08.26 layout delay this first working route.
+## Priority 1 — keep the current basic CSV/Fiji route reliable and slim
+
+The current Windows + Python 3.14 + Fiji + AHK v2 four-click route is the production baseline.
+
+Preserve the now-proven core behavior:
+
+- four authoritative culture-center clicks;
+- QC grid;
+- accept/export/DONE lifecycle;
+- reset/re-run selected DONE plate;
+- incomplete physical image-set tolerance;
+- case-insensitive identity matching where semantically appropriate;
+- image-blind privacy/testing requirements.
+
+Continue to remove duplicate/legacy launch paths and obsolete GUI actions when they interfere with the supported route. Do not revive abandoned column-alignment behavior as a parallel supported path.
+
+The basic CSV route intentionally remains simpler than V10. **Do not retrofit V10 `Set`/annotationSet/profile-order semantics into it.**
+
+### Reusable-grid requirement
+
+The accepted four-click grid result is no longer conceptually just an immediate crop-export intermediate. Persist/expose it as a durable project asset so later actions can reuse it for:
+
+- raw/unprocessed culture crop export;
+- processed culture crop export later without realignment;
+- overall-grid ROI statistics for visibility adjustment;
+- automatic whole-plate annotation placement;
+- QC overlays/previews;
+- selected-strain/matrix crop resolution.
+
+Registration and crop export should therefore remain separable.
 
 ## Priority 2 — V10 workbook integration
 
-Make V10 the preferred rich metadata input for full experiments.
+Make V10 the preferred rich metadata input for full experiments while reusing the same downstream processing components.
 
-Implement, in bounded slices:
+Implement in bounded slices:
 
-1. read-only `.xlsm` adapter using the actual workbook without conversion;
+1. read-only adapter using the supported sanitized/real workbook form without unnecessary conversion;
 2. canonical internal records using V10 terminology;
-3. `sessionUID` / `Image UID` identity;
-4. local session-folder mapping;
-5. raw/working/known-derivative filename reconciliation;
-6. incomplete-dataset validation and READY / EXPECTED_NOT_PRESENT / AMBIGUOUS / UNMAPPED_FILE states;
-7. local provenance keyed by Image UID;
-8. annotation-derived grid metadata using the current one-vertical-profile scope;
-9. first prove multi-session 8 x 12 operation for 14.08.26 + 15.08.26 with annotationSet 1;
-10. then add the 16.08.26 8 x 10 two-strain-band layout from annotationSet 2;
-11. generated compatibility handoffs only where existing Fiji/Pillow code still needs them.
+3. machine-readable starred-column handling, including compact human Set entry vs expanded `Set*` rows;
+4. `sessionUID` / `Image UID` identity;
+5. local session-folder mapping;
+6. raw/working/known-derivative filename reconciliation;
+7. incomplete-dataset validation and READY / EXPECTED_NOT_PRESENT / AMBIGUOUS / UNMAPPED_FILE states;
+8. local provenance keyed by Image UID;
+9. annotation-derived layout metadata using current one-vertical-profile scope;
+10. derive rows from vertical `Pos` and each strain-band width from strain `Pos`;
+11. widest strain band defines overall grid columns;
+12. use strain-profile `Order` for top-to-bottom bands;
+13. default even row distribution for multiple ordered strain profiles when appropriate, with explicit/manual row-band override available later;
+14. first prove multi-session 8x12 operation for the simpler cases;
+15. then prove the 8x10 two-strain-band case;
+16. compatibility handoffs only where existing Fiji/Pillow code actually needs them.
 
-See `V10_WORKBOOK_CONTRACT.md` for the detailed contract. In particular, ignore the vertical-profile table's `Set` values; they remain in the workbook only because removing them currently disrupts the workbook.
+See `V10_WORKBOOK_CONTRACT.md` plus the detailed future workflow contract. Ignore the vertical-profile table's `Set` values for current processing semantics even though that workbook column remains present.
 
-Do not mix this stage with unrelated image-processing feature expansion.
+## Priority 3 — project setup / optional working-copy renaming
 
-## Priority 3 — metadata-driven annotations
+Once V10 canonical identity is available:
 
-Once V10 ingestion and basic processing are reliable, use the same canonical metadata to generate annotations rather than creating another metadata system.
+- keep raw `image1/image2/...` source files unchanged in `raw/`;
+- optionally create a parallel `working/` tree with V10 working filenames;
+- use Image UID, not filename text, as identity;
+- write a human-readable raw->working conversion map at project root grouped by Experiment and Set;
+- make renaming optional so generic raw filenames remain processable.
 
-Initial annotation scope should focus on useful current labels such as:
+## Priority 4 — optional whole-plate orientation preprocessing
 
-- strain labels;
-- vertical labels;
-- plate/condition labels;
-- date/session/figure labels where useful.
+Replace manual Photoshop straightening with a tiny pre-grid helper.
 
-Prefer mature capabilities such as Pillow text/composition and Fiji overlays/ROI Manager where appropriate. Preserve editability where it provides practical value. Ignore `other` labels until explicitly needed.
+Preferred first route is **two crosshair point clicks along one trustworthy straight plate edge** (or one equivalent native straight-line drag), not the colony ROI-box plugin.
 
-## Priority 4 — automated visibility adjustment
+Calculate correction angle, show preview, Accept/Retry/Skip, save working derivative + transform. Automatic CV orientation is optional future convenience and must never block the working four-click grid route.
 
-After annotation basics are stable, improve automatic visual standardization while keeping quantitative pixels separate from display enhancement.
+## Priority 5 — optional whole-plate crop preprocessing
 
-Use existing Fiji/ImageJ/scientific-image functionality first. Build on the existing global/background-aware visibility work; keep CLAHE/local enhancement optional where consistency matters.
+Use four crosshair boundary/extreme clicks (left/right/top/bottom), not the colony ROI-box plugin.
 
-## Priority 5 — automatic overall plate rotation/alignment
+Generate a default square crop from measured extent, round side **down to nearest 50 px by default**, preview, then Accept/Retry. Optional left-edge + top-edge re-anchor can reposition the same square when needed; do not require those extra two clicks on every plate.
 
-After the current grid-based/manual alignment path is dependable, investigate automatic orientation of the physical plate itself, independent of colony-grid detection.
+Persist crop geometry/transform for downstream coordinate-space handling.
 
-Prefer mature Fiji/ImageJ registration/geometry tools or established scientific-image packages before custom detection. Manual grid alignment remains a fallback/authoritative route unless the user changes that requirement.
+## Priority 6 — automated visibility adjustment with manual-review fallback
 
-## Priority 6 — lightweight CSV mini-project input
+After accepted grid coordinates exist:
 
-This is a required future function, but defer implementation until the preceding basics are working.
+- use overall grid area as the ROI from which adjustment statistics are derived;
+- apply the resulting display adjustment to the **entire image**;
+- research mature Fiji/ImageJ/plugin/Python methods before custom algorithms;
+- show non-destructive preview;
+- fast actions: Approve or Mark for manual;
+- maintain a manual-review queue that can reopen flagged images in Fiji/ImageJ or selected editor;
+- keep display-adjusted pixels separate from quantitative/scientific source pixels.
 
-Goal: allow quick small comparisons without editing a large V10 workbook.
+Processed whole plates should preserve registered geometry where possible so grid coordinates stay reusable.
 
-Do **not** create a second processing architecture. Implement a lightweight CSV/folder-discovery adapter that produces the same canonical workflow-C project model as V10.
+## Priority 7 — metadata + coordinate-driven automatic annotation
 
-Desired conveniences may include:
+Annotation should no longer depend on Photoshop templates/manual per-image label alignment.
 
-- explicit filename or unique filename-stem matching;
-- selected-folder filename discovery;
-- a small confirmation/mapping table;
-- optional reuse of a saved layout/annotation preset;
-- generated temporary UID when no V10 Image UID exists;
-- the same READY / missing / ambiguous / unmapped validation model;
-- the same image-blind privacy rules.
+Use:
 
-This input route is for quick comping/small jobs; V10 remains the richer metadata route for full experiments.
+- canonical strain/row identity from V10/PlateLayout;
+- accepted measured culture/grid coordinates for actual placement;
+- strain labels rotated 90 degrees clockwise by default (top facing right);
+- vertical labels upright by default;
+- deterministic figure/date/experiment/Set/media/condition anchors;
+- reusable font/size/color/orientation/offset presets;
+- fast **non-destructive preview** before final render.
+
+Spacing should derive from actual measured coordinates. Manual placement overrides are exception/fallback behavior, not the normal workflow.
+
+## Priority 8 — crop/matrix flexibility
+
+Crop exports should be runnable later whenever the required saved grid + source derivative exist; do not force realignment.
+
+Support distinct raw/unprocessed and processed crop parents, plus optional Condition subfolders.
+
+Matrix/composition selection must eventually support **per-strain crop tier choices** within one matrix, e.g. WT1 `top` together with STRAIN2 `low`, rather than global all-top/all-low only.
+
+## Lightweight CSV mini-project input
+
+A small CSV/folder-discovery adapter remains useful for quick comparisons without editing V10.
+
+Do not create a second processing architecture. It should feed the same downstream reusable project/grid/annotation/crop components while keeping its metadata model intentionally simpler than V10.
 
 ## General implementation rule
 
 At every stage, first check whether Fiji/ImageJ, Pillow, scikit-image, OpenCV, CellProfiler, ilastik, pandas/Polars, SQLite or another mature tool already covers the required function. Add only the smallest glue needed to connect stable components.
+
+Prefer focused mini-apps with narrow contracts where that reduces parallel-development conflicts and GUI bulk. The eventual overall controller can orchestrate them rather than absorbing every implementation internally.
