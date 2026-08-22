@@ -8,9 +8,15 @@ See `PROJECT_ASSET_CONTRACT.md` for reusable state, especially accepted grid/spo
 
 ## Architecture
 
-Prefer a lightweight overall controller that owns project selection, canonical state/status and launch actions. Focused mini-apps may implement independent jobs such as orientation, whole-plate crop, visibility adjustment and annotation.
+Prefer a lightweight overall controller that owns project selection, canonical state/status and launch actions. Focused mini-apps may implement independent jobs such as orientation, whole-plate crop, grid registration, visibility adjustment, annotation, crop export and composition.
 
-Do not require every component to live inside one large GUI. Do not make a mini-app rediscover metadata or repeat prior clicks when canonical state already exists.
+Mini-apps should be **independently runnable without the main controller**. The overall controller is a convenience/orchestration layer, not a runtime prerequisite. A standalone applet should be able to receive/select a project root or project-state reference, load only the assets it genuinely needs, perform its task, and update only its own result state.
+
+Use the same underlying callable/core implementation for standalone and controller-launched operation where practical. Do not create a separate controller-only processing path for the same function.
+
+Do not require every component to live inside one large GUI. Do not make a mini-app rediscover metadata or repeat prior clicks when canonical state already exists. Applets should check only their true prerequisites rather than enforce the entire preferred workflow order.
+
+The current four-click grid route should eventually be **divestable into a focused grid-registration applet** whose main output is the durable `GridCoordinateAsset`. That extraction is a later architectural step; do not destabilize the now-working production route merely to achieve it early.
 
 ## 1. V10 metadata and project setup
 
@@ -122,6 +128,8 @@ Future UI should support:
 
 Do not bind saved coordinates to one immediate macro export.
 
+The future standalone grid applet should produce/update this asset and then stop; later visibility, annotation, crop export and matrix tools consume it independently.
+
 ## 6. Whole-plate visibility adjustment
 
 After grid coordinates exist, derive adjustment statistics from the overall measured grid ROI while applying the resulting display adjustment to the **entire whole-plate image**.
@@ -199,5 +207,7 @@ Do not ask the user to repeat four-click registration merely because a later fun
 - manual fallback is for exceptions;
 - preview before presentation/crop writes;
 - preserve raw sources;
+- mini-apps should be directly runnable as well as controller-launchable;
+- prefer one shared callable/core path for single-image, batch, standalone and controller use;
 - prefer focused tools/applets with narrow contracts over a monolithic controller;
-- one overall controller may orchestrate them later.
+- one overall controller may orchestrate them later without becoming a dependency for their core functions.
