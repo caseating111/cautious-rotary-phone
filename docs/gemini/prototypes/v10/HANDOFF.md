@@ -4,7 +4,7 @@ Status: Planned
 
 ## Goal
 
-Build an isolated, read-only V10 workbook adapter that converts the synthetic V10 workbook into the shared canonical project model without touching the current Fiji/AHK/controller runtime. The adapter should absorb workbook-specific structure and naming so downstream components do not need to understand worksheet quirks, mirrored human/machine columns, formulas, or Excel-specific layout.
+Build an isolated, read-only V10 workbook adapter that converts the sanitized synthetic V10 workbook into the shared canonical project model without touching the current Fiji/AHK/controller runtime. The adapter should absorb workbook-specific structure and naming so downstream components do not need to understand worksheet quirks, mirrored human/machine columns, formulas, or Excel-specific layout.
 
 Primary interface:
 
@@ -19,9 +19,23 @@ The first useful proof is metadata parsing and normalization only. Do not integr
 - Do not inspect real experimental images or depend on pixel data.
 - Do not introduce absolute machine paths, personal metadata, or local-environment assumptions into committed outputs/tests.
 
-## Canonical identity semantics
+## Human-readable versus machine-readable workbook columns
 
-These semantics are important and should not be inferred differently downstream:
+V10 deliberately contains human-facing entry columns and machine-readable mirrored/expanded columns. In general, machine-readable columns are marked with `*` while human-readable columns are not.
+
+The adapter must prefer the machine-readable representation when it is the canonical expanded form, while preserving enough provenance/diagnostics to explain the corresponding human entry.
+
+Example semantic pattern:
+
+- a human-facing `Set` entry may contain one value such as `A` for a logical block/experiment assignment;
+- the machine-facing `Set*` representation may repeat/expand `A` across every relevant row so downstream code has an explicit value per record;
+- the fact that the human only typed `A` once must not be interpreted as the other corresponding rows having missing Set values.
+
+Do not infer missing machine-readable values from display formatting when the workbook already provides a machine-readable mirrored column. Conversely, do not treat a repeated `Set*` value as multiple independent human assignments.
+
+This same principle applies wherever V10 uses paired human/machine columns: human entry is optimized for usability; starred columns are optimized for deterministic programmatic consumption.
+
+## Canonical identity semantics
 
 - `Image UID` is the stable image identity.
 - `sessionUID` is the stable image-session identity for a run/session grouping.
@@ -36,9 +50,9 @@ The normalized model should be capable of later reconciling both raw filenames s
 
 ## Required workbook concepts to parse
 
-At minimum, normalize the fields/concepts needed for the current intended workflow:
+At minimum, normalize the fields/concepts needed for the intended workflow:
 
-- experiment (`Exp`);
+- experiment (`Exp` / machine-readable equivalent);
 - date;
 - time where present;
 - experiment/session/name fields needed to distinguish records;
@@ -47,7 +61,7 @@ At minimum, normalize the fields/concepts needed for the current intended workfl
 - `Image UID`;
 - `Original`;
 - `Working filename`;
-- `Set` where it is semantically relevant to images/experiments;
+- `Set` / `Set*` where semantically relevant to images/experiments;
 - `Media`;
 - `Condition`;
 - replicate (`Rep #`);
@@ -61,6 +75,15 @@ At minimum, normalize the fields/concepts needed for the current intended workfl
 
 `other` annotation labels are explicitly out of scope for the current prototype.
 
+## Meaning of `Pos`, `Order`, profiles and annotation sets
+
+`Pos` and `Order` are not interchangeable.
+
+- `Pos` is the logical within-profile position. For a strain profile, positions 1..12 mean strain/column positions 1..12. For a vertical profile, positions 1..8 mean physical row positions 1..8. Display labels may repeat; position remains distinct.
+- `Order` applies when more than one strain profile is assigned to the same annotation set. It determines the top-to-bottom band order of those profiles: `Order=1` is the upper band, `Order=2` the next band, etc.
+- An `annotationSet` groups the strain-profile assignment(s), one current vertical-profile assignment, and future/ignored other-label assignments for use by one or more experiments/images.
+- A profile may be reusable across multiple annotation sets/experiments; reuse does not create a new profile identity merely because the experiment changes.
+
 ## Annotation assignment semantics
 
 The workbook currently supports annotation-set assignments such as:
@@ -69,17 +92,45 @@ The workbook currently supports annotation-set assignments such as:
 - annotation set -> one vertical profile;
 - annotation set -> optional other profile(s), currently ignored.
 
-One strain profile may span the full physical plate. Multiple strain profiles in one annotation set represent ordered top-to-bottom physical row bands. `Order=1` is the upper band, `Order=2` the next band, etc.
+One strain profile may span the full physical plate. Multiple strain profiles in one annotation set represent ordered top-to-bottom physical row bands.
 
-The adapter should preserve enough normalized information for the layout prototype to derive those bands; it does not need to decide actual pixel coordinates.
+For the current workflow, support **one vertical profile per annotation set/use case**. The workbook may retain a `Set` column in vertical-profile tables because removing it currently causes workbook glitches, but the adapter must **ignore vertical-profile `Set` values for current semantics**. A vertical profile can be reused across multiple experiments/annotation sets.
 
-For the current workflow, support **one vertical profile per annotation set/use case**. The workbook may retain a `Set` column in vertical-profile tables because removing it currently causes workbook issues, but the adapter must **ignore vertical-profile `Set` values for current semantics**. A vertical profile can be reused across multiple experiments/annotation sets.
+## Grid-size information derivable from workbook metadata
+
+The adapter does not itself need to finalize `PlateLayout`, but it must preserve the information required for deterministic derivation:
+
+- total row count comes from vertical-profile physical `Pos` positions, not from the number of unique vertical label strings;
+- each strain profile's highest/extent of valid `Pos` values defines that profile's logical width;
+- the widest assigned strain profile defines the overall logical grid column count;
+- widths of multiple strain profiles are **not added together** when those profiles occupy different row bands;
+- each strain band's local width must remain available even if the overall grid is wider.
+
+Example: an 8-position vertical profile plus two ordered strain profiles each with positions 1..10 yields an 8x10 overall layout source, not 8x20.
+
+## Multi-strain-profile row mapping
+
+For the currently required 8-row/two-profile case:
+
+- `Order=1` is the upper strain band;
+- `Order=2` is the lower strain band;
+- default downstream mapping is an even split: rows 1-4 and rows 5-8.
+
+Even distribution should be the default when multiple ordered strain profiles need row bands and the total row count divides cleanly. However, that is a default mapping policy, not an immutable scientific truth. The normalized model/layout contract should permit an explicit/manual row-band override later rather than forcing equal division forever.
+
+If the row count cannot be evenly divided, or explicit assignment metadata later exists, do not silently invent a mapping. Preserve enough information for the layout layer to surface/resolve it.
+
+## Basic CSV mode is intentionally simpler
+
+The currently working basic CSV/Fiji workflow does not implement the richer V10 `Set`/annotation-set/profile-order semantics. That is intentional and should not be treated as a defect.
+
+Do not retrofit V10 semantics into the basic CSV mode as part of this prototype. V10 integration is the structured path that will later provide those semantics to downstream components.
 
 ## Incomplete datasets are valid
 
 Workbook metadata may describe more expected images than are physically present later. This is not an adapter error.
 
-The V10 model should therefore represent expected image records independently of physical availability. Missing physical files must not make workbook parsing invalid. Later runtime reconciliation can classify images as present/missing/ambiguous.
+The V10 model should represent expected image records independently of physical availability. Missing physical files must not make workbook parsing invalid. Later runtime reconciliation can classify images as present/missing/ambiguous.
 
 Do not make the adapter require a complete image directory or complete set of raw files.
 
@@ -97,8 +148,6 @@ The model should retain sufficient canonical names/identities for later reconcil
 Do not solve this by reparsing human-readable filenames into identity when `Image UID`/structured metadata already provide identity.
 
 ## Required synthetic proof cases
-
-The adapter should prove the currently discussed synthetic V10 cases, including:
 
 ### 14.08.26
 - experiment 1;
@@ -121,21 +170,21 @@ The adapter should prove the currently discussed synthetic V10 cases, including:
 - annotation set containing two strain profiles;
 - each strain profile has positions 1-10;
 - assignment `Order` determines top/bottom order;
-- intended downstream physical interpretation is top 4 rows for order 1 and bottom 4 rows for order 2 when the vertical profile has 8 total rows;
-- overall column count remains 10.
-
-The adapter should expose normalized profile assignments; the separate layout derivation component is responsible for converting these into explicit row bands/grid dimensions.
+- default downstream physical interpretation is top 4 rows for order 1 and bottom 4 rows for order 2 when the vertical profile has 8 total rows;
+- overall column count remains 10;
+- row-band override must remain possible later.
 
 ## Validation and failure behavior
 
-Prefer explicit validation/reporting over silent guesses. Examples of conditions that should be surfaced clearly:
+Prefer explicit validation/reporting over silent guesses. Surface clearly:
 
 - duplicate `Image UID` where uniqueness is required;
 - assignment references to missing profiles;
 - duplicate/non-sensical `Pos` entries within one profile;
 - multiple vertical-profile assignments where current semantics permit only one;
 - ambiguous/missing `Order` for multiple strain profiles;
-- malformed required identifiers.
+- malformed required identifiers;
+- disagreement between authoritative machine-readable and human-facing values where that disagreement cannot be resolved deterministically.
 
 Do not reject harmless unused workbook columns merely because the adapter does not consume them.
 
@@ -143,13 +192,13 @@ Do not reject harmless unused workbook columns merely because the adapter does n
 
 Use the versioned schemas under `contracts/` as the cross-component boundary. Keep workbook-specific structures inside the adapter.
 
-The downstream layout/annotation components should be able to consume the normalized model without opening the workbook.
+The downstream layout/annotation/project-setup components should be able to consume the normalized model without reopening the workbook.
 
 If the current contract is insufficient, propose the smallest explicit change in this HANDOFF rather than silently inventing incompatible fields.
 
 ## Implementation posture
 
-- Prefer mature Excel-reading libraries already suitable for `.xlsx` parsing; avoid Excel automation unless required by evidence.
+- Prefer mature Excel-reading libraries suitable for `.xlsx` parsing; avoid Excel automation unless required by evidence.
 - Keep parsing deterministic and testable without desktop Excel.
 - Avoid broad abstraction layers or a generic spreadsheet framework.
 - A small adapter plus canonical model is the goal.
@@ -172,12 +221,13 @@ The prototype is `Proven` when:
 
 1. the sanitized synthetic V10 workbook loads read-only;
 2. it produces a deterministic `ProjectModel`/normalized representation;
-3. identity and filename fields remain distinct as specified above;
-4. the 14.08.26, 15.08.26 and 16.08.26 synthetic cases are represented correctly;
-5. multiple ordered strain profiles and a single reusable vertical profile are represented without Fiji/controller dependencies;
-6. incomplete expected image sets remain valid metadata;
-7. targeted synthetic tests pass;
-8. a concise JSON/text dump demonstrates the normalized records/layout-source information without exposing private data.
+3. human versus machine-readable column semantics are handled correctly, including expanded `Set*`-style values;
+4. identity and filename fields remain distinct;
+5. the 14.08.26, 15.08.26 and 16.08.26 synthetic cases are represented correctly;
+6. `Pos`, `Order`, profile reuse and annotation-set assignments retain their intended meanings;
+7. incomplete expected image sets remain valid metadata;
+8. targeted synthetic tests pass;
+9. a concise JSON/text dump demonstrates normalized records/layout-source information without exposing private data.
 
 ## Completion record
 
