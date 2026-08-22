@@ -1,6 +1,6 @@
 # Codex start here
 
-This is the current bootstrap for migrating active development to local ChatGPT Codex. It supersedes only the older **Codex token/orchestration/tool-ranking advice** in `docs/development/CODEX_MIGRATION_PENDING_DESKTOP_ISSUES.md`. The desktop observations, debug values, unresolved Fiji/AHK/IJM failures, and positive evidence in that file remain authoritative and must not be discarded.
+This is the concise bootstrap for normal local Codex work on `workflow-C`. Current repository state and the documents below outrank older migration-era instructions.
 
 ## First-read order
 
@@ -10,148 +10,91 @@ Before implementation, read only:
 2. `docs/development/IMPLEMENTATION_DECISION_POLICY.md`;
 3. `docs/development/AUTONOMY_SCOPE.md`;
 4. `docs/development/IMAGE_BLIND_TESTING.md`;
-5. `docs/development/MANUAL_VALIDATION_BACKLOG.md`;
-6. `docs/development/CURRENT_STATE.md`;
+5. `docs/development/CURRENT_STATE.md`;
+6. `docs/development/MANUAL_VALIDATION_BACKLOG.md` when desktop/manual checks are relevant;
 7. this file;
-8. `docs/development/WORKFLOW_ROADMAP.md` when selecting/confirming the next implementation stage;
-9. `docs/development/V10_WORKBOOK_CONTRACT.md` when working on V10 metadata/workbook integration;
-10. `docs/development/CODEX_MIGRATION_PENDING_DESKTOP_ISSUES.md` for the concrete unresolved desktop evidence.
+8. `docs/development/WORKFLOW_ROADMAP.md` when selecting/confirming a feature stage;
+9. `docs/development/V10_WORKBOOK_CONTRACT.md` when working on V10 integration;
+10. `docs/development/MULTI_AGENT_CONTRACT.md` and `contracts/README.md` when consuming, reviewing, or integrating work from another agent/prototype branch;
+11. the matching `docs/research/INDEX.md` topic before researching or changing an endpoint with prior failure history.
 
 Do not reconstruct project history or read the whole repository by default.
 
-## Autonomy scope
+## Current durable environment
 
-For Codex/local-agent work, `docs/development/AUTONOMY_SCOPE.md` narrows any older broad "continue autonomously" wording. Default behavior is **task-scoped autonomy**, not persistent/open-ended improvement.
+- Active integration branch: `workflow-C`.
+- `workflow-dev` is a pre-Codex development line/snapshot; do not advance it in parallel with routine `workflow-C` work.
+- Current runtime/CI target: **Windows + Python 3.14**.
+- AutoHotkey contract: **AHK v2 only**.
+- GitHub is the durable remote/source of truth; the local checkout is the normal Codex working copy.
+- SDL-MCP shell/CLI retrieval can be used when helpful. Native Codex MCP database initialization has been unreliable; do not spend product-development time repairing it unless explicitly tasked.
 
-Complete the user's requested objective plus its necessary validation, directly required regression fixes, cleanup and concise state update. Then stop. Do not automatically roll into speculative features, unrelated optimizations, broad audits, future roadmap work or another improvement cycle merely because useful work remains possible. Record worthwhile adjacent ideas instead.
+## Task scope
 
-Manual desktop/visual checks are normally deferred into `MANUAL_VALIDATION_BACKLOG.md`. Continue other safe work within the active requested objective while those checks are pending if their result is not yet blocking progress. Batch related manual checks for the user rather than interrupting repeatedly.
+Default behavior is **task-scoped autonomy**, not open-ended improvement. Complete the requested objective plus directly required regression fixes, targeted validation, cleanup, and concise state update, then stop.
 
-The user can explicitly request a broader audit/continuous/improvement session; absent that, task-scoped autonomy is the default.
+Record worthwhile adjacent ideas instead of automatically implementing unrelated roadmap work.
+
+## Anti-tunnel-vision / research trigger
+
+`AGENTS.md` and `IMPLEMENTATION_DECISION_POLICY.md` are authoritative.
+
+After the first meaningful endpoint failure, do not search only for ways to repair the failing technology. Restate the user-visible endpoint without implementation terminology, check prior endpoint memory, research current official/mature end-to-end solutions and architectural alternatives, then prove the smallest uncertain property before another production implementation attempt.
+
+Different errors blocking the same user-visible outcome remain one continuing endpoint failure. Existing custom code is sunk cost and may be deleted/replaced when a mature route is better.
 
 ## Image-blind privacy contract
 
-`docs/development/IMAGE_BLIND_TESTING.md` is a hard local-testing rule. Real/sample image pixels and pixel-bearing derivatives must never be opened, previewed, rendered, OCRed, screenshotted, encoded, or supplied to Codex/another model. Codex may pass external image paths to local Fiji/ImageJ and consume only text/structural/numeric telemetry. If a check genuinely requires seeing pixels, log a concise `MANUAL_VISUAL_VALIDATION_REQUIRED` item in the manual-validation backlog for the user instead.
+`docs/development/IMAGE_BLIND_TESTING.md` is a hard local-testing rule.
 
-Real/source images, Fiji/Java/OS temp that may contain pixels, crops and matrices belong outside the Git worktree. Use `start_controller_private_test.cmd` for privacy-sensitive controller/Fiji testing so child processes inherit the external private TEMP/TMP/java.io.tmpdir locations. The default private controller path deliberately uses **ordinary Windows Python 3.14 via `start_controller_no_anaconda.cmd`**; do not use or integrate Anaconda/conda for private tests unless the user explicitly asks later.
+Real/sample image pixels and pixel-bearing derivatives must never be opened, previewed, rendered, OCRed, screenshotted, encoded, or supplied to Codex/another model. Codex may pass external image paths to local Fiji/ImageJ and consume only text/structural/numeric telemetry.
 
-Before **every** real-image/Fiji verification, use the actual active local config and run:
+Before every real-image/Fiji verification, use the actual active config and run the image-blind path check documented in `IMAGE_BLIND_TESTING.md`. Proceed only when it passes. If visual judgement is genuinely required, add one concise item to `MANUAL_VALIDATION_BACKLOG.md` for the user.
 
-```powershell
-python .\tools\check_image_blind_paths.py C:\path\to\the\active\config.json
-```
+Real/source images, crops, matrices, and pixel-bearing temp data stay outside the repository.
 
-Report the result to the user before starting the real-image check. Proceed only when it reports `IMAGE-BLIND PRIVACY CHECK: PASS`. If it fails, do not open/process the real images; resolve/log the privacy issue and continue other safe work within scope where possible.
+## Multi-agent / prototype integration
 
-Close any already-running Fiji before a private test; an older Fiji process did not inherit the private temp settings. Do not defeat a sandbox/path restriction by copying images into the repository.
+Read `docs/development/MULTI_AGENT_CONTRACT.md` when another agent is involved.
 
-## Current migration state
+Current model:
 
-- `workflow-C` is the Codex migration/working branch, created as an exact copy of the updated `workflow-dev` state at the migration checkpoint. Normal local Codex work should use `workflow-C` unless the user explicitly chooses another branch.
-- `workflow-dev` remains the pre-Codex durable development line/snapshot and should not be advanced in parallel with routine `workflow-C` work.
-- Required current runtime/CI target: Windows + Python 3.14.
-- AutoHotkey contract: **AHK v2 only**; AHK v1 compatibility is not required.
-- SDL-MCP has been installed globally on the user's Windows machine, including its native addon. At the latest manual check there was no repository SDL config/index yet; repo-local SDL initialization is intentionally being handed to Codex.
-- SDL setup used the **Code** embeddings option (Jina symbol embeddings, no file summaries).
-- The local repository should become the normal Codex working copy; GitHub remains the durable remote/source of truth.
-- Do not install `codeindex`, Caveman, or another orchestration stack during the initial SDL proof.
-- Do not change Fiji/AHK/Python runtime behavior until the SDL/Codex setup is verified unless the user explicitly asks to proceed sooner.
-- The staged product direction is documented in `WORKFLOW_ROADMAP.md`. Stabilize the current route first; V10 integration is the first major feature stage after that. Annotation, visibility automation, overall plate rotation/alignment, and lightweight CSV mini-project input follow in that order unless the user reprioritizes.
+- Codex is the normal writer/integrator on `workflow-C`.
+- `geminimain` is the shared Gemini specification baseline.
+- Gemini may implement isolated components on dedicated branches such as `gemini-v10` or other feature-specific branches.
+- Gemini is **not limited to read-only review**: bounded standalone prototypes are valid parallel work when they do not touch the active `workflow-C` implementation surface.
+- No two agents should actively write the same branch/implementation surface at once.
+- Cross-agent components meet through explicit shared contracts under `contracts/` plus project-state contracts, not by copying controller internals.
+- Prototype completion does not automatically merge into production. Codex reviews the exact branch/commit and may cherry-pick, adapt, defer, reject, or reimplement around the proven contract.
 
-## SDL-MCP first
+For narrow review-only tasks, Gemini/other agents may still receive a compact diff/generated-artifact/error packet, but that is one use case rather than the entire multi-agent architecture.
 
-### SDL-MCP status (2026-08-22)
+## Shared contracts
 
-SDL 0.13.3 is installed and the `workflow-c` LadybugDB graph is valid. Bounded SDL retrieval works through the local CLI/shell. Native Codex MCP currently reaches SDL but fails database initialization (`LadybugDB not initialized`). Do not spend development time repairing native MCP unless explicitly tasked. Use bounded SDL CLI retrieval when useful.
+`contracts/README.md` and its schemas are the versioned machine-facing handshake for isolated prototype components and eventual integration.
 
-Use SDL-MCP as the first context-reduction trial. Do not reinstall it unless it is genuinely unavailable.
+Do not silently change an existing contract field's meaning. If production needs a new shared field, identify the concrete use case and make the smallest compatible change where practical.
 
-First:
+Reusable geometry/project state, especially accepted grid coordinates, is described in `PROJECT_ASSET_CONTRACT.md` where relevant. The accepted grid result is a durable project asset, not merely an immediate crop-export intermediate.
 
-1. verify the local checkout/remote/branch and clean Git state;
-2. verify `sdl-mcp` is callable from the Codex shell;
-3. inspect current SDL help/docs locally rather than assuming old command syntax;
-4. dry-run repo-local SDL initialization/config changes first where supported;
-5. initialize/index this repository for Codex using the current supported SDL/Codex integration;
-6. run SDL `info`/`doctor` checks;
-7. verify Codex can actually call SDL and retrieve relevant symbols/cards/bounded context;
-8. prove on representative project symbols that SDL can navigate without reading entire large source files.
-
-Prefer SDL's smallest useful supported tool surface. Do not enable unnecessary services, paid APIs, extra embeddings, or unrelated features merely because they exist.
-
-Generated caches/databases should not be committed unless SDL explicitly requires them as portable project state. Small reproducible repo config/instructions may be committed if useful. Inspect `.gitignore` and SDL's current generated paths before deciding.
-
-## Primary-context/token policy
-
-Primary Codex context is scarce. Optimize **per-model subscription allowance and user time**, not minimum aggregate AI tokens across all services.
+## Context/token efficiency
 
 - Navigate/search/index before reading source.
-- Prefer SDL symbol/card/task context, `rg`, Git diff, exact symbols, and bounded line ranges over whole-file reads.
-- Never read a large file in full merely because it is convenient when a bounded read can answer the question.
-- Prefer targeted tests and bounded command output (`--tb=short`, selected tests, filtered logs) instead of dumping large output into context.
-- For genuinely large reading/summarization work—roughly >20k tokens, multiple sizeable files, or output likely to consume a substantial fraction of the primary context—delegate to the current lower-cost/mini Codex subagent.
-- The cheap/mini subagent should return a compact evidence-backed summary with exact file/symbol/error references. Do not use it for small outputs where delegation overhead is larger than the saving.
-- Keep architecture/implementation decisions and final verification with the primary Codex agent.
-- Do not hard-code a permanent model name for the mini role; use the current lower-cost Codex subagent model available through the user's ChatGPT Codex subscription.
+- Prefer bounded symbol/file ranges, diffs, targeted logs, and exact generated artifacts over whole-file dumps.
+- Reuse existing valid test/research evidence; do not rerun unchanged broad tests without a concrete reason.
+- Delegate genuinely large repetitive reading/review to a cheaper available subagent when useful, but keep architecture decisions and final verification with the primary integrator.
+- Keep handoffs and status updates concise; durable details belong in the relevant topic/handoff/contract document.
 
-## Planned Gemini / Antigravity role
+## Testing and user-validation gate
 
-The user also pays for Google Antigravity/Gemini and wants to use that separate allowance to improve reliability while reducing pressure on Codex quota.
+Use targeted, minimum-sufficient validation under `IMPLEMENTATION_DECISION_POLICY.md`. Expand testing only when failures or evidence of broader regression justify it, or when the user explicitly requests broader testing.
 
-Target architecture after SDL is proven:
+Do every feasible image-blind/local check before asking the user for manual validation. Batch related visual/manual checks rather than repeatedly interrupting the user.
 
-`Codex primary writer -> automated narrow review gate -> Antigravity/Gemini read-only reviewer -> concise findings -> Codex verifies/fixes`
+A known Codex sandbox issue can prevent Python `tempfile` setup before test code runs. If the exact documented setup-time permission failure recurs, do not waste time trying many TEMP/TMP locations; use one narrow approved test command when necessary.
 
-Do **not** make Codex and Gemini equal co-managers and do not have both independently ingest the entire repository. Codex remains the sole normal writer/integrator. Gemini should receive a narrow incremental review packet: relevant diff, exact generated runtime artifact, bounded error/test excerpt, and a precise review question.
+## Current work source of truth
 
-The image-blind privacy contract applies equally to Gemini/Antigravity. Review packets must never contain real/sample image pixels, screenshots, previews, thumbnails or other pixel-bearing derivatives.
+`docs/development/CURRENT_STATE.md` contains the active implementation state, small working file/test set, pending manual validation, and exact next action.
 
-Prefer a thin local wrapper/direct supported Antigravity invocation over a large bespoke orchestration system. Codex should inspect the installed Antigravity CLI/interface on the user's machine and prove a tiny non-interactive call before integrating it. Do not assume old Gemini CLI syntax is still valid.
-
-Where Antigravity supports cheaper/Flash subagents, use them for large repetitive review input in the same thresholded way as Codex mini agents. Do not spawn subagents for every small task.
-
-Do not initially add `hampsterx/codex-mcp-bridge`: its primary direction is exposing Codex to other MCP clients, while the intended first workflow is Codex calling a narrow Gemini review path. Reconsider only if it demonstrably removes maintenance/user work later.
-
-## Pre-user-test reliability gate
-
-A major objective of this migration is to stop using the user as a parser/debugger for defects that could have been caught locally.
-
-Use targeted, minimum-sufficient validation under the authoritative validation-efficiency policy in `IMPLEMENTATION_DECISION_POLICY.md`; broaden testing only for the evidence-based triggers defined there or when the user explicitly requests it.
-
-After the first failed implementation or integration attempt for a component or the same overall end goal, follow the authoritative research-before-second-attempt rule in `IMPLEMENTATION_DECISION_POLICY.md` before further speculative patching; different error messages do not reset the trigger.
-
-### Codex sandbox and Python temporary directories
-
-On 2026-08-22, Python `tempfile`-based tests failed before test code ran because the Codex filesystem sandbox denied creation below the normal Windows user temp directory. Redirecting `TEMP`/`TMP` to a workspace-local directory produced the same denial for child-created temporary directories and should not be retried as a workaround. When a bounded synthetic test command fails at setup for this specific permission reason, rerun that same targeted command with the required sandbox approval instead of changing test code, changing application behavior, or trying more temporary-directory locations. Keep the approved command narrow and verify that the traceback failed in `tempfile`/directory setup before escalating.
-
-Before requesting another manual desktop test, perform every feasible **image-blind** automated check, including:
-
-- Python compile/static checks and the smallest relevant test set;
-- generation of the **exact** runtime artifact that will be executed;
-- syntax/parse/startup validation of generated or edited AHK v2 scripts using AHK v2 where feasible;
-- inspection/validation of the exact generated ImageJ/Fiji macro, not only its Python generator/template;
-- targeted Windows/path/launcher checks where locally possible;
-- numeric/structural Fiji telemetry such as dimensions, ROI coordinates, crop counts, textual errors and window geometry without image viewing;
-- once the Antigravity review gate is proven, independent narrow Gemini review for risky desktop/generated-script/cross-language changes using non-pixel evidence only;
-- Codex verification of every Gemini finding before changing code.
-
-Only ask the user to test behavior that genuinely requires visual/desktop/hardware judgement after these gates pass. Never create a screenshot of real/sample image pixels merely to automate a visual check. Accumulate such checks in `MANUAL_VALIDATION_BACKLOG.md` and batch them where possible.
-
-## Current desktop blockers to resume after migration setup
-
-Do not redesign the alignment route. The current four-point ROI 1-click workflow reached all four authoritative placements. Resume from the evidence in `CODEX_MIGRATION_PENDING_DESKTOP_ISSUES.md`.
-
-Known blockers include:
-
-- Fiji main GUI can appear extremely small and its final position/size is inconsistent; the latest Python-side visibility rescue is not reliable.
-- AHK v2 placement/confirmation dialogs are no longer reliably moved upper-left.
-- After the fourth point the generated IJM fails before QC/export with `';' expected` around `halfW = QC_W / 2;`; inspect the exact generated macro around that line before editing the generator.
-- Positive evidence to preserve: ROI 1-click tool auto-selection worked; all four 108x108 placements worked; CLAHE runtime options showed block 356 / histogram 256 / maximum 1000 / mask None / fast less-accurate; four-point geometry values looked sensible before the parse failure.
-
-Fix these narrowly after the migration tooling is proven. Do not return to detector development first.
-
-## Initial Codex task boundary
-
-The first Codex session should set up and prove local SDL-MCP integration only, plus minimal repository config/docs required for that integration. It should also verify the image-blind privacy guard and external temp launcher without opening any real image pixels. It should not fix the Fiji/AHK/IJM problems in the same setup step.
-
-After SDL is proven, establish the thresholded mini-subagent policy. Then build/prove the thin Antigravity review gate. Only after those infrastructure steps are stable should normal runtime debugging resume.
+Older migration documents may retain useful historical evidence, but they are **not** startup authority and should not override current state, endpoint research memory, or current contracts.
