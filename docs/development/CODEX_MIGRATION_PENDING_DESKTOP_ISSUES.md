@@ -109,9 +109,97 @@ The user successfully placed:
 
 The failure happened **after** the fourth placement when generated QC geometry code began. Do not regress or replace the authoritative four-point interaction while addressing the later failure.
 
+## Codex token-usage / orchestration considerations
+
+These are migration-design notes, not authorization to install or adopt anything yet.
+
+### A. Avoid repeatedly loading large files/output into the primary Codex context
+
+The user's prior Codex usage was token-heavy while repeatedly editing/reading a large monolithic `.py`. Working from GitHub is not intrinsically token-free: token cost depends on how much source/tool output Codex actually reads, not whether bytes came from a local file or GitHub. The useful optimization is **targeted retrieval**, not merely moving code to GitHub.
+
+Codex should therefore:
+
+- start from `AGENTS.md`, the current-state/handoff docs, and the small active file/test set;
+- use symbol/search/diff/range-based reads rather than repeatedly reading whole large files;
+- inspect only the relevant surrounding code before editing;
+- prefer `git diff`, targeted test failures, bounded log tails, and focused command output;
+- periodically compact accumulated findings into a short durable handoff and continue from that rather than carrying dead ends indefinitely.
+
+This matches the existing repository policy that `CURRENT_STATE.md` should identify the small active file/test set.
+
+### B. Subagents for genuinely large read/summarization tasks
+
+Current Codex supports delegating narrower work to mini-model subagents when using a ChatGPT account; this does not inherently require the user's own API key. However, subagent work still consumes Codex/agentic usage and may be accounted separately from the visible primary thread.
+
+Recommended policy: **do not spawn a subagent for every command result.** Delegate when the raw material is genuinely large or parallelizable, for example:
+
+- >20–50k tokens of logs/output/docs;
+- multiple sizeable files that primarily need summarization/search;
+- broad repository reconnaissance where only a compact answer is needed by the primary agent;
+- independent audits/tests that can run in parallel without duplicating active implementation context.
+
+For ordinary small command outputs, direct reading is cheaper and simpler.
+
+Do not hard-code `gpt-5.4-mini` as a permanent model requirement in project policy. Current OpenAI guidance says GPT-5.4/5.4-mini in Codex are being replaced by GPT-5.6 Terra/Luna for ChatGPT-account Codex use after 2026-08-31. Phrase policy functionally: use the **current lower-cost/mini Codex subagent model** for large summarization/reconnaissance tasks where appropriate.
+
+### C. Multi-agent workflow
+
+A modest multi-agent workflow is potentially useful, but do not create an orchestration system merely because it is possible. The primary Codex agent should remain the project manager and final integrator. Delegate **independent bounded subtasks**, such as:
+
+- one agent inspects a generated Fiji macro around an error;
+- one audits AHK v2 behavior;
+- one runs/searches relevant tests;
+- one summarizes a very large log or repository area.
+
+The primary agent must validate and consolidate results before editing. Avoid having multiple agents concurrently edit overlapping files or all independently reread the whole repository; that can increase token use and merge/reasoning overhead rather than reduce it.
+
+External-model orchestration (Gemini/Claude/etc.) is a separate toolchain requiring those services/credentials or a compatible local orchestration layer; ChatGPT Plus by itself does not provide arbitrary third-party model calls through Codex. Do not add that complexity unless measured benefit justifies it.
+
+### D. Candidate context/token-reduction tools to evaluate
+
+Do not install all of these at once. Benchmark one small representative task with and without the candidate and keep it only if it reduces total token/time cost without hurting correctness.
+
+1. **`dreamlx/codeindex` — strongest low-complexity first candidate.**
+   - deterministic/tree-sitter structural code navigation;
+   - can generate compact `README_AI.md` navigation files without AI enrichment (`--no-ai`), so it can work locally without API usage;
+   - project's published benchmark reports about 28% fewer tokens / 19% less wall time on navigation tasks, with no overall quality gain and some noted failure cases;
+   - likely fits this repository's preference for simple mature tooling before heavier bespoke/context systems.
+
+2. **`GlitterKill/sdl-mcp` — potentially powerful but heavier.**
+   - local MCP server with symbol graph, task-scoped slices, bounded source windows, delta/blast-radius tooling;
+   - explicitly targets context-budget reduction;
+   - requires Node.js 24+ and MCP setup, so adoption cost is meaningfully higher than a static index;
+   - consider only if targeted Git/search/codeindex navigation remains inadequate for the repository as it grows.
+
+3. **`yibie/caveman-codex` — possible output-token reduction, lower priority.**
+   - mainly compresses agent language/output style rather than improving code retrieval;
+   - may reduce verbosity, but aggressive compression can make debugging/handoffs less legible;
+   - do not allow terse-output rules to damage precise Fiji/AHK/debug reasoning. If tested, apply to routine chatter/summaries, not correctness-critical technical explanations.
+
+4. **Command-output reduction (`rtk`-style ideas from the Reddit discussion).**
+   - useful principle: prevent huge command output entering context in the first place via `rg`, `head/tail`, test selection, diff filters, and summary scripts;
+   - third-party wrappers have mixed user-reported savings and can truncate something later needed, forcing duplicate commands;
+   - prefer native bounded commands and targeted retrieval first, then benchmark a wrapper only if shell output remains a measured dominant cost.
+
+### E. Practical default migration strategy
+
+Before installing a complex token-saving stack, use this hierarchy:
+
+1. concise durable `AGENTS.md` + task-specific/current-state docs;
+2. small active file/test set in `CURRENT_STATE.md`;
+3. targeted search/symbol/range/diff reads, never whole-repo reconstruction by default;
+4. bounded shell/test output;
+5. periodic compact handoff notes;
+6. current mini/lower-cost Codex subagents only for large summarization/reconnaissance or independent bounded parallel tasks;
+7. trial `codeindex` structural-only navigation if repository navigation is still a meaningful token cost;
+8. only then trial heavier SDL-MCP or other orchestration.
+
+Measure the effect on one or two real tasks before making any candidate mandatory.
+
 ## Current migration posture
 
-- Do **not** fix these issues yet; the user has more issues to report before migration.
+- Do **not** fix the desktop issues yet; the user has more issues to report before migration.
+- Do **not** install new Codex/context/orchestration tools yet; the user is deciding the migration setup.
 - Preserve the current code and evidence until the user says to begin implementation/Codex migration.
 - When migration begins, Codex should read `AGENTS.md`, `docs/development/IMPLEMENTATION_DECISION_POLICY.md`, `docs/development/CURRENT_STATE.md`, and this file first.
 - Runtime target remains Windows + Python 3.14.
