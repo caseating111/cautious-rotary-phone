@@ -97,16 +97,28 @@ Do not return to indirect geometry-based Fiji main-window inference or the same 
 
 **Disposition:** current route unreliable; requires a materially better-supported implementation.
 
-The current narrow disposition is to retain the documented `-macro` single-instance argument handoff and remove only the incompatible `run("Show All")` macro command. The existing bounded Win32/AHK frame placement remains responsible for visibility. Manual confirmation is still required; do not claim the lifecycle resolved from the synthetic probe.
+The current narrow disposition is to retain `-macro` for a fresh Fiji launch, but bypass the Fiji launcher when a usable IJ1 GUI already exists; see Route 4. The existing bounded Win32/AHK frame placement remains responsible for visibility.
+
+### Route 4 — Direct IJ1 socket handoff plus one-invocation claim
+**Research/search history:**
+After another delayed/multiple-launch report, searches were broadened from Fiji's RMI implementation to ImageJ's older socket listener, command-line port/instance behavior, Windows launcher stalls, and macro completion/locking. The ImageJ CLI guide and `ImageJ.java` document that `ij.ImageJ -macro` checks `OtherInstance`, forwards arguments to the existing IJ1 instance, and returns instead of creating another GUI. Historical Fiji discussion confirms the socket listener is enabled by default in Fiji. A Fiji Windows launcher report independently describes a second launcher waiting on RMI and eventually starting another instance after a long timeout.
+
+**Endpoint debugging evidence:**
+A blank image-blind probe reproduced the configured Fiji launcher remaining alive for more than 20 seconds without producing a Java GUI. A separate blank IJ1 instance then accepted a text-only macro sent by a second direct `ij.ImageJ -macro` command: the marker was written and process telemetry still showed exactly one ImageJ JVM. This distinguishes launcher/RMI delay from duplicate Python call sites.
+
+The proof now uses the Fiji launcher only for a fresh session. When a usable Fiji toolbar already exists it invokes the bundled `javaw`, installed `ij-*.jar`, and documented `ij.ImageJ -macro` path directly. Each generated proof also contains a tokenized READY→RUNNING→DONE claim. A second delivery of the same artifact cannot enter the four-click body, and the controller records timestamp, controller PID, launcher PID, route, token, and physical-file dispositions in one concise JSON-lines log.
+
+**Disposition:** preferred narrow lifecycle route pending one real interactive reuse confirmation.
 
 ## Additional durable debugging evidence
 - Four 108x108 ROI 1-click placements themselves have worked as the authoritative manual references; do not redesign them merely because downstream runtime stages failed.
 - A direct-script import-context failure (`ModuleNotFoundError: No module named 'tools'`) was fixed separately. It was a concrete launcher execution-context bug, not evidence that the four-point geometry approach was wrong.
 - Different downstream errors blocking the same grid/QC endpoint should be treated as one continuing endpoint problem for research/reassessment purposes, not as a reset to unrestricted patching.
 - The apparently silent fourth physical image was not lost by discovery or reconciliation. In actual filesystem order, two non-proof files preceded the selected proof image and the fourth followed it; the selected image's parser exception aborted the sequential IJM loop before the fourth could print a disposition. Case-insensitive comparison keys are still required at preflight and IJM filename lookup boundaries while preserving original display values.
+- Ordinary DONE status is inferred from exact current derived-crop names, which include mutable grid/strain labels. Changing strain ordering therefore changes the expected-output contract and can make the plate pending again. Explicit proof rerun must select the source from authoritative `images.csv`, not mutate or globally clear ordinary pending/DONE state.
 
 ## Current preferred route / current unknown
-The current `workflow-C` implementation converts saved ROI dimensions to numbers at source, retains the established `-macro` single-instance handoff without `Show All`, uses case-insensitive filename keys, and gives the compact Fiji frame a 640x180 minimum. The affected QC/CLAHE path passes real Fiji on synthetic data; the exact interactive one-plate artifact still requires one batched manual validation. Preserve the current four-click interaction and required double-CLAHE behavior unless evidence specifically implicates them.
+The four-click → grid → Accept → export path has passed manual Fiji validation. Current stabilization uses direct IJ1 socket handoff for an existing GUI, a tokenized one-execution claim, explicit selected-DONE rerun, case-insensitive keys, complete per-file dispositions, and a 640x180 toolbar minimum. Double CLAHE and QC arithmetic already pass real Fiji on synthetic data. Preserve the working interaction unless new evidence implicates it.
 
 ## Re-search / retry triggers
 Search or retry when a materially different Fiji/runtime failure changes the question, a distinct launch mechanism is being considered, Fiji/ImageJ version behavior changes, a source documents a concrete fix, or the user explicitly requests broader/fresh research. Do not repeat substantially equivalent searches or implementation routes merely because the error wording changes while the same endpoint remains blocked.
@@ -118,3 +130,7 @@ Search or retry when a materially different Fiji/runtime failure changes the que
 - ImageJ legacy single-instance issue 275: https://github.com/imagej/imagej-legacy/issues/275
 - ImageJ legacy single-instance issue 238: https://github.com/imagej/imagej-legacy/issues/238
 - Stack Overflow, “Controlling already existing instance of ImageJ”: https://stackoverflow.com/questions/33023534/controlling-already-existing-instance-of-imagej
+- ImageJ command-line guide (`-port`, `-macro`): https://imagej.net/ij/docs/guide/146-18.html
+- ImageJ `ImageJ.java` (`OtherInstance` argument forwarding): https://github.com/imagej/ImageJ/blob/master/ij/ImageJ.java
+- Fiji Windows launcher stall / delayed second instance report: https://fiji.sc/bug/1108.html
+- Historical Fiji socket-listener discussion: https://imagej.273.s1.nabble.com/Commands-to-a-running-instance-of-ImageJ-td3687254.html

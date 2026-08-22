@@ -19,14 +19,16 @@ class OnePlateValidationTests(unittest.TestCase):
         self.assertIs(proof.choose_pending_row(rows), rows[0])
         self.assertIs(proof.choose_pending_row(rows, "plate2.jpg"), rows[1])
 
-    def test_filename_selection_is_exact_and_ambiguous_or_missing_is_rejected(self) -> None:
+    def test_filename_selection_is_case_insensitive_and_ambiguous_or_missing_is_rejected(self) -> None:
         rows = [
             {"Filename": "Plate1.jpg"},
             {"Filename": "plate1.jpg"},
         ]
-        self.assertEqual(proof.choose_pending_row(rows, "plate1.jpg")["Filename"], "plate1.jpg")
         with self.assertRaises(SystemExit):
-            proof.choose_pending_row(rows, "PLATE1.JPG")
+            proof.choose_pending_row(rows, "plate1.jpg")
+        self.assertEqual(proof.choose_pending_row([rows[0]], "plate1.JPG")["Filename"], "Plate1.jpg")
+        with self.assertRaises(SystemExit):
+            proof.choose_pending_row(rows, "missing.jpg")
 
     def test_one_row_csv_preserves_header_and_only_selected_row(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -165,10 +167,16 @@ class OnePlateValidationTests(unittest.TestCase):
         launched = object()
 
         with patch.object(proof, "_ACTIVE_FIJI_PROCESS", RunningProcess()), patch.object(
+            proof, "proof_is_running", return_value=False
+        ), patch.object(
             proof, "proof_plate_is_open", return_value=False
         ), patch.object(proof, "fiji_is_open", return_value=False), patch.object(
             proof, "prepare", return_value=(Path("proof.ijm"), selected)
-        ) as prepare, patch.object(
+        ) as prepare, patch.object(proof, "arm_invocation"), patch.object(
+            proof, "source_dispositions", return_value=[]
+        ), patch.object(proof, "PROOF_STATUS_FILE", Path(tempfile.gettempdir()) / "proof-test-status.txt"), patch.object(
+            proof, "PROOF_LAUNCH_LOG", Path(tempfile.gettempdir()) / "proof-test-launch.log"
+        ), patch.object(
             proof.batch, "load_config", return_value=fake_config
         ), patch.object(
             proof.subprocess, "Popen", return_value=launched
@@ -177,7 +185,7 @@ class OnePlateValidationTests(unittest.TestCase):
             result = proof.run("plate1.jpg")
 
         self.assertEqual(result, selected)
-        prepare.assert_called_once_with("plate1.jpg", legacy=False)
+        prepare.assert_called_once_with("plate1.jpg", legacy=False, rerun_done=False)
         visible.assert_called_once_with()
         command = popen.call_args.args[0]
         self.assertIn("--no-splash", command)
@@ -189,9 +197,17 @@ class OnePlateValidationTests(unittest.TestCase):
         fake_fiji = Path(__file__)
         fake_config = {"fiji_executable": str(fake_fiji)}
         macro = Path("proof.ijm")
-        with patch.object(proof, "proof_plate_is_open", return_value=False), patch.object(
+        with patch.object(proof, "proof_is_running", return_value=False), patch.object(
+            proof, "proof_plate_is_open", return_value=False
+        ), patch.object(
             proof, "fiji_is_open", return_value=True
         ), patch.object(proof, "prepare", return_value=(macro, selected)), patch.object(
+            proof, "arm_invocation"
+        ), patch.object(proof, "source_dispositions", return_value=[]), patch.object(
+            proof, "PROOF_STATUS_FILE", Path(tempfile.gettempdir()) / "proof-test-status.txt"
+        ), patch.object(proof, "PROOF_LAUNCH_LOG", Path(tempfile.gettempdir()) / "proof-test-launch.log"), patch.object(
+            proof, "fiji_macro_command", return_value=(["javaw", "-macro", str(macro)], "ij1-socket-handoff")
+        ), patch.object(
             proof.batch, "load_config", return_value=fake_config
         ), patch.object(proof.subprocess, "Popen") as popen, patch.object(
             proof, "ensure_fiji_main_window_visible", return_value=True
@@ -201,14 +217,16 @@ class OnePlateValidationTests(unittest.TestCase):
         visible.assert_called_once_with()
         self.assertEqual(
             popen.call_args.args[0],
-            [str(fake_fiji), "--no-splash", "-macro", str(macro)],
+            ["javaw", "-macro", str(macro)],
         )
         self.assertEqual(popen.call_args.kwargs["cwd"], fake_fiji.parent)
 
     def test_new_roi_click_patch_requires_one_restart_before_legacy_proof(self) -> None:
         fake_fiji = Path(__file__)
         fake_config = {"fiji_executable": str(fake_fiji)}
-        with patch.object(proof, "proof_plate_is_open", return_value=False), patch.object(
+        with patch.object(proof, "proof_is_running", return_value=False), patch.object(
+            proof, "proof_plate_is_open", return_value=False
+        ), patch.object(
             proof.batch, "load_config", return_value=fake_config
         ), patch.object(proof, "ensure_roi_click_patch", return_value=True), patch.object(
             proof, "prepare"
@@ -268,6 +286,89 @@ class OnePlateValidationTests(unittest.TestCase):
             self.assertEqual(selected["Filename"], "plate2.jpg")
             self.assertIn("--legacy", run_mock.call_args.args[0])
             self.assertIn(proof.batch.macro_path(proof_csv), proof_macro.read_text(encoding="utf-8"))
+
+    def test_invocation_guard_claims_once_and_marks_success(self) -> None:
+        source = "gridText = File.openAsString(gridFile);\n// ============================================================\n// FINISHED\n// ============================================================\n"
+        with patch.object(proof, "PROOF_STATUS_FILE", Path("C:/proof.status")):
+            guarded = proof.patch_invocation_guard(source, "abc")
+        self.assertIn('proofStatus != "READY " + proofToken', guarded)
+        self.assertIn('File.saveString("RUNNING " + proofToken', guarded)
+        self.assertIn('File.saveString("DONE abc"', guarded)
+
+    def test_existing_fiji_command_bypasses_fiji_launcher_for_ij1_socket_handoff(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            fiji = root / "fiji-windows-x64.exe"
+            jar = root / "jars" / "ij-1.54p.jar"
+            javaw = root / "java" / "win64" / "jdk" / "bin" / "javaw.exe"
+            jar.parent.mkdir(parents=True)
+            javaw.parent.mkdir(parents=True)
+            jar.touch()
+            javaw.touch()
+            command, route = proof.fiji_macro_command(fiji, Path("proof.ijm"), existing_fiji=True)
+        self.assertEqual(route, "ij1-socket-handoff")
+        self.assertEqual(command[0], str(javaw))
+        self.assertIn("ij.ImageJ", command)
+        self.assertNotIn(str(fiji), command)
+
+    def test_source_dispositions_cover_each_physical_file_with_casefolded_keys(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            images = root / "images.csv"
+            pending = root / "pending.csv"
+            folder = root / "EXP1"
+            folder.mkdir()
+            for name in ("active.JPG", "waiting.jpg", "done.jpg", "unknown.tif"):
+                (folder / name).touch()
+            images.write_text(
+                "Filename,Experiment,Set,Type\nACTIVE.jpg,E,S,T\nwaiting.JPG,E,S,T\ndone.jpg,E,S,T\n",
+                encoding="utf-8",
+            )
+            pending.write_text(
+                "Filename,Experiment,Set,Type\nwaiting.jpg,E,S,T\n",
+                encoding="utf-8",
+            )
+            with patch.object(proof.batch, "PENDING_IMAGES_CSV", pending):
+                decisions = proof.source_dispositions(
+                    {"images_csv": str(images), "image_root": str(root)}, "active.jpg"
+                )
+        self.assertEqual(
+            decisions,
+            [
+                "ACTIVE: EXP1/active.JPG",
+                "DONE: EXP1/done.jpg",
+                "NOT_LISTED: EXP1/unknown.tif",
+                "PENDING: EXP1/waiting.jpg",
+            ],
+        )
+
+    def test_done_rerun_uses_authoritative_images_row_when_pending_is_empty(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            pending = root / "pending.csv"
+            images = root / "images.csv"
+            configured = root / "legacy.ijm"
+            proof_csv = root / "proof.csv"
+            proof_macro = root / "proof.ijm"
+            pending.write_text("Filename,Experiment,Set,Type\n", encoding="utf-8")
+            images.write_text("Filename,Experiment,Set,Type\nPlate.JPG,E,S,T\n", encoding="utf-8")
+            configured.write_text(
+                f'imagesFile = "{proof.batch.macro_path(pending)}";\n', encoding="utf-8"
+            )
+            completed = type(
+                "Completed", (), {"returncode": 1, "stdout": "All expected crops already exist", "stderr": ""}
+            )()
+            config = {"images_csv": str(images)}
+            with patch.object(proof.batch, "PENDING_IMAGES_CSV", pending), patch.object(
+                proof.batch, "CONFIGURED_LEGACY_MACRO", configured
+            ), patch.object(proof, "PROOF_IMAGES_CSV", proof_csv), patch.object(
+                proof, "PROOF_LEGACY_MACRO", proof_macro
+            ), patch.object(proof.subprocess, "run", return_value=completed), patch.object(
+                proof, "_prepare_completed_plate_macro", return_value=configured
+            ), patch.object(proof.batch, "load_config", return_value=config):
+                built, selected = proof.prepare("plate.jpg", legacy=True, rerun_done=True)
+        self.assertEqual(built, proof_macro)
+        self.assertEqual(selected["Filename"], "Plate.JPG")
 
 
 if __name__ == "__main__":

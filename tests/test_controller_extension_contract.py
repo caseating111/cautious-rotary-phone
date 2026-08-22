@@ -31,7 +31,7 @@ class ControllerExtensionContractTests(unittest.TestCase):
         self.assertNotIn("one_plate_validation.proof_is_running()", block)
         self.assertIn("filedialog.askopenfilename(", block)
         self.assertIn("filename = Path(chosen).name", block)
-        self.assertIn("selected = one_plate_validation.run(filename, legacy=True)", block)
+        self.assertIn("selected = one_plate_validation.run(filename, legacy=True, rerun_done=rerun_done)", block)
         self.assertIn("authoritative prepare-only results remain available", block)
         self.assertIn("Fiji macro handoff", block)
 

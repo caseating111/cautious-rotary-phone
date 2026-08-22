@@ -88,8 +88,13 @@ class ExtendedController(Controller):
         ttk.Button(
             self,
             text="Run one-plate 4-point proof (choose plate)",
-            command=self.run_one_plate_validation,
+            command=lambda: self.run_one_plate_validation(rerun_done=False),
         ).grid(row=23, column=0, columnspan=3, sticky="ew", padx=5, pady=(0, 6))
+        ttk.Button(
+            self,
+            text="Reset / re-run selected DONE plate",
+            command=lambda: self.run_one_plate_validation(rerun_done=True),
+        ).grid(row=24, column=0, columnspan=3, sticky="ew", padx=5, pady=(0, 6))
 
     def choose_csv_folder(self) -> None:
         initial = None
@@ -230,13 +235,13 @@ class ExtendedController(Controller):
             return
         self.open_existing_path(folder, "Processing Logs")
 
-    def run_one_plate_validation(self) -> None:
+    def run_one_plate_validation(self, *, rerun_done: bool = False) -> None:
         if not self.save():
             return
 
         image_root = self.vars["image_root"].get().strip()
         chosen = filedialog.askopenfilename(
-            title="Choose one pending plate for the 4-point proof",
+            title=("Choose one plate to reset and re-run" if rerun_done else "Choose one pending plate for the 4-point proof"),
             initialdir=image_root or None,
             filetypes=[
                 ("Plate images", "*.jpg *.jpeg *.png *.tif *.tiff"),
@@ -258,7 +263,7 @@ class ExtendedController(Controller):
             started_ahk_here = bool(self.ahk_process and self.ahk_process.poll() is None)
 
         try:
-            selected = one_plate_validation.run(filename, legacy=True)
+            selected = one_plate_validation.run(filename, legacy=True, rerun_done=rerun_done)
         except SystemExit as exc:
             if started_ahk_here:
                 self.stop_ahk()
@@ -273,11 +278,13 @@ class ExtendedController(Controller):
             if value
         )
         self.status.set(f"One-plate 4-point proof launched: {filename} | {context}")
+        dispositions = selected.get("_dispositions", "")
         messagebox.showinfo(
             "One-plate validation",
             f"Launched exactly one selected pending source:\n{filename}\n\nContext: {context or 'not specified'}\n\n"
             "The proof uses the four centre clicks, mathematical full-grid QC, and fixed crop dimensions. "
-            "The Fiji macro handoff reuses an existing valid Fiji instance instead of deliberately opening another Fiji UI.",
+            "The Fiji macro handoff reuses an existing valid Fiji instance instead of deliberately opening another Fiji UI."
+            + (f"\n\nCurrent physical-file decisions:\n{dispositions}" if dispositions else ""),
         )
 
     def standard_output_count(self, alias: str, config: dict) -> int:
