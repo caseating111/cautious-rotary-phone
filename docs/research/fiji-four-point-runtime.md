@@ -48,6 +48,8 @@ Those checks passed, but actual Fiji later rejected the generated IJM after the 
 **What this established:**
 Validating only the Python generator or synthetic proof is insufficient evidence that the exact emitted ImageJ macro is accepted by the real Fiji runtime. The failure occurred after apparently successful upstream validation.
 
+The active artifact that produced the reported failure was `%USERPROFILE%\.cautious-rotary-phone\one_plate_four_point_validation.configured.ijm`, so future diagnosis must inspect that configured file rather than infer its contents from the generator. ImageJ `ij-1.54p.jar`'s `ij.macro.Interpreter` accepted both an isolated copy of the geometry and the geometry placed in the extracted artifact's symbol/function context, including the `halfW`/`halfH` identifiers. That narrower interpreter check therefore did not reproduce the real interactive Fiji failure and is not an adequate substitute for the actual configured runtime path.
+
 **Reusable lesson:**
 For this endpoint, test the exact generated runtime IJM through Fiji's actual parser/runtime whenever feasible and image-blind; do not report the endpoint deterministic path clean based only on generator-level checks.
 
@@ -63,6 +65,14 @@ The controller attempted another Fiji launch instead of reliably reusing the exi
 **What this established:**
 Launch-state cleanup, existing-instance detection/reuse, and macro invocation were not reliably coordinated. Earlier indirect window-geometry/desktop assumptions also proved too fragile to use as the authority for Fiji main-window state.
 
+Local Fiji inspection established several reusable boundaries:
+- the configured Windows Fiji launcher produced a stable main window only when started with the Fiji installation directory as its working directory;
+- Fiji's installed Jaunch configuration documents `--run <plugin> [<arg>]`, `--allow-multiple`, and `--no-splash`;
+- decompilation of installed `imagej-legacy-2.0.3.jar` showed its single-instance layer forwarding `-macro <path>` and `-run` requests through a serialized RMI stub;
+- a stale `%LOCALAPPDATA%\Temp\ImageJ-<user>-7.stub` existed, but no causal link was proven, so deleting or managing that stub must not be adopted as a fix without new evidence.
+
+Image-blind automation attempts using `-macro`, `--run "Macro Runner"`, and a temporary AHK File/Open handoff either exited or failed to reach observable alignment without a decisive textual error. The experimental AHK route was removed. These attempts did not prove the exact configured macro reached QC and must not be cited as successful real-Fiji validation.
+
 **Reusable lesson:**
 Do not return to indirect geometry-based Fiji main-window inference or the same relaunch/Macro_Runner lifecycle under a cosmetic rewrite. Prefer documented/established Fiji/ImageJ invocation behavior and ensure success/failure paths always clear launch UI state.
 
@@ -74,7 +84,7 @@ Do not return to indirect geometry-based Fiji main-window inference or the same 
 - Different downstream errors blocking the same grid/QC endpoint should be treated as one continuing endpoint problem for research/reassessment purposes, not as a reset to unrestricted patching.
 
 ## Current preferred route / current unknown
-Perform bounded research before another speculative implementation attempt. Prioritize established Fiji/ImageJ launch/reuse/macro-runner behavior and exact IJM syntax/runtime evidence, then verify only the affected end-to-end path. Preserve the current four-click interaction and required double-CLAHE behavior unless evidence specifically implicates them.
+The current `workflow-C` implementation includes later IJM-boundary and Fiji working-directory/launch-context changes, but it has not yet received the next requested manual Fiji validation. Do not change runtime again until that result is known. If it still fails, perform bounded research before another speculative implementation attempt, prioritizing established Fiji/ImageJ launch/reuse/macro-runner behavior and exact IJM syntax/runtime evidence. Preserve the current four-click interaction and required double-CLAHE behavior unless evidence specifically implicates them.
 
 ## Re-search / retry triggers
 Search or retry when a materially different Fiji/runtime failure changes the question, a distinct launch mechanism is being considered, Fiji/ImageJ version behavior changes, a source documents a concrete fix, or the user explicitly requests broader/fresh research. Do not repeat substantially equivalent searches or implementation routes merely because the error wording changes while the same endpoint remains blocked.
