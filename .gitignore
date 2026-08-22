@@ -1,0 +1,42 @@
+# Local/private experimental data and image-bearing outputs
+*.jpg
+*.jpeg
+*.png
+*.tif
+*.tiff
+*.bmp
+*.gif
+*.webp
+*.nd2
+*.czi
+*.lif
+*.ims
+*.ome.tif
+*.ome.tiff
+
+# Image-bearing/private local test areas if someone creates them under the clone by mistake
+LocalWorkflowData/
+PrivateTemp/
+PrivateImages/
+ImageOutputs/
+FijiTempImages/
+.local-private-data/
+
+# Codex-readable local telemetry is deliberately untracked
+.local-test-telemetry/
+
+# SDL/local agent caches and machine-local state
+.sdl-mcp/
+.sdl/
+.agent-cache/
+
+# Python/runtime caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Local environment/editor noise
+.env
+.venv/
+.vscode/
+.idea/
