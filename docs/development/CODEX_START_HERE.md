@@ -10,9 +10,10 @@ Before implementation, read only:
 2. `docs/development/IMPLEMENTATION_DECISION_POLICY.md`;
 3. `docs/development/AUTONOMY_SCOPE.md`;
 4. `docs/development/IMAGE_BLIND_TESTING.md`;
-5. `docs/development/CURRENT_STATE.md`;
-6. this file;
-7. `docs/development/CODEX_MIGRATION_PENDING_DESKTOP_ISSUES.md` for the concrete unresolved desktop evidence.
+5. `docs/development/MANUAL_VALIDATION_BACKLOG.md`;
+6. `docs/development/CURRENT_STATE.md`;
+7. this file;
+8. `docs/development/CODEX_MIGRATION_PENDING_DESKTOP_ISSUES.md` for the concrete unresolved desktop evidence.
 
 Do not reconstruct project history or read the whole repository by default.
 
@@ -22,15 +23,25 @@ For Codex/local-agent work, `docs/development/AUTONOMY_SCOPE.md` narrows any old
 
 Complete the user's requested objective plus its necessary validation, directly required regression fixes, cleanup and concise state update. Then stop. Do not automatically roll into speculative features, unrelated optimizations, broad audits, future roadmap work or another improvement cycle merely because useful work remains possible. Record worthwhile adjacent ideas instead.
 
+Manual desktop/visual checks are normally deferred into `MANUAL_VALIDATION_BACKLOG.md`. Continue other safe work within the active requested objective while those checks are pending if their result is not yet blocking progress. Batch related manual checks for the user rather than interrupting repeatedly.
+
 The user can explicitly request a broader audit/continuous/improvement session; absent that, task-scoped autonomy is the default.
 
 ## Image-blind privacy contract
 
-`docs/development/IMAGE_BLIND_TESTING.md` is a hard local-testing rule. Real/sample image pixels and pixel-bearing derivatives must never be opened, previewed, rendered, OCRed, screenshotted, encoded, or supplied to Codex/another model. Codex may pass external image paths to local Fiji/ImageJ and consume only text/structural/numeric telemetry. If a check genuinely requires seeing pixels, log a concise `MANUAL_VISUAL_VALIDATION_REQUIRED` item for the user instead.
+`docs/development/IMAGE_BLIND_TESTING.md` is a hard local-testing rule. Real/sample image pixels and pixel-bearing derivatives must never be opened, previewed, rendered, OCRed, screenshotted, encoded, or supplied to Codex/another model. Codex may pass external image paths to local Fiji/ImageJ and consume only text/structural/numeric telemetry. If a check genuinely requires seeing pixels, log a concise `MANUAL_VISUAL_VALIDATION_REQUIRED` item in the manual-validation backlog for the user instead.
 
-Real/source images, Fiji/Java/OS temp that may contain pixels, crops and matrices belong outside the Git worktree under the external private data tree. Use `start_controller_private_test.cmd` for privacy-sensitive Fiji testing so child processes inherit the external private TEMP/TMP/java.io.tmpdir locations. Close any already-running Fiji before using that launcher; an older Fiji process did not inherit the private temp settings.
+Real/source images, Fiji/Java/OS temp that may contain pixels, crops and matrices belong outside the Git worktree. Use `start_controller_private_test.cmd` for privacy-sensitive controller/Fiji testing so child processes inherit the external private TEMP/TMP/java.io.tmpdir locations. The default private controller path deliberately uses **ordinary Windows Python 3.14 via `start_controller_no_anaconda.cmd`**; do not use or integrate Anaconda/conda for private tests unless the user explicitly asks later.
 
-Before privacy-sensitive testing or pushing work after such a test, run `tools/check_image_blind_paths.py` against the local config. Do not defeat a sandbox/path restriction by copying images into the repository.
+Before **every** real-image/Fiji verification, use the actual active local config and run:
+
+```powershell
+python .\tools\check_image_blind_paths.py C:\path\to\the\active\config.json
+```
+
+Report the result to the user before starting the real-image check. Proceed only when it reports `IMAGE-BLIND PRIVACY CHECK: PASS`. If it fails, do not open/process the real images; resolve/log the privacy issue and continue other safe work within scope where possible.
+
+Close any already-running Fiji before a private test; an older Fiji process did not inherit the private temp settings. Do not defeat a sandbox/path restriction by copying images into the repository.
 
 ## Current migration state
 
@@ -109,7 +120,7 @@ Before requesting another manual desktop test, perform every feasible **image-bl
 - once the Antigravity review gate is proven, independent narrow Gemini review for risky desktop/generated-script/cross-language changes using non-pixel evidence only;
 - Codex verification of every Gemini finding before changing code.
 
-Only ask the user to test behavior that genuinely requires visual/desktop/hardware judgement after these gates pass. Never create a screenshot of real/sample image pixels merely to automate a visual check.
+Only ask the user to test behavior that genuinely requires visual/desktop/hardware judgement after these gates pass. Never create a screenshot of real/sample image pixels merely to automate a visual check. Accumulate such checks in `MANUAL_VALIDATION_BACKLOG.md` and batch them where possible.
 
 ## Current desktop blockers to resume after migration setup
 
