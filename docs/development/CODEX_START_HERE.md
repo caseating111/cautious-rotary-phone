@@ -9,9 +9,10 @@ Before implementation, read only:
 1. root `AGENTS.md`;
 2. `docs/development/IMPLEMENTATION_DECISION_POLICY.md`;
 3. `docs/development/AUTONOMY_SCOPE.md`;
-4. `docs/development/CURRENT_STATE.md`;
-5. this file;
-6. `docs/development/CODEX_MIGRATION_PENDING_DESKTOP_ISSUES.md` for the concrete unresolved desktop evidence.
+4. `docs/development/IMAGE_BLIND_TESTING.md`;
+5. `docs/development/CURRENT_STATE.md`;
+6. this file;
+7. `docs/development/CODEX_MIGRATION_PENDING_DESKTOP_ISSUES.md` for the concrete unresolved desktop evidence.
 
 Do not reconstruct project history or read the whole repository by default.
 
@@ -22,6 +23,14 @@ For Codex/local-agent work, `docs/development/AUTONOMY_SCOPE.md` narrows any old
 Complete the user's requested objective plus its necessary validation, directly required regression fixes, cleanup and concise state update. Then stop. Do not automatically roll into speculative features, unrelated optimizations, broad audits, future roadmap work or another improvement cycle merely because useful work remains possible. Record worthwhile adjacent ideas instead.
 
 The user can explicitly request a broader audit/continuous/improvement session; absent that, task-scoped autonomy is the default.
+
+## Image-blind privacy contract
+
+`docs/development/IMAGE_BLIND_TESTING.md` is a hard local-testing rule. Real/sample image pixels and pixel-bearing derivatives must never be opened, previewed, rendered, OCRed, screenshotted, encoded, or supplied to Codex/another model. Codex may pass external image paths to local Fiji/ImageJ and consume only text/structural/numeric telemetry. If a check genuinely requires seeing pixels, log a concise `MANUAL_VISUAL_VALIDATION_REQUIRED` item for the user instead.
+
+Real/source images, Fiji/Java/OS temp that may contain pixels, crops and matrices belong outside the Git worktree under the external private data tree. Use `start_controller_private_test.cmd` for privacy-sensitive Fiji testing so child processes inherit the external private TEMP/TMP/java.io.tmpdir locations. Close any already-running Fiji before using that launcher; an older Fiji process did not inherit the private temp settings.
+
+Before privacy-sensitive testing or pushing work after such a test, run `tools/check_image_blind_paths.py` against the local config. Do not defeat a sandbox/path restriction by copying images into the repository.
 
 ## Current migration state
 
@@ -77,6 +86,8 @@ Target architecture after SDL is proven:
 
 Do **not** make Codex and Gemini equal co-managers and do not have both independently ingest the entire repository. Codex remains the sole normal writer/integrator. Gemini should receive a narrow incremental review packet: relevant diff, exact generated runtime artifact, bounded error/test excerpt, and a precise review question.
 
+The image-blind privacy contract applies equally to Gemini/Antigravity. Review packets must never contain real/sample image pixels, screenshots, previews, thumbnails or other pixel-bearing derivatives.
+
 Prefer a thin local wrapper/direct supported Antigravity invocation over a large bespoke orchestration system. Codex should inspect the installed Antigravity CLI/interface on the user's machine and prove a tiny non-interactive call before integrating it. Do not assume old Gemini CLI syntax is still valid.
 
 Where Antigravity supports cheaper/Flash subagents, use them for large repetitive review input in the same thresholded way as Codex mini agents. Do not spawn subagents for every small task.
@@ -87,17 +98,18 @@ Do not initially add `hampsterx/codex-mcp-bridge`: its primary direction is expo
 
 A major objective of this migration is to stop using the user as a parser/debugger for defects that could have been caught locally.
 
-Before requesting another manual desktop test, perform every feasible automated check, including:
+Before requesting another manual desktop test, perform every feasible **image-blind** automated check, including:
 
 - Python compile/static checks and the smallest relevant test set;
 - generation of the **exact** runtime artifact that will be executed;
 - syntax/parse/startup validation of generated or edited AHK v2 scripts using AHK v2 where feasible;
 - inspection/validation of the exact generated ImageJ/Fiji macro, not only its Python generator/template;
 - targeted Windows/path/launcher checks where locally possible;
-- once the Antigravity review gate is proven, independent narrow Gemini review for risky desktop/generated-script/cross-language changes;
+- numeric/structural Fiji telemetry such as dimensions, ROI coordinates, crop counts, textual errors and window geometry without image viewing;
+- once the Antigravity review gate is proven, independent narrow Gemini review for risky desktop/generated-script/cross-language changes using non-pixel evidence only;
 - Codex verification of every Gemini finding before changing code.
 
-Only ask the user to test behavior that genuinely requires visual/desktop/hardware judgement after these gates pass.
+Only ask the user to test behavior that genuinely requires visual/desktop/hardware judgement after these gates pass. Never create a screenshot of real/sample image pixels merely to automate a visual check.
 
 ## Current desktop blockers to resume after migration setup
 
@@ -114,6 +126,6 @@ Fix these narrowly after the migration tooling is proven. Do not return to detec
 
 ## Initial Codex task boundary
 
-The first Codex session should set up and prove local SDL-MCP integration only, plus minimal repository config/docs required for that integration. It should not fix the Fiji/AHK/IJM problems in the same setup step.
+The first Codex session should set up and prove local SDL-MCP integration only, plus minimal repository config/docs required for that integration. It should also verify the image-blind privacy guard and external temp launcher without opening any real image pixels. It should not fix the Fiji/AHK/IJM problems in the same setup step.
 
 After SDL is proven, establish the thresholded mini-subagent policy. Then build/prove the thin Antigravity review gate. Only after those infrastructure steps are stable should normal runtime debugging resume.
