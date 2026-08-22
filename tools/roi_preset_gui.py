@@ -12,6 +12,23 @@ PRESETS_FILE = APP_DIR / "roi_presets.json"
 ACTIVE_FILE = APP_DIR / "active_roi_preset.txt"
 CONFIG_FILE = APP_DIR / "config.json"
 
+PREFS_FUNCTION = r'''
+function restoreSavedRoiClickSettings() {
+    // Upstream keeps stock in-memory defaults until its Options dialog has been
+    // opened. Refresh the plugin's own saved preferences before every rotated-
+    // rectangle click so a fresh Fiji session behaves like the last saved setup.
+    rotRectWidth  = call("ij.Prefs.get", "rect.width", rotRectWidth);
+    rotRectHeight = call("ij.Prefs.get", "rect.height", rotRectHeight);
+    rotRectAngle  = call("ij.Prefs.get", "rect.angle", rotRectAngle);
+    addToManager = call("ij.Prefs.get", "default.addToManager", addToManager);
+    runMeasure   = call("ij.Prefs.get", "default.runMeasure", runMeasure);
+    doNextSlice  = call("ij.Prefs.get", "default.doNextSlice", doNextSlice);
+    dimension    = call("ij.Prefs.get", "default.dimension", dimension);
+    doExtraCmd   = call("ij.Prefs.get", "default.doExtraCmd", doExtraCmd);
+    extraCmd     = call("ij.Prefs.get", "default.extraCmd", extraCmd);
+}
+'''.strip()
+
 PATCH_FUNCTION = r'''
 function loadActiveRectPreset() {
     presetFile = getDirectory("home") + ".cautious-rotary-phone" + File.separator + "active_roi_preset.txt";
@@ -34,6 +51,7 @@ function loadActiveRectPreset() {
 
 HELPER_MARKER = "// ----------- Helper functions -----------------//"
 TOOL_MARKER = 'macro "Rotated Rectangle Click Tool - Cf00R11cc" {'
+PREFS_CALL = "\trestoreSavedRoiClickSettings();"
 PATCH_CALL = "\tloadActiveRectPreset();"
 TOOLSET_NAME = "Roi 1-Click Tools.ijm"
 
@@ -145,18 +163,43 @@ def find_roi_click_tools(fiji_root: Path | None) -> list[Path]:
 
 
 def patch_roi_click_tools(path: Path) -> Path | None:
+    """Make the mature ROI 1-click tool restore its saved settings on every click.
+
+    Existing workflow rectangle presets remain optional: plugin preferences are
+    restored first, then an explicitly active workflow preset may override only
+    width/height/angle. This upgrades older local patches in place.
+    """
     text = path.read_text(encoding="utf-8")
-    if "function loadActiveRectPreset()" in text and PATCH_CALL in text:
-        return None
     if HELPER_MARKER not in text or TOOL_MARKER not in text:
         raise ValueError("This does not look like the expected ROI 1-Click Tools macro source.")
+
+    changed = False
+    original = text
+
+    if "function restoreSavedRoiClickSettings()" not in text:
+        text = text.replace(HELPER_MARKER, HELPER_MARKER + "\n\n" + PREFS_FUNCTION, 1)
+        changed = True
+
+    if "function loadActiveRectPreset()" not in text:
+        text = text.replace(HELPER_MARKER, HELPER_MARKER + "\n\n" + PATCH_FUNCTION, 1)
+        changed = True
+
+    if PREFS_CALL not in text:
+        text = text.replace(TOOL_MARKER, TOOL_MARKER + "\n\n" + PREFS_CALL, 1)
+        changed = True
+
+    if PATCH_CALL not in text:
+        anchor = PREFS_CALL if PREFS_CALL in text else TOOL_MARKER
+        text = text.replace(anchor, anchor + "\n" + PATCH_CALL, 1)
+        changed = True
+
+    if not changed:
+        return None
 
     backup = path.with_suffix(path.suffix + ".before-roi-presets.bak")
     if not backup.exists():
         shutil.copy2(path, backup)
 
-    text = text.replace(HELPER_MARKER, HELPER_MARKER + "\n\n" + PATCH_FUNCTION, 1)
-    text = text.replace(TOOL_MARKER, TOOL_MARKER + "\n\n" + PATCH_CALL, 1)
     path.write_text(text, encoding="utf-8")
     return backup
 
@@ -279,14 +322,15 @@ class App(tk.Tk):
         if backup is None:
             messagebox.showinfo(
                 "Already patched",
-                f"ROI 1-Click Tools is already preset-aware.\n\nToolset: {selected}",
+                f"ROI 1-Click Tools already restores its saved settings and supports workflow rectangle presets.\n\nToolset: {selected}",
             )
             self.status.set(f"ROI 1-Click Tools already patched: {selected}")
             return
 
         messagebox.showinfo(
             "Patched",
-            "ROI 1-Click Tools will now read the active rectangle preset before each rectangle click.\n\n"
+            "ROI 1-Click Tools will now restore its saved rectangle/click settings before every rotated-rectangle click. "
+            "An explicitly active workflow preset can still override width/height/angle.\n\n"
             f"Toolset: {selected}\nBackup: {backup}\n\nRestart/reload the toolset once.",
         )
         self.status.set(f"ROI 1-Click Tools patched: {selected}")
