@@ -59,6 +59,11 @@ class OnePlateValidationTests(unittest.TestCase):
         self.assertNotIn("sampleH =", patched)
         self.assertNotIn("sampleX =", patched)
         self.assertNotIn("sampleY =", patched)
+        self.assertIn('run("Select None")', patched)
+        self.assertLess(
+            patched.index('run("Select None")'),
+            patched.index('run("Enhance Local Contrast (CLAHE)", claheOptions)'),
+        )
         self.assertIn('roiBoxW = call("ij.Prefs.get", "rect.width", 108)', patched)
         self.assertIn('roiBoxH = call("ij.Prefs.get", "rect.height", 108)', patched)
         self.assertIn("roiBoxSize = maxOf(roiBoxW, roiBoxH)", patched)
