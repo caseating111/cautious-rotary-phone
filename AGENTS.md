@@ -248,6 +248,8 @@ Generated crop names may encode useful metadata for human readability, but scrip
 
 ## Research/reuse requirement
 
+**Past-route check:** Before implementing or substantially changing an endpoint with an entry in `docs/research/INDEX.md`, or a sufficiently similar endpoint, read the relevant topic's endpoint-failure history and avoid repeating a materially equivalent failed route unless new evidence specifically justifies retrying it.
+
 When considering a new capability, explicitly search the mature ecosystem before implementing it from first principles. Examples include Fiji/ImageJ update sites/plugins, Bio-Formats/ImageJ facilities, ROI Manager tooling, registration/grid/segmentation plugins, established Python imaging/scientific libraries, Pillow facilities, command-line utilities and other established desktop tools.
 
 Research should be driven by the desired function and decomposed subfunctions, not by exact wording. For example, if a requested "one-click ROI" tool nearly fits the need, investigate wrappers, ROI resizing, saved selections, macros, plugin patching, companion tools or follow-on transformations before deciding that a custom replacement is preferable.

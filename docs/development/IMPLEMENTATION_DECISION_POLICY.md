@@ -151,11 +151,63 @@ When research materially affects an implementation decision, maintain a concise 
 - the current preferred route or current unknown;
 - explicit conditions that would justify searching again.
 
-Keep `docs/research/INDEX.md` deliberately small: one compact entry per topic with status, one-line conclusion, last-checked date, and a link to the detail file. The index is the normal first read; topic files are opened only when relevant.
+Keep `docs/research/INDEX.md` deliberately small. It is a routing/index document, not a research or failure log. Each topic gets one row containing a short stable topic name, compact status, endpoint-history route count when warranted, last-checked date, a current conclusion normally no longer than 30 words, and a link to the topic file. Search queries, individual errors, test chronology, source lists, and detailed failure explanations belong in the topic file, not the index.
 
 Do not fabricate or reconstruct exact historical search queries that were not actually recorded. For older work, log known conclusions/local failures and mark prior search terms as unrecorded. Prefer prospective logging from this point onward.
 
 Research-memory maintenance is part of the same bounded task that triggered the research. Keep it concise enough that writing or reading the log does not become a significant token/time cost itself.
+
+## Endpoint failure memory
+
+Durable failure memory tracks practical user outcomes/endpoints, not incidental test failures. Treat technically different errors as part of the same endpoint when they prevent the same intended user result.
+
+When the same practical endpoint has failed through three or more materially distinct implementation or integration routes, its existing `docs/research/<topic>.md` file must contain an `Endpoint debugging / failure history` section before another implementation attempt. This history is separate from the topic's search/research history but lives in the same file so the repository does not grow a second parallel logging hierarchy.
+
+Record materially distinct routes and debugging evidence that would help a future agent avoid rediscovering the same facts. Do not record every syntax mistake, typo, transient environment error, individual failing unit test, or routine edit unless it reveals a reusable integration/runtime lesson.
+
+Before implementing or substantially changing an endpoint that already has an indexed topic—or a sufficiently similar endpoint where the same lesson plausibly applies—read that topic's endpoint-failure history and compare the proposed approach with prior failed routes. Do not repeat a materially equivalent route merely under different naming, helper structure, or implementation detail unless new evidence gives a concrete reason it should now succeed.
+
+Preserve debugging steps when they establish reusable information about the endpoint, integration boundaries, tool/runtime behavior, validation limits, or why a plausible route should not be repeated. It is acceptable for a topic file to be detailed when that detail is cheaper than re-debugging the same route. Omit or consolidate iterations that add no materially new information.
+
+Do not impose an aggressive total word limit on topic files. When a file becomes large, consolidate entries only when they represent the same route and reached the same conclusion. Preserve materially different attempts, decisive evidence, and debugging facts that would help recognize or avoid a failed approach. Raw verbose logs should normally be reduced to the unique facts they establish rather than copied wholesale.
+
+A materially distinct endpoint-failure entry should normally state:
+- what architecture/integration/debugging route was tried;
+- the observed practical endpoint result;
+- the decisive evidence or debugging steps that established what happened;
+- the reusable lesson for future agents;
+- disposition such as `active`, `superseded`, `ruled out`, or `worth revisiting only if ...`.
+
+### Example of useful endpoint debugging memory
+
+Useful:
+
+1. **Existing Fiji detection based indirectly on AHK/window geometry.**
+   - Repeatedly failed to identify/reuse the intended Fiji instance reliably.
+   - Later attempts produced second-instance launches.
+   - Lesson: do not return to indirect geometry-based main-window inference without materially new evidence.
+
+2. **Relaunch after the first four-point attempt.**
+   - Controller attempted another Fiji launch despite an existing instance.
+   - `Launching Fiji...` remained visible.
+   - `File not found: Macro_Runner` appeared.
+   - Established that launch-state cleanup and macro invocation were not reliably coordinated.
+
+3. **Generator/proof validation.**
+   - Synthetic/generated-artifact checks passed.
+   - Actual Fiji subsequently rejected the generated IJM.
+   - Established that generator-level validation alone is insufficient proof of the real Fiji endpoint.
+
+Not useful as durable endpoint memory unless it establishes a broader reusable lesson:
+
+- ran test;
+- changed one line;
+- ran test again;
+- fixed a syntax typo;
+- reran unchanged tests;
+- changed a comment.
+
+Preserve debugging steps when they establish reusable information. Consolidate repetitive steps that establish the same fact instead of deleting distinct lessons merely to reduce file size.
 
 ## Immediate practicality test
 
