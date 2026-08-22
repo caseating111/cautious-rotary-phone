@@ -32,7 +32,7 @@ MoveFijiToolbarOnce()
 
         try
         {
-            WinGetPos(, , w, h, hwnd)
+            WinGetPos(, , &w, &h, hwnd)
             title := WinGetTitle(hwnd)
         }
         catch
@@ -56,7 +56,7 @@ MoveFijiToolbarOnce()
 
     try
     {
-        WinGetPos(, , w, h, bestHwnd)
+        WinGetPos(, , &w, &h, bestHwnd)
         MonitorGetWorkArea(1, &left, &top, &right, &bottom)
         x := Max(left, right - w - 10)
         WinMove(x, top + 10, , , bestHwnd)
