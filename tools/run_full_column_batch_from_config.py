@@ -328,7 +328,12 @@ def build_legacy_macro(config: dict) -> Path:
     source = enhance_four_point_macro(source)
     # Keep the production fallback on the same proven interaction path as the
     # one-plate proof: ROI 1-click, whole-preview CLAHE x2 and rotated QC.
-    from tools.run_one_plate_validation import patch_roi_click_interaction
+    try:
+        from tools.run_one_plate_validation import patch_roi_click_interaction
+    except ModuleNotFoundError:
+        # The supported controller launches this file directly, making tools/
+        # sys.path[0] rather than the repository root.
+        from run_one_plate_validation import patch_roi_click_interaction
 
     source = patch_roi_click_interaction(source)
     APP_DIR.mkdir(parents=True, exist_ok=True)

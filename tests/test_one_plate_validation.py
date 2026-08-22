@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import tempfile
+import subprocess
+import sys
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -95,6 +97,34 @@ class OnePlateValidationTests(unittest.TestCase):
         self.assertIn('" histogram=256 maximum=1000 mask=*None* fast_(less_accurate)"', exact)
         self.assertIn("claheBlock = round(roiBoxSize * 3.3)", exact)
         self.assertIn("Overlay.drawLine(p1x, p1y, p2x, p2y)", exact)
+
+    def test_direct_batch_script_context_can_load_legacy_interaction_adapter(self) -> None:
+        tools_dir = proof.batch.REPO_ROOT / "tools"
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                (
+                    "import shutil, tempfile\n"
+                    "from pathlib import Path\n"
+                    "import run_full_column_batch_from_config as batch\n"
+                    "target=Path(tempfile.mkdtemp())\n"
+                    "source=batch.SOURCE_MACRO.read_text(encoding='utf-8')\n"
+                    "batch.configure_source_settings=lambda _source,_config: source\n"
+                    "batch.APP_DIR=target\n"
+                    "batch.CONFIGURED_LEGACY_MACRO=target/'legacy.ijm'\n"
+                    "batch.build_legacy_macro({})\n"
+                    "print('DIRECT_SCRIPT_IMPORT_OK')\n"
+                    "shutil.rmtree(target)\n"
+                ),
+            ],
+            cwd=tools_dir,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("DIRECT_SCRIPT_IMPORT_OK", result.stdout)
 
     def test_fiji_main_title_contract_includes_observed_desktop_title(self) -> None:
         self.assertTrue(proof._is_fiji_main_title("(Fiji Is Just) ImageJ"))

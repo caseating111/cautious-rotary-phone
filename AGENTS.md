@@ -125,6 +125,8 @@ The "best" technical solution is not necessarily the most elegant or most automa
 
 ## Testing-budget rule
 
+**Testing efficiency:** Default to targeted, minimum-sufficient validation. Do not perform exhaustive, redundant, or speculative testing. Expand beyond affected paths only when a test fails, observed runtime behavior contradicts expectations, evidence indicates a broader regression, or the user explicitly requests broader audit/regression testing. Reuse valid existing test evidence and do not rerun unchanged tests without a concrete reason. Optimize for reaching a reliably user-testable product quickly.
+
 The user has already experienced a testing/debugging burden that exceeded the original manual work. **Do not allow that pattern to repeat.**
 
 User testing time is scarce and expensive. Do not casually hand the user successive speculative builds to debug for you.

@@ -124,6 +124,20 @@ A less elegant route that works immediately or nearly immediately has a strong a
 
 ## Testing budget and stop-loss rule
 
+### Validation-efficiency policy
+
+Optimize for the fastest route to a practically usable and testable product, not exhaustive validation. This policy explicitly overrides overly conservative or exhaustive testing behavior.
+
+Do not perform redundant, exhaustive, or low-value testing by default. Reuse valid existing test evidence and do not rerun unchanged tests without a concrete reason. Prefer targeted tests of changed or affected runtime paths and a small representative set of integration checks.
+
+Expand testing beyond those targeted paths only when a test fails, runtime behavior contradicts expectations, evidence indicates a broader regression, or the user explicitly requests broader regression or audit testing.
+
+Do not spend substantial time polishing documentation, unrelated refactoring, hypothetical edge cases, or repeatedly reviewing already-validated components unless directly required by the current task.
+
+Batch manual and visual validation for the user rather than repeatedly interrupting development.
+
+Required behavior explicitly named by the user must still be implemented and verified sufficiently to reach a practical user-testable checkpoint.
+
 The user's testing burden has previously exceeded the manual work the automation was supposed to replace. That is an explicit failure condition and must not be normalized.
 
 User testing is expensive. The agent should perform every feasible non-user check before asking for manual validation.
