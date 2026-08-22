@@ -8,6 +8,7 @@ from pathlib import Path
 from tools.roi_preset_gui import (
     HELPER_MARKER,
     PATCH_CALL,
+    PREFS_CALL,
     TOOL_MARKER,
     TOOLSET_NAME,
     configured_fiji_root,
@@ -53,7 +54,7 @@ class RoiPresetDiscoveryTests(unittest.TestCase):
             expected.write_text("macro source", encoding="utf-8")
             self.assertEqual(find_roi_click_tools(root), [expected.resolve()])
 
-    def test_patch_is_idempotent_after_first_success(self) -> None:
+    def test_patch_restores_plugin_preferences_then_applies_optional_active_preset(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             toolset = Path(temp) / TOOLSET_NAME
             toolset.write_text(
@@ -63,12 +64,41 @@ class RoiPresetDiscoveryTests(unittest.TestCase):
             backup = patch_roi_click_tools(toolset)
             self.assertIsNotNone(backup)
             text = toolset.read_text(encoding="utf-8")
+            self.assertIn("function restoreSavedRoiClickSettings()", text)
             self.assertIn("function loadActiveRectPreset()", text)
+            self.assertIn(PREFS_CALL, text)
             self.assertIn(PATCH_CALL, text)
+            self.assertLess(text.index(PREFS_CALL), text.index(PATCH_CALL))
+            for key in (
+                "rect.width",
+                "rect.height",
+                "rect.angle",
+                "default.addToManager",
+                "default.runMeasure",
+                "default.doNextSlice",
+                "default.dimension",
+                "default.doExtraCmd",
+                "default.extraCmd",
+            ):
+                self.assertIn(key, text)
 
             second = patch_roi_click_tools(toolset)
             self.assertIsNone(second)
             self.assertEqual(toolset.read_text(encoding="utf-8"), text)
+
+    def test_old_preset_only_patch_is_upgraded_without_duplicate_active_preset_function(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            toolset = Path(temp) / TOOLSET_NAME
+            toolset.write_text(
+                f"{HELPER_MARKER}\n\nfunction loadActiveRectPreset() {{\n}}\n\n{TOOL_MARKER}\n\n{PATCH_CALL}\n}}\n",
+                encoding="utf-8",
+            )
+            patch_roi_click_tools(toolset)
+            text = toolset.read_text(encoding="utf-8")
+            self.assertEqual(text.count("function loadActiveRectPreset()"), 1)
+            self.assertEqual(text.count("function restoreSavedRoiClickSettings()"), 1)
+            self.assertEqual(text.count(PREFS_CALL), 1)
+            self.assertEqual(text.count(PATCH_CALL), 1)
 
     def test_preset_values_must_be_finite_and_positive(self) -> None:
         self.assertEqual(
