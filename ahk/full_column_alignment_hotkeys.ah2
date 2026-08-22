@@ -2,6 +2,7 @@
 #SingleInstance Force
 
 SetTitleMatchMode(2)
+DetectHiddenWindows True
 
 PlacementDialogTitle(title)
 {
@@ -39,7 +40,7 @@ MoveFijiToolbarOnce()
             continue
 
         ; Image windows are much taller; the main toolbar is a short, wide frame.
-        if (w < 250 || h < 40 || h > 220)
+        if (w < 250 || h < 40 || h > 320)
             continue
         if (InStr(title, "1 / 4") || InStr(title, "2 / 4") || InStr(title, "3 / 4") || InStr(title, "4 / 4"))
             continue
@@ -56,6 +57,9 @@ MoveFijiToolbarOnce()
 
     try
     {
+        WinShow(bestHwnd)
+        if (WinGetMinMax(bestHwnd) = -1)
+            WinRestore(bestHwnd)
         WinGetPos(, , &w, &h, bestHwnd)
         MonitorGetWorkArea(1, &left, &top, &right, &bottom)
         x := Max(left, right - w - 10)
