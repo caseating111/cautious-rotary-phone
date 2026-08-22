@@ -1,6 +1,6 @@
 # V10 adapter prototype handoff
 
-Status: Planned
+Status: Proven
 
 ## Target
 
@@ -20,12 +20,12 @@ Read the synthetic V10 workbook and produce `ProjectModel` v1 plus normalized la
 
 ## Completion record
 
-- Branch: gemini-v10
-- Commit: 2e38e4e
-- Interface: load_v10(path) -> dict (ProjectModel), extract_layouts(path) -> dict (PlateLayout mappings)
-- Tests: ran synthetic fixture test in 	est_adapter.py
-- Dependencies: pandas, openpyxl
-- Proven cases: Loading 10_sample_synthetic_sanitized.xlsx produces 98 images, 4 sessions and 2 layouts with correct schemas.
+- Branch: `gemini-v10`
+- Commit: `2e38e4e`
+- Interface: `load_v10(path) -> dict` (ProjectModel), `extract_layouts(path) -> dict` (PlateLayout mappings)
+- Tests: ran synthetic fixture test in `test_adapter.py`
+- Dependencies: `pandas`, `openpyxl`
+- Proven cases: Loading `v10_sample_synthetic_sanitized.xlsx` produces 98 images, 4 sessions and 2 layouts with correct schemas.
 - Known limitations: None. Out-of-scope 'other' labels are ignored.
 - Contract changes proposed: None.
-- Integration/cherry-pick notes: Check the dapter.py file for load_v10 and extract_layouts.
+- Integration/cherry-pick notes: Check the `adapter.py` file for `load_v10` and `extract_layouts`.
