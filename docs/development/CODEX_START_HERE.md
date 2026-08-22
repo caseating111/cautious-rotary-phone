@@ -13,7 +13,9 @@ Before implementation, read only:
 5. `docs/development/MANUAL_VALIDATION_BACKLOG.md`;
 6. `docs/development/CURRENT_STATE.md`;
 7. this file;
-8. `docs/development/CODEX_MIGRATION_PENDING_DESKTOP_ISSUES.md` for the concrete unresolved desktop evidence.
+8. `docs/development/WORKFLOW_ROADMAP.md` when selecting/confirming the next implementation stage;
+9. `docs/development/V10_WORKBOOK_CONTRACT.md` when working on V10 metadata/workbook integration;
+10. `docs/development/CODEX_MIGRATION_PENDING_DESKTOP_ISSUES.md` for the concrete unresolved desktop evidence.
 
 Do not reconstruct project history or read the whole repository by default.
 
@@ -54,6 +56,7 @@ Close any already-running Fiji before a private test; an older Fiji process did 
 - The local repository should become the normal Codex working copy; GitHub remains the durable remote/source of truth.
 - Do not install `codeindex`, Caveman, or another orchestration stack during the initial SDL proof.
 - Do not change Fiji/AHK/Python runtime behavior until the SDL/Codex setup is verified unless the user explicitly asks to proceed sooner.
+- The staged product direction is documented in `WORKFLOW_ROADMAP.md`. Stabilize the current route first; V10 integration is the first major feature stage after that. Annotation, visibility automation, overall plate rotation/alignment, and lightweight CSV mini-project input follow in that order unless the user reprioritizes.
 
 ## SDL-MCP first
 
