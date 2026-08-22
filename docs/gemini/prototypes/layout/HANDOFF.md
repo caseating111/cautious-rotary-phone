@@ -4,7 +4,7 @@ Status: Planned
 
 ## Goal
 
-Derive a deterministic `PlateLayout` from normalized project/annotation metadata without depending on Fiji, image pixels, or the current controller. This component translates annotation profile structure (`Pos`, vertical labels, strain-profile `Order`) into logical grid dimensions and row bands that downstream alignment/annotation tools can use.
+Derive a deterministic `PlateLayout` from normalized project/annotation metadata without depending on Fiji, image pixels, or the current controller. This component translates annotation profile structure (`Pos`, vertical labels, strain-profile `Order`) into logical grid dimensions and row bands that downstream alignment, cropping, adjustment and annotation tools can use.
 
 Primary interface:
 
@@ -22,7 +22,7 @@ Current semantics support one vertical profile. Ignore workbook vertical-profile
 
 ### Columns
 
-Each strain profile's highest valid `Pos` defines that profile's logical width. The **widest assigned strain profile defines overall `grid_cols`**.
+Each strain profile's highest/extent of valid `Pos` defines that profile's logical width. The **widest assigned strain profile defines overall `grid_cols`**.
 
 Examples:
 
@@ -38,13 +38,13 @@ When an annotation set has multiple strain profiles, assignment `Order` defines 
 
 - `Order=1` -> upper band;
 - `Order=2` -> next band;
-- additional orders, if later supported, continue downward.
+- later orders continue downward.
 
-For the currently required 8-row/two-profile case, two ordered strain profiles divide the plate into top 4 rows and bottom 4 rows.
+**Default mapping policy:** when the total physical row count divides evenly across the number of ordered strain profiles, distribute rows evenly. For the currently required 8-row/two-profile case, this means rows 1-4 and rows 5-8.
 
-If total rows divide evenly by the number of ordered strain profiles, distribute rows evenly. If not, do not silently invent a scientifically meaningful grouping unless the metadata/contract explicitly defines it. Surface ambiguity or use a documented deterministic policy only if later approved.
+**Override policy:** equal division is a practical default, not an immutable scientific rule. `PlateLayout` or its derivation request must allow an explicit/manual row-band override later. If the total rows do not divide evenly, explicit assignment metadata exists, or the user supplies a manual mapping, use/report that instead of forcing equal division.
 
-For the discussed alignment helper, the second alignment/reference row can be derived from vertical-row count as `ceil(rows * 0.5) + 0` in 1-based practical terms equivalent to `(0.5 * total_rows) + 1` rounded up where needed; e.g. 8 rows -> row 5. The exact alignment UI remains outside this prototype, but `PlateLayout` should expose row bands/reference information cleanly enough for downstream code to choose top row plus the first row of the lower half/band.
+Do not infer row bands from strain label text.
 
 ## Required cases
 
@@ -60,9 +60,10 @@ This represents the 14.08.26 / 15.08.26 style case.
 ### Two-profile 8 x 10
 
 - vertical profile positions 1-8 -> 8 rows;
-- strain profile A positions 1-10, `Order=1` -> rows 1-4;
-- strain profile B positions 1-10, `Order=2` -> rows 5-8;
-- overall grid width = 10.
+- strain profile A positions 1-10, `Order=1` -> default rows 1-4;
+- strain profile B positions 1-10, `Order=2` -> default rows 5-8;
+- overall grid width = 10;
+- an explicit alternative row-band mapping can override the default.
 
 This represents the 16.08.26 style case.
 
@@ -75,7 +76,7 @@ Example:
 - overall `grid_cols=10`;
 - lower band remains a 4-column band within that wider logical grid rather than forcing the whole grid to 4 columns.
 
-Downstream alignment should be able to use a row/band with fewer columns for local positioning/rotation references while retaining the widest grid for overall physical width. Therefore preserve each band's own width separately from `grid_cols`.
+Preserve each band's own width separately from `grid_cols`.
 
 ## Label ordering
 
@@ -84,6 +85,38 @@ Downstream alignment should be able to use a row/band with fewer columns for loc
 - Missing/duplicate positions that prevent deterministic ordering should be surfaced clearly.
 - Do not sort label text alphabetically.
 - Preserve display text exactly; normalized comparison keys may be separate if needed.
+
+## Grid coordinates as reusable project state
+
+The logical `PlateLayout` and the later measured pixel grid are distinct but should join cleanly.
+
+The production four-click route currently determines real image grid coordinates very well. Once those coordinates are registered for an image, downstream operations should be able to consume them later without rerunning alignment, including:
+
+- whole-plate visibility adjustment using the grid area as the measurement ROI;
+- crop export from raw/unprocessed images;
+- later crop export from processed images;
+- automatic annotation placement;
+- matrix/composition selection.
+
+Do not design the coordinate result as a transient side effect of crop export. A later integration should be able to run `align/register now, export later`.
+
+The exact persisted pixel-coordinate schema may be a separate contract from logical `PlateLayout`; propose a narrow contract if needed rather than overloading logical metadata with image-runtime details.
+
+## Relationship to four-click alignment
+
+This prototype does **not** replace or reimplement the current Fiji four-click route. It provides logical geometry metadata that can later inform and consume alignment results:
+
+- overall row/column counts;
+- widest overall width;
+- which rows belong to which strain profile;
+- local width of each band;
+- logical row/column identities.
+
+Do not bake the current choice of clicked reference rows/columns into the `PlateLayout` contract. The working production alignment route remains authoritative and may choose suitable reference points independently.
+
+## Basic CSV versus V10
+
+The current basic CSV route has simpler semantics and need not implement V10 `Set`/annotation-set/profile-order behavior. This component is for the richer canonical model and should not force V10 layout semantics back into the basic CSV workflow.
 
 ## Suggested `PlateLayout` information
 
@@ -95,9 +128,10 @@ The exact schema is governed by `contracts/plate_layout.schema.json`, but the mo
 - ordered vertical positions/labels;
 - strain bands;
 - for each strain band: assignment order, profile identity, row start/end, local column count, ordered strain positions/labels;
-- enough logical row/column information for downstream annotation, composition, and alignment components without reopening V10.
+- whether row bands came from default even distribution or an explicit override;
+- enough logical row/column information for downstream annotation, composition, and alignment integration without reopening V10.
 
-If the current schema cannot represent unequal band widths or ordered row bands cleanly, propose a minimal contract revision rather than embedding workbook-specific assumptions in downstream tools.
+If the current schema cannot represent unequal band widths or explicit row-band overrides cleanly, propose a minimal contract revision.
 
 ## Validation/failure behavior
 
@@ -108,22 +142,10 @@ Report rather than guess when any of these prevent deterministic layout derivati
 - zero/invalid positions;
 - duplicate conflicting `Pos` values;
 - multiple strain profiles without unique usable `Order` values;
-- non-contiguous/ambiguous ordering where the intended physical layout cannot be established;
+- row count cannot be mapped by the default and no explicit override exists;
 - annotation set references to missing profiles.
 
 Harmless gaps may be represented if they have a clear logical meaning, but do not silently renumber user positions.
-
-## Relationship to four-click alignment
-
-This prototype does **not** implement the current Fiji four-click route. It only provides logical geometry metadata that can later inform alignment:
-
-- overall row/column counts;
-- widest overall width;
-- which rows belong to which strain profile;
-- local width of each band;
-- sensible logical reference rows.
-
-The current production alignment implementation remains owned by `workflow-C` and must not be modified here.
 
 ## Implementation posture
 
@@ -134,7 +156,7 @@ The current production alignment implementation remains owned by `workflow-C` an
 
 ## Out of scope
 
-- pixel coordinates;
+- pixel detection/alignment implementation;
 - Fiji ROI creation;
 - physical plate rotation estimation;
 - annotation rendering;
@@ -147,12 +169,13 @@ The current production alignment implementation remains owned by `workflow-C` an
 The prototype is `Proven` when targeted synthetic tests demonstrate:
 
 1. 8x12 single-band derivation;
-2. 8x10 two-band top/bottom derivation using `Order`;
-3. widest-band-wins overall columns;
-4. unequal-width bands preserve both overall and local widths;
-5. repeated vertical label text still yields separate rows via `Pos`;
-6. ambiguous inputs fail/report clearly rather than guessing;
-7. output validates against the shared `PlateLayout` contract or a narrowly proposed revision.
+2. 8x10 two-band derivation using `Order` and default even row distribution;
+3. explicit/manual row-band override;
+4. widest-band-wins overall columns;
+5. unequal-width bands preserve both overall and local widths;
+6. repeated vertical label text still yields separate rows via `Pos`;
+7. ambiguous inputs fail/report clearly rather than guessing;
+8. output validates against the shared `PlateLayout` contract or a narrowly proposed revision.
 
 ## Completion record
 
@@ -164,7 +187,7 @@ When proven, update with:
 - Tests:
 - Dependencies:
 - Proven cases:
-- Ambiguity behavior:
+- Default/override row-band behavior:
 - Known limitations:
 - Contract changes proposed:
 - Integration/cherry-pick notes:
