@@ -20,6 +20,20 @@ That policy is binding. In particular:
 
 Do not assume code written in one session is likely to outperform or be more reliable than established software that has been tested, maintained, used scientifically, or published over months or years.
 
+## Avoid tunnel vision — endpoint-first failure research
+
+**Avoid tunnel vision.** A failed implementation does not establish that its architecture, library, protocol, launcher, integration mechanism, process ownership model, or abstraction should be preserved.
+
+After the first meaningful failure toward a user-visible endpoint, re-open the solution space before another implementation attempt. Restate the user's actual endpoint **without the failing implementation's terminology**, then research the current official/mature end-to-end ways to accomplish that endpoint and meaningful architectural alternatives before researching repairs to the existing mechanism.
+
+Different errors blocking the same user outcome are one continuing endpoint failure. Existing code and sunk effort do not get preference merely because they already exist. Explicitly consider whether the current approach can be replaced, bypassed, simplified, composed with a mature tool, or inverted so a different process/tool owns the workflow.
+
+Research is insufficient if it only searches the current error message, failing library/protocol, or variants of an already-failed mechanism. After a meaningful endpoint failure, at least one search must be phrased without the currently failing technology names, and at least one search must ask for the **current officially supported/recommended way to accomplish the endpoint**.
+
+After repeated endpoint failures, do not add another fallback, compatibility layer, IPC mechanism, launcher workaround, retry path, or custom abstraction until the agent has checked the prior endpoint history and explicitly established why the current architecture remains preferable to mature alternatives. Deletion/replacement of custom code is a valid successful outcome.
+
+Distinguish ordinary component defects from endpoint failures: a syntax error, typo, malformed argument, or isolated regression in an otherwise-proven route can be fixed locally; repeated failures to make the actual user-visible workflow work require endpoint/architecture-level reassessment. See `IMPLEMENTATION_DECISION_POLICY.md` for the authoritative trigger, research order, research-memory format, and stop condition.
+
 ## Codex privacy boundary for real sample images
 
 This is an inviolable project rule for local Codex work unless the user explicitly revokes it.
@@ -127,7 +141,7 @@ The "best" technical solution is not necessarily the most elegant or most automa
 
 **Testing efficiency:** Default to targeted, minimum-sufficient validation. Do not perform exhaustive, redundant, or speculative testing. Expand beyond affected paths only when a test fails, observed runtime behavior contradicts expectations, evidence indicates a broader regression, or the user explicitly requests broader audit/regression testing. Reuse valid existing test evidence and do not rerun unchanged tests without a concrete reason. Optimize for reaching a reliably user-testable product quickly.
 
-**Research before a second attempt:** After the first failed implementation or integration attempt for either a specific component or the same overall end goal, pause speculative patching and perform a bounded online search before trying again. Search first for existing exact solutions in authoritative documentation/source, established projects, GitHub issues/code, Stack Overflow and relevant specialist/user discussion hubs. If no exact solution is found, search by underlying function and by similar, parallel or analogous problems using alternate terminology. Use the evidence to select the next route, then verify that route locally with targeted tests. Different error messages do not reset this trigger when they block the same end goal.
+**Research before a second attempt:** After the first failed implementation or integration attempt for either a specific component or the same overall end goal, pause speculative patching. First restate the user-visible endpoint without the failing technology's terminology; then research current official/mature end-to-end solutions and architectural alternatives; only after that research repairs to the current mechanism. Different errors do not reset this trigger when they block the same end goal. Use the evidence to select the next route and prove the key uncertainty with the smallest targeted test.
 
 The user has already experienced a testing/debugging burden that exceeded the original manual work. **Do not allow that pattern to repeat.**
 
@@ -249,6 +263,8 @@ Generated crop names may encode useful metadata for human readability, but scrip
 ## Research/reuse requirement
 
 **Past-route check:** Before implementing or substantially changing an endpoint with an entry in `docs/research/INDEX.md`, or a sufficiently similar endpoint, read the relevant topic's endpoint-failure history and avoid repeating a materially equivalent failed route unless new evidence specifically justifies retrying it.
+
+**Avoid tunnel vision:** when an endpoint has failed, research must be driven by the user-visible function first, not by preservation of the failing implementation. At least one query must omit the failing technology names and ask how the endpoint is currently/recommendedly solved. Explicitly compare mature architectural alternatives before another custom repair.
 
 When considering a new capability, explicitly search the mature ecosystem before implementing it from first principles. Examples include Fiji/ImageJ update sites/plugins, Bio-Formats/ImageJ facilities, ROI Manager tooling, registration/grid/segmentation plugins, established Python imaging/scientific libraries, Pillow facilities, command-line utilities and other established desktop tools.
 
