@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 try:
@@ -49,18 +50,111 @@ def open_window_titles() -> list[str]:
     return titles
 
 
+def _is_fiji_main_title(title: str) -> bool:
+    folded = title.strip().casefold()
+    return (
+        folded == "fiji"
+        or folded == "imagej"
+        or folded == "(fiji is just) imagej"
+        or folded.startswith("fiji (")
+        or ("fiji" in folded and folded.endswith("imagej"))
+    )
+
+
+def _find_fiji_main_window() -> int | None:
+    """Find Fiji's small Java main frame without depending on AHK."""
+    if sys.platform != "win32":
+        return None
+
+    import ctypes
+
+    user32 = ctypes.windll.user32
+    callback_type = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
+    matches: list[tuple[int, int]] = []
+
+    def collect(hwnd, _lparam):
+        length = user32.GetWindowTextLengthW(hwnd)
+        if length <= 0:
+            return True
+        title_buffer = ctypes.create_unicode_buffer(length + 1)
+        user32.GetWindowTextW(hwnd, title_buffer, length + 1)
+        title = title_buffer.value
+        if not _is_fiji_main_title(title):
+            return True
+
+        class_buffer = ctypes.create_unicode_buffer(256)
+        user32.GetClassNameW(hwnd, class_buffer, len(class_buffer))
+        class_name = class_buffer.value
+        priority = 0 if title.strip().casefold() == "(fiji is just) imagej" else 1
+        if class_name != "SunAwtFrame":
+            priority += 10
+        matches.append((priority, int(hwnd)))
+        return True
+
+    user32.EnumWindows(callback_type(collect), 0)
+    if not matches:
+        return None
+    matches.sort(key=lambda item: item[0])
+    return matches[0][1]
+
+
+def ensure_fiji_main_window_visible(timeout_seconds: float = 10.0, poll_seconds: float = 0.1) -> bool:
+    """Restore and place Fiji's main frame on-screen, independently of AHK.
+
+    Fiji/ImageJ's own Show All raises the main frame but does not repair an
+    off-screen remembered location. This bounded Win32 rescue handles both a
+    reused Fiji instance and a newly created one, then stops polling.
+    """
+    if sys.platform != "win32":
+        return False
+
+    import ctypes
+    from ctypes import wintypes
+
+    user32 = ctypes.windll.user32
+    deadline = time.monotonic() + max(0.0, timeout_seconds)
+    poll_seconds = max(0.02, poll_seconds)
+
+    while True:
+        hwnd = _find_fiji_main_window()
+        if hwnd:
+            SW_RESTORE = 9
+            SPI_GETWORKAREA = 0x0030
+            SWP_NOSIZE = 0x0001
+            SWP_NOZORDER = 0x0004
+            SWP_SHOWWINDOW = 0x0040
+
+            user32.ShowWindow(hwnd, SW_RESTORE)
+
+            window_rect = wintypes.RECT()
+            work_rect = wintypes.RECT()
+            if user32.GetWindowRect(hwnd, ctypes.byref(window_rect)) and user32.SystemParametersInfoW(
+                SPI_GETWORKAREA, 0, ctypes.byref(work_rect), 0
+            ):
+                width = max(1, window_rect.right - window_rect.left)
+                height = max(1, window_rect.bottom - window_rect.top)
+                x = max(work_rect.left, work_rect.right - width - 10)
+                y = min(max(work_rect.top + 10, work_rect.top), max(work_rect.top, work_rect.bottom - height))
+                user32.SetWindowPos(
+                    hwnd,
+                    0,
+                    x,
+                    y,
+                    0,
+                    0,
+                    SWP_NOSIZE | SWP_NOZORDER | SWP_SHOWWINDOW,
+                )
+            user32.BringWindowToTop(hwnd)
+            return True
+
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(poll_seconds)
+
+
 def fiji_is_open() -> bool:
     """Best-effort detection of the legacy Fiji/ImageJ main toolbar window on Windows."""
-    for title in open_window_titles():
-        folded = title.strip().casefold()
-        if (
-            folded == "fiji"
-            or folded == "imagej"
-            or folded.startswith("fiji (")
-            or ("fiji" in folded and folded.endswith("imagej"))
-        ):
-            return True
-    return False
+    return any(_is_fiji_main_title(title) for title in open_window_titles())
 
 
 def proof_plate_is_open(filename: str) -> bool:
@@ -337,6 +431,9 @@ def run(filename: str | None = None, *, legacy: bool = False) -> dict[str, str]:
         else:
             command = [str(fiji), "--no-splash", "-macro", str(macro)]
         _ACTIVE_FIJI_PROCESS = subprocess.Popen(command)
+        # Do not depend on AHK for basic Fiji visibility. ImageJ's Show All raises
+        # the frame but does not repair an off-screen remembered desktop position.
+        ensure_fiji_main_window_visible()
     except OSError as exc:
         raise SystemExit(f"Could not launch Fiji one-plate validation: {exc}") from exc
     return selected
