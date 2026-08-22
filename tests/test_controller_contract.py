@@ -110,7 +110,7 @@ class ControllerContractTests(unittest.TestCase):
     def test_hotkey_shell_hook_only_moves_new_placement_dialogs(self) -> None:
         text = AHK_HELPER.read_text(encoding="utf-8")
         shell_at = text.index("ShellMessage(")
-        timer_at = text.index("SetTimer(KeepWorkflowWindowsVisible", shell_at)
+        timer_at = text.index("SetTimer(MoveKnownWorkflowWindowsOnce, -120)", shell_at)
         shell_block = text[shell_at:timer_at]
 
         self.assertIn("HSHELL_WINDOWCREATED = 1", shell_block)
@@ -119,11 +119,13 @@ class ControllerContractTests(unittest.TestCase):
         self.assertNotIn("Send(", shell_block)
         self.assertNotIn("WinActivate", shell_block)
 
-    def test_hotkey_fallback_keeps_dialogs_and_fiji_toolbar_visible(self) -> None:
+    def test_hotkey_uses_one_delayed_catchup_and_finds_short_java_toolbar(self) -> None:
         text = AHK_HELPER.read_text(encoding="utf-8")
-        self.assertIn("SetTimer(KeepWorkflowWindowsVisible, 300)", text)
-        self.assertIn("KeepWorkflowWindowsVisible()", text)
-        self.assertIn('for title in ["Fiji", "ImageJ"]', text)
+        self.assertIn("SetTimer(MoveKnownWorkflowWindowsOnce, -120)", text)
+        self.assertNotIn("SetTimer(MoveKnownWorkflowWindowsOnce, 300)", text)
+        self.assertIn("MoveFijiToolbarOnce()", text)
+        self.assertIn('className != "SunAwtFrame"', text)
+        self.assertIn("h > 220", text)
         self.assertIn("MonitorGetWorkArea", text)
         self.assertIn("right - w - 10", text)
         self.assertIn("WinMove(10, 10", text)
