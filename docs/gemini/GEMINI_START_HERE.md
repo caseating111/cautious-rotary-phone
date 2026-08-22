@@ -11,8 +11,9 @@ Read only:
 3. `docs/gemini/PROTOTYPE_RULES.md`
 4. `contracts/README.md`
 5. `docs/gemini/GEMINI_INDEX.md`
-6. the HANDOFF for the prototype you are assigned
-7. only the narrow existing project docs/files actually needed for that prototype
+6. `docs/gemini/FUTURE_WORKFLOW.md` when the assigned prototype depends on or feeds another workflow stage
+7. the HANDOFF for the prototype you are assigned
+8. only the narrow existing project docs/files actually needed for that prototype
 
 Do not reconstruct the full repository history or ingest the current runtime broadly.
 
@@ -27,14 +28,9 @@ Before online research, check `docs/research/INDEX.md`; if a matching topic exis
 
 ## Prototype order
 
-Preferred first work:
+Preferred dependency order is described in `FUTURE_WORKFLOW.md`. Independent prototypes may run in parallel when they do not edit the same files or require an unproven upstream contract.
 
-1. V10 adapter exploration/prototype.
-2. Grid/layout derivation using the shared model.
-3. Annotation/composition mini-app/renderer using synthetic contracts.
-4. Whole-plate rotation research/prototype, independently of current grid alignment.
-
-These may run in parallel only when they do not edit the same files. If interfaces are not yet proven, prefer V10/layout first and have annotation consume synthetic contract fixtures.
+Start with the smallest useful proof for the assigned component rather than attempting the entire future workflow at once.
 
 ## Efficiency
 
