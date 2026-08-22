@@ -47,37 +47,63 @@ This replaces manual Photoshop straightening and occurs before whole-plate crop/
 
 Do **not** reuse the ROI 1-click colony-box plugin.
 
-Preferred first interaction:
+Preferred first interaction is **one straight-line drag** along whichever long top or bottom physical plate edge is easiest to see.
 
-1. display working image;
-2. crosshair cursor;
-3. user clicks two well-separated points along one trustworthy straight physical plate edge;
-4. show point markers + connecting line;
-5. derive edge angle/correction;
-6. show non-destructive corrected preview;
-7. Accept / Retry / Skip;
-8. save working derivative plus orientation transform/result.
+1. Display working image.
+2. Activate a normal line/crosshair-line tool.
+3. User drags one line along the chosen top/bottom plate edge.
+4. Keep the measured line visible.
+5. Derive observed edge angle and correction required to make it horizontal.
+6. Show non-destructive corrected preview.
+7. Accept / Retry / Skip.
+8. Save working derivative plus per-image orientation transform/result.
 
-A native straight-line drag is an acceptable equivalent if materially simpler. Automatic CV orientation may be explored later but is optional and must fall back cleanly. Skipping/failing orientation must never block the current four-click culture-grid route.
+Top and bottom edges use the same horizontal-reference calculation; do not add separate dialogue branches.
+
+Automatic CV orientation may be explored later but is optional. Skipping/failing orientation must never block the current four-click culture-grid route.
 
 ## 4. Whole-plate crop preprocessing
 
 Do **not** reuse the colony ROI-box plugin.
 
-Preferred default interaction is four crosshair boundary/extreme clicks on the straightened working plate:
+The crop workflow has two distinct state layers: reusable **crop-size calibration** and per-image **crop placement**.
 
-1. left useful boundary;
-2. right useful boundary;
-3. top useful boundary;
-4. bottom useful boundary.
+### 4A. Calibrate reusable crop size
 
-From those four points derive measured width/height, center and default square crop. Use a conservative square side from the smaller trustworthy extent and round **down to nearest 50 px by default**. Rounding increment/behavior is configurable.
+When no suitable calibration exists, or when explicitly recalibrating:
 
-Immediately preview the proposed crop. Common path should be four clicks -> Accept.
+1. click left useful boundary;
+2. click right useful boundary;
+3. click top useful boundary;
+4. click bottom useful boundary;
+5. exact corners are not required;
+6. derive measured width/height;
+7. default shape is square;
+8. use a conservative side based on the smaller trustworthy extent;
+9. round **down to nearest 50 px by default**; rounding is configurable;
+10. save the accepted size as reusable `CropSizeCalibration`.
 
-Optional correction mode: if crop size is correct but placement is off, click one left-edge x anchor and one top-edge y anchor to reposition the existing square without remeasuring size.
+### 4B. Place that size independently on every image
 
-Provide fast Accept / Retry / Re-anchor. Raw remains untouched. Save crop geometry/source->crop transform as reusable state.
+Even plates with identical dimensions may appear at different x/y offsets in the camera frame. Therefore never reuse another image's crop center/translation merely because size matches.
+
+For each image:
+
+1. reuse current calibrated size;
+2. click somewhere on the **left plate edge**; use x for horizontal placement;
+3. click somewhere on the **top plate edge**; use y for vertical placement;
+4. place the calibrated crop from those independent anchors;
+5. preview;
+6. Accept / Retry placement / Recalibrate size / Skip as appropriate;
+7. save per-image crop rectangle/translation + source->crop transform.
+
+This intentionally avoids exact-corner clicking, which is less reliable than finding any clear left-edge and top-edge point.
+
+Normal path after calibration should be only:
+
+`left-edge click -> top-edge click -> preview -> Accept`
+
+Retrying placement must not require size recalibration.
 
 ## 5. Four-click culture-grid registration
 
@@ -137,11 +163,13 @@ Required behavior:
 - default strain text 90 degrees clockwise, top facing right;
 - vertical labels upright by default, aligned to measured row/y coordinates;
 - multi-strain-profile row bands handled automatically;
-- figure description/date/experiment/Set/media/condition labels use deterministic anchors + preset offsets.
+- figure description/date/experiment/Set/media/condition labels use deterministic anchors + preset offsets;
+- reusable presets store font, size, color, orientation, class visibility, margins/offsets and formatting;
+- fast **non-destructive preview** before final render.
 
-Reusable presentation presets store font, size, color, orientation, class visibility, margins/offsets and formatting. Scientific metadata remains separate from presentation options.
+Spacing should come from actual measured coordinates wherever possible. Scientific metadata remains separate from presentation options.
 
-A fast **non-destructive preview is required** so font/size/spacing/clipping/layout can be reviewed without writing/deleting final files. Final render creates derived `annotated/` output and does not modify processed source.
+Final render creates a derived `annotated/` output and does not modify processed source.
 
 ## 10. Annotated whole-plate export
 
@@ -159,20 +187,14 @@ Crop tier/position selection must be **per selected strain/image**, not global-o
 
 ## Reusable-state rule
 
-The accepted grid result is a durable project asset for:
-
-- unprocessed crop export;
-- processed crop export;
-- whole-grid ROI statistics;
-- automatic annotation placement;
-- QC overlays/previews;
-- selected-strain/matrix crop resolution.
+The accepted grid result is a durable project asset for unprocessed crop export, processed crop export, whole-grid ROI statistics, automatic annotation placement, QC overlays/previews and selected-strain/matrix crop resolution.
 
 Do not ask the user to repeat four-click registration merely because a later function runs at another stage or in another mini-app.
 
 ## UX principles
 
 - reuse saved state rather than repeat clicks;
+- keep crop-size calibration separate from per-image placement;
 - automate deterministic placement/calculation when coordinates/metadata already determine it;
 - manual fallback is for exceptions;
 - preview before presentation/crop writes;
