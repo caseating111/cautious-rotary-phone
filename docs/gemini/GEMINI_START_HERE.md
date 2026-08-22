@@ -23,7 +23,7 @@ Before online research, check `docs/research/INDEX.md`; if a matching topic exis
 - `workflow-C` is the integration branch and is currently owned by another active writer.
 - Do not write to or merge into `workflow-C`.
 - Prototype work should stay isolated and mostly add new files.
-- If multiple Gemini prototype streams run concurrently, create a dedicated branch from `gemini-prototypes` for each stream (for example `gemini-v10`, `gemini-annotation`, `gemini-plate-rotation`) rather than having multiple writers edit this branch simultaneously.
+- If multiple Gemini prototype streams run concurrently, create a dedicated branch from `geminimain` for each stream (for example `gemini-v10`, `gemini-annotation`, `gemini-plate-rotation`) rather than having multiple writers edit this branch simultaneously.
 
 ## Prototype order
 
