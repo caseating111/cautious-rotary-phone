@@ -119,14 +119,17 @@ class ControllerContractTests(unittest.TestCase):
         self.assertNotIn("Send(", shell_block)
         self.assertNotIn("WinActivate", shell_block)
 
-    def test_hotkey_uses_one_delayed_catchup_and_only_positions_visible_java_toolbar(self) -> None:
+    def test_hotkey_uses_bounded_delayed_catchups_and_positions_visible_java_toolbar(self) -> None:
         text = AHK_HELPER.read_text(encoding="utf-8")
         self.assertIn("SetTimer(MoveKnownWorkflowWindowsOnce, -120)", text)
+        self.assertIn("SetTimer(MoveKnownWorkflowWindowsAfter350ms, -350)", text)
+        self.assertIn("SetTimer(MoveKnownWorkflowWindowsAfter700ms, -700)", text)
         self.assertNotIn("SetTimer(MoveKnownWorkflowWindowsOnce, 300)", text)
         self.assertNotIn("DetectHiddenWindows True", text)
         self.assertIn("MoveFijiToolbarOnce()", text)
         self.assertIn('className != "SunAwtFrame"', text)
-        self.assertIn("h > 320", text)
+        self.assertIn("h <= 320", text)
+        self.assertIn("w < 480 || h < 80", text)
         self.assertNotIn("WinShow(bestHwnd)", text)
         self.assertNotIn("WinRestore(bestHwnd)", text)
         self.assertIn("MonitorGetWorkArea", text)

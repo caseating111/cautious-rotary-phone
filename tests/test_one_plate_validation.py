@@ -82,6 +82,20 @@ class OnePlateValidationTests(unittest.TestCase):
         self.assertIn("Overlay.drawLine(topX, topY, bottomX, bottomY)", patched)
         self.assertNotIn("Overlay.drawRect(qcX", patched)
 
+    def test_production_legacy_macro_uses_the_same_clahe_roi_and_qc_adapter(self) -> None:
+        source = proof.batch.SOURCE_MACRO.read_text(encoding="utf-8")
+        with tempfile.TemporaryDirectory() as temp, patch.object(
+            proof.batch, "configure_source_settings", return_value=source
+        ), patch.object(proof.batch, "APP_DIR", Path(temp)), patch.object(
+            proof.batch, "CONFIGURED_LEGACY_MACRO", Path(temp) / "legacy.ijm"
+        ):
+            exact_path = proof.batch.build_legacy_macro({})
+            exact = exact_path.read_text(encoding="utf-8")
+        self.assertEqual(exact.count('run("Enhance Local Contrast (CLAHE)", claheOptions)'), 2)
+        self.assertIn('" histogram=256 maximum=1000 mask=*None* fast_(less_accurate)"', exact)
+        self.assertIn("claheBlock = round(roiBoxSize * 3.3)", exact)
+        self.assertIn("Overlay.drawLine(p1x, p1y, p2x, p2y)", exact)
+
     def test_fiji_main_title_contract_includes_observed_desktop_title(self) -> None:
         self.assertTrue(proof._is_fiji_main_title("(Fiji Is Just) ImageJ"))
         self.assertTrue(proof._is_fiji_main_title("Fiji"))

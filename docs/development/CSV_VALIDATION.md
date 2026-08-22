@@ -16,6 +16,7 @@ Checks include:
 - source filenames with no surrounding whitespace, because the reused Fiji batch macro matches the raw CSV filename field before later trimming/metadata handling;
 - every `images.csv` Experiment/Set exists in `grid.csv`;
 - every image `Type` exists in `condition_order.csv`;
+- a valid `images.csv` row may have no physical file yet; batch preflight reports it as `EXPECTED IMAGES NOT PHYSICALLY PRESENT` and excludes it from pending work without blocking present images;
 - comma-bearing `Experiment`, `Set`, `Type` and `Strain` values that the reused ImageJ macros cannot safely parse with simple comma splitting;
 - embedded line breaks in those ImageJ line-parsed metadata fields;
 - semicolons in `Experiment`, `Set` or `Type`, because the composed Fiji helpers use semicolon-delimited `runMacro` arguments;

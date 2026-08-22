@@ -311,6 +311,7 @@ def build_report(
         "BATCH PREFLIGHT",
         f"Source folders: {len(source_folders)}",
         f"Source images discovered: {len(sources)}",
+        f"Expected images not physically present: {len(csv_missing_files)}",
         f"Mapped source images ready: {mapped_images}",
         f"Already complete images: {complete_images}",
         f"Images still requiring batch work: {len(pending_rows)}",
@@ -323,7 +324,6 @@ def build_report(
         ("GRIDS UNSUPPORTED BY FULL-COLUMN ALIGNMENT", unsupported_full_column_grids),
         ("SOURCE FOLDERS UNSAFE FOR FIJI ARGUMENT HANDOFF", delimiter_unsafe_folders),
         ("UNMAPPED SOURCE IMAGES", [str(path.relative_to(image_root)) for path in unmapped_sources]),
-        ("CSV ROWS WITH NO DISCOVERED SOURCE FILE", csv_missing_files),
         ("DUPLICATE SOURCE BASENAMES", duplicate_source_names),
         ("DUPLICATE images.csv FILENAMES", duplicate_csv_names),
         ("MAPPED IMAGES WITH NO GRID DEFINITION", sorted(set(grid_missing))),
@@ -343,6 +343,14 @@ def build_report(
                 "Move/remove these misplaced exact-name crops before rerunning. Otherwise the rerun would create a second exact current filename and final Pillow staging would correctly reject the duplicate."
             )
         lines.extend(f"- {item}" for item in items)
+
+    if csv_missing_files:
+        lines.extend(["", f"EXPECTED IMAGES NOT PHYSICALLY PRESENT — NON-BLOCKING ({len(csv_missing_files)})"])
+        lines.append(
+            "These valid images.csv records describe acquisitions that are not currently present under image_root. "
+            "They are excluded from pending batch work until their source files appear."
+        )
+        lines.extend(f"- {item}" for item in csv_missing_files)
 
     if stale_expected_crops:
         lines.extend(["", f"STALE EXPECTED CROPS — WILL REBUILD ({len(stale_expected_crops)})"])

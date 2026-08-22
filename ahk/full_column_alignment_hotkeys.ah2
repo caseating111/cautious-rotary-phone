@@ -30,7 +30,7 @@ MoveFijiToolbarOnce()
             {
                 className := WinGetClass(hwnd)
                 WinGetPos(, , &w, &h, hwnd)
-                if (className = "SunAwtFrame" && w >= 250 && h >= 40 && h <= 320)
+                if (className = "SunAwtFrame" && h <= 320)
                 {
                     bestHwnd := hwnd
                     break
@@ -79,8 +79,13 @@ MoveFijiToolbarOnce()
     {
         WinGetPos(, , &w, &h, bestHwnd)
         MonitorGetWorkArea(1, &left, &top, &right, &bottom)
+        if (w < 480 || h < 80)
+        {
+            w := Min(640, right - left)
+            h := Min(120, bottom - top)
+        }
         x := Max(left, right - w - 10)
-        WinMove(x, top + 10, , , bestHwnd)
+        WinMove(x, top + 10, w, h, bestHwnd)
     }
 }
 
@@ -124,8 +129,21 @@ ShellMessage(wParam, lParam, msg, hwnd)
         try WinMove(10, 10, , , "ahk_id " lParam)
     }
 
-    ; One catch-up pass only: no permanent timer, polling or repeated jitter.
+    ; AWT can assign/finalize a dialog title slowly. Use three bounded one-shot
+    ; passes; there is no permanent polling or movement after startup.
     SetTimer(MoveKnownWorkflowWindowsOnce, -120)
+    SetTimer(MoveKnownWorkflowWindowsAfter350ms, -350)
+    SetTimer(MoveKnownWorkflowWindowsAfter700ms, -700)
+}
+
+MoveKnownWorkflowWindowsAfter350ms()
+{
+    MoveKnownWorkflowWindowsOnce()
+}
+
+MoveKnownWorkflowWindowsAfter700ms()
+{
+    MoveKnownWorkflowWindowsOnce()
 }
 
 AlignmentDialogExists()

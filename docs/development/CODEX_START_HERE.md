@@ -60,6 +60,10 @@ Close any already-running Fiji before a private test; an older Fiji process did 
 
 ## SDL-MCP first
 
+### SDL-MCP status (2026-08-22)
+
+SDL 0.13.3 is installed and the `workflow-c` LadybugDB graph is valid. Bounded SDL retrieval works through the local CLI/shell. Native Codex MCP currently reaches SDL but fails database initialization (`LadybugDB not initialized`). Do not spend development time repairing native MCP unless explicitly tasked. Use bounded SDL CLI retrieval when useful.
+
 Use SDL-MCP as the first context-reduction trial. Do not reinstall it unless it is genuinely unavailable.
 
 First:
@@ -111,6 +115,10 @@ Do not initially add `hampsterx/codex-mcp-bridge`: its primary direction is expo
 ## Pre-user-test reliability gate
 
 A major objective of this migration is to stop using the user as a parser/debugger for defects that could have been caught locally.
+
+### Codex sandbox and Python temporary directories
+
+On 2026-08-22, Python `tempfile`-based tests failed before test code ran because the Codex filesystem sandbox denied creation below the normal Windows user temp directory. Redirecting `TEMP`/`TMP` to a workspace-local directory produced the same denial for child-created temporary directories and should not be retried as a workaround. When a bounded synthetic test command fails at setup for this specific permission reason, rerun that same targeted command with the required sandbox approval instead of changing test code, changing application behavior, or trying more temporary-directory locations. Keep the approved command narrow and verify that the traceback failed in `tempfile`/directory setup before escalating.
 
 Before requesting another manual desktop test, perform every feasible **image-blind** automated check, including:
 

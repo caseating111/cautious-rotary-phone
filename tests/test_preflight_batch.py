@@ -92,6 +92,23 @@ class PreflightBatchTests(unittest.TestCase):
         self.assertIn("Images still requiring batch work: 1", lines)
         self.assertIn("Crops still to produce/rebuild: 4", lines)
 
+    def test_valid_csv_row_without_physical_image_is_expected_not_present_and_non_blocking(self) -> None:
+        self.images_csv.write_text(
+            "Filename,Experiment,Set,Type\n"
+            "plate1.jpg,E1,A,YPDA\n"
+            "plate2.jpg,E1,A,YPDA\n",
+            encoding="utf-8",
+        )
+
+        lines, problems, pending = build_report(self.config)
+
+        self.assertFalse(problems)
+        self.assertEqual([row["Filename"] for row in pending], ["plate1.jpg"])
+        self.assertIn("Expected images not physically present: 1", lines)
+        self.assertIn("EXPECTED IMAGES NOT PHYSICALLY PRESENT — NON-BLOCKING (1)", lines)
+        self.assertIn("- plate2.jpg", lines)
+        self.assertIn("STATUS: READY FOR BATCH ALIGNMENT", lines)
+
     def test_exact_existing_outputs_mark_image_complete(self) -> None:
         output_dir = self.crop_root / "setA"
         output_dir.mkdir()

@@ -14,8 +14,7 @@ This file is the durable queue for checks that genuinely require user visual/des
 
 ## Pending
 
-- Four-point Fiji proof: manually place R1C1, R1C(last), R5C1 and R5C(last) when the next validated build is ready; verify visual grid/QC alignment only after automated privacy/static/generated-artifact checks pass.
-- CLAHE visual appearance: only if still needed after parameter/runtime telemetry is verified; confirm that whole-image CLAHE appearance is acceptable without sending screenshots to the model.
+- One batched CSV-workflow desktop check: start the AHK v2 helper and four-point one-plate proof; confirm the Fiji toolbar is a usable size in the upper-right, each of the four 108 x 108 placement dialogs moves upper-left, and Z advances them. Place R1C1, R1C(last), R5C1 and R5C(last); confirm the disposable preview receives acceptable whole-image CLAHE, the rotated/skewed full-grid QC follows the plate, Accept/Retry works, and fixed-size crops are exported from the unchanged source. Do not send image screenshots to Codex.
 
 ## Completed
 

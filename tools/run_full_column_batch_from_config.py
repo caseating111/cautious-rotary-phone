@@ -326,6 +326,11 @@ def enhance_four_point_macro(source: str) -> str:
 def build_legacy_macro(config: dict) -> Path:
     source = configure_source_settings(SOURCE_MACRO.read_text(encoding="utf-8"), config)
     source = enhance_four_point_macro(source)
+    # Keep the production fallback on the same proven interaction path as the
+    # one-plate proof: ROI 1-click, whole-preview CLAHE x2 and rotated QC.
+    from tools.run_one_plate_validation import patch_roi_click_interaction
+
+    source = patch_roi_click_interaction(source)
     APP_DIR.mkdir(parents=True, exist_ok=True)
     CONFIGURED_LEGACY_MACRO.write_text(source, encoding="utf-8")
     return CONFIGURED_LEGACY_MACRO

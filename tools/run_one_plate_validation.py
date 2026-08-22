@@ -133,6 +133,10 @@ def ensure_fiji_main_window_visible(timeout_seconds: float = 10.0, poll_seconds:
             ):
                 width = max(1, window_rect.right - window_rect.left)
                 height = max(1, window_rect.bottom - window_rect.top)
+                resize = width < 480 or height < 80
+                if resize:
+                    width = min(640, work_rect.right - work_rect.left)
+                    height = min(120, work_rect.bottom - work_rect.top)
                 x = max(work_rect.left, work_rect.right - width - 10)
                 y = min(max(work_rect.top + 10, work_rect.top), max(work_rect.top, work_rect.bottom - height))
                 user32.SetWindowPos(
@@ -142,7 +146,7 @@ def ensure_fiji_main_window_visible(timeout_seconds: float = 10.0, poll_seconds:
                     y,
                     0,
                     0,
-                    SWP_NOSIZE | SWP_NOZORDER | SWP_SHOWWINDOW,
+                    (0 if resize else SWP_NOSIZE) | SWP_NOZORDER | SWP_SHOWWINDOW,
                 )
             user32.BringWindowToTop(hwnd)
             return True
