@@ -49,7 +49,7 @@ class OnePlateValidationTests(unittest.TestCase):
             with self.assertRaises(SystemExit):
                 proof.patch_prepared_macro("other = 1;\n", target)
 
-    def test_roi_click_adapter_removes_internal_click_box_but_keeps_qc_boxes(self) -> None:
+    def test_roi_click_adapter_uses_double_clahe_and_finds_custom_tool_slots(self) -> None:
         source = proof.batch.enhance_four_point_macro(proof.batch.SOURCE_MACRO.read_text(encoding="utf-8"))
         patched = proof.patch_roi_click_interaction(source)
         self.assertNotIn("CLICK_ROI = 108", patched)
@@ -62,7 +62,10 @@ class OnePlateValidationTests(unittest.TestCase):
         self.assertEqual(patched.count('run("Enhance Local Contrast (CLAHE)", claheOptions)'), 2)
         self.assertIn('" histogram=256 maximum=1000 mask=*None* fast_(less_accurate)"', patched)
         self.assertIn('run("Select None")', patched)
-        self.assertIn('setTool("Rotated Rectangle Click Tool - Cf00R11cc")', patched)
+        self.assertNotIn('setTool("Rotated Rectangle Click Tool', patched)
+        self.assertIn("for (toolCandidate = 15; toolCandidate <= 21; toolCandidate++)", patched)
+        self.assertIn("setTool(toolCandidate)", patched)
+        self.assertIn('startsWith(IJ.getToolName, "Rotated Rectangle Click Tool")', patched)
         self.assertIn("QC_W = w;", patched)
         self.assertIn("QC_H = h;", patched)
         self.assertIn("Overlay.drawRect(qcX - QC_W / 2", patched)
@@ -116,13 +119,35 @@ class OnePlateValidationTests(unittest.TestCase):
         fake_config = {"fiji_executable": str(fake_fiji)}
         with patch.object(proof, "proof_plate_is_open", return_value=False), patch.object(
             proof.batch, "load_config", return_value=fake_config
-        ), patch.object(
-            proof.patch_roi_click_toolset, "ensure_patched", return_value=(Path("Roi 1-Click Tools.ijm"), True)
-        ), patch.object(proof, "prepare") as prepare:
+        ), patch.object(proof, "ensure_roi_click_patch", return_value=True), patch.object(
+            proof, "prepare"
+        ) as prepare:
             with self.assertRaises(SystemExit) as caught:
                 proof.run("plate1.jpg", legacy=True)
         self.assertIn("Close/restart Fiji once", str(caught.exception))
         prepare.assert_not_called()
+
+    def test_roi_click_patch_uses_existing_preset_helper_and_refuses_ambiguity(self) -> None:
+        fake_fiji = Path(__file__)
+        with patch.object(
+            proof.roi_preset_gui,
+            "find_roi_click_tools",
+            return_value=[Path("one.ijm")],
+        ), patch.object(
+            proof.roi_preset_gui,
+            "patch_roi_click_tools",
+            return_value=Path("backup.bak"),
+        ) as patch_plugin:
+            self.assertTrue(proof.ensure_roi_click_patch(fake_fiji))
+            patch_plugin.assert_called_once_with(Path("one.ijm"))
+
+        with patch.object(
+            proof.roi_preset_gui,
+            "find_roi_click_tools",
+            return_value=[Path("one.ijm"), Path("two.ijm")],
+        ):
+            with self.assertRaises(SystemExit):
+                proof.ensure_roi_click_patch(fake_fiji)
 
     def test_four_point_prepare_uses_legacy_configured_macro(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
