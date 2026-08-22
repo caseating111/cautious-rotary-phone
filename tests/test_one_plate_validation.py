@@ -56,7 +56,9 @@ class OnePlateValidationTests(unittest.TestCase):
         self.assertNotIn("makeRectangle(round(viewW / 2 - CLICK_ROI", patched)
         self.assertNotIn('run("Enhance Contrast", "saturated=0.35")', patched)
         self.assertIn('roiBoxW = call("ij.Prefs.get", "rect.width", 108)', patched)
-        self.assertIn("claheBlock = round(roiBoxW * 3.3)", patched)
+        self.assertIn('roiBoxH = call("ij.Prefs.get", "rect.height", 108)', patched)
+        self.assertIn("roiBoxSize = maxOf(roiBoxW, roiBoxH)", patched)
+        self.assertIn("claheBlock = round(roiBoxSize * 3.3)", patched)
         self.assertEqual(patched.count('run("Enhance Local Contrast (CLAHE)", claheOptions)'), 2)
         self.assertIn('" histogram=256 maximum=1000 mask=*None* fast_(less_accurate)"', patched)
         self.assertIn('run("Select None")', patched)
@@ -108,6 +110,19 @@ class OnePlateValidationTests(unittest.TestCase):
         self.assertEqual(result, selected)
         prepare.assert_called_once_with("plate1.jpg", legacy=False)
         popen.assert_called_once()
+
+    def test_new_roi_click_patch_requires_one_restart_before_legacy_proof(self) -> None:
+        fake_fiji = Path(__file__)
+        fake_config = {"fiji_executable": str(fake_fiji)}
+        with patch.object(proof, "proof_plate_is_open", return_value=False), patch.object(
+            proof.batch, "load_config", return_value=fake_config
+        ), patch.object(
+            proof.patch_roi_click_toolset, "ensure_patched", return_value=(Path("Roi 1-Click Tools.ijm"), True)
+        ), patch.object(proof, "prepare") as prepare:
+            with self.assertRaises(SystemExit) as caught:
+                proof.run("plate1.jpg", legacy=True)
+        self.assertIn("Close/restart Fiji once", str(caught.exception))
+        prepare.assert_not_called()
 
     def test_four_point_prepare_uses_legacy_configured_macro(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
