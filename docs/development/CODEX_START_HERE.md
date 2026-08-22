@@ -25,7 +25,8 @@ The user can explicitly request a broader audit/continuous/improvement session; 
 
 ## Current migration state
 
-- `workflow-dev` is the pre-Codex durable development line being cloned into `workflow-C` for local Codex work.
+- `workflow-C` is the Codex migration/working branch, created as an exact copy of the updated `workflow-dev` state at the migration checkpoint. Normal local Codex work should use `workflow-C` unless the user explicitly chooses another branch.
+- `workflow-dev` remains the pre-Codex durable development line/snapshot and should not be advanced in parallel with routine `workflow-C` work.
 - Required current runtime/CI target: Windows + Python 3.14.
 - AutoHotkey contract: **AHK v2 only**; AHK v1 compatibility is not required.
 - SDL-MCP has been installed globally on the user's Windows machine, including its native addon. At the latest manual check there was no repository SDL config/index yet; repo-local SDL initialization is intentionally being handed to Codex.
