@@ -20,6 +20,21 @@ That policy is binding. In particular:
 
 Do not assume code written in one session is likely to outperform or be more reliable than established software that has been tested, maintained, used scientifically, or published over months or years.
 
+## Codex privacy boundary for real sample images
+
+This is an inviolable project rule for local Codex work unless the user explicitly revokes it.
+
+- Real/sample experimental images must remain outside the repository and must never be committed, pushed, attached to issues/PRs, copied into repository fixtures, or sent to external review services.
+- Codex must not open, render, preview, screenshot, OCR, visually inspect, thumbnail, image-search, or otherwise ingest the pixel content of real/sample experimental images into model context.
+- Codex may pass local image file paths to Fiji/ImageJ, Python, AHK, or other local tools for processing, but must consume only non-image outputs such as exit codes, structured numeric measurements, ROI coordinates, dimensions, filenames, logs, window geometry, generated macro text, test status, and other textual/structural diagnostics.
+- Do not use Python/Pillow/OpenCV or any other library to load real/sample image pixels for Codex-side inspection. If a test would require visual interpretation of the image, record the exact manual validation required and ask the user to perform it.
+- Screenshots containing sample-image pixels are also prohibited model input. Automated desktop tests should query window titles/positions/state and logs rather than capture the sample image canvas.
+- Synthetic/public test images may be used only when clearly designated as such and when they contain no real experimental data.
+- Real/sample CSV metadata may be read only when the user has intentionally anonymized it for this workflow. Do not infer or reconstruct sensitive biological meaning from genericized identifiers.
+- Gemini/Antigravity or any other external reviewer must never receive real/sample images or image-derived screenshots. Review packets must contain code/diffs/generated scripts/sanitized logs/numeric diagnostics only.
+
+If local permissions prevent access to an outside-repository image path, ask for the narrow filesystem permission/path access needed; do not solve this by copying the image into the repository.
+
 ## End-product-first rule
 
 This is a hard rule.
@@ -125,11 +140,11 @@ If repeated user testing is required, treat that as evidence that the route itse
 
 ## Autonomous continuation and deferred questions
 
-Make routine implementation, dependency, refactor, UI/default and Git decisions autonomously. Record non-blocking user/manual questions in the deferred/current-state docs and continue. A task, test, commit, checkpoint, manual-validation point, pre-release or milestone is a transition point, not an automatic stopping condition.
+For Codex/local-agent work, `docs/development/AUTONOMY_SCOPE.md` narrows this older guidance and is authoritative where there is conflict. Default autonomy is task-scoped, not open-ended persistent improvement.
 
-Unless the user explicitly asks for a pause, continue autonomously with other safe, useful work that does not depend on pending manual validation. Preserve a known-good fallback and record exactly what still needs checking.
+Within the active requested objective, make routine implementation, dependency, refactor, UI/default and Git decisions autonomously. Record non-blocking user/manual questions in the deferred/current-state docs and continue only as needed to complete and validate that objective.
 
-Only stop when further progress is genuinely blocked by information that cannot be inferred, simulated, tested, researched, or isolated safely.
+Do not automatically start unrelated improvements or the next roadmap item after the requested objective and its necessary validation/cleanup are complete.
 
 ## GUI role
 
@@ -219,13 +234,13 @@ Generated crop names may encode useful metadata for human readability, but scrip
 - Keep geometry/math explicit and auditable rather than hidden behind unexplained constants.
 - Validate CSV/config inputs and fail/skip clearly rather than corrupting a batch.
 - Avoid destructive in-place processing by default.
-- Autonomously propose useful new workflow improvements when they plausibly reduce user effort or improve validation, but run every proposal through the same practical reuse-first policy before implementing it.
+- Propose useful adjacent workflow improvements when they plausibly reduce user effort or improve validation, but do not implement them automatically outside the active task scope; record them for later unless the user explicitly broadens scope.
 - If a composed route needs a few manual steps but achieves a major time-cost reduction, implement it rather than continuing to chase total automation.
 - If a mature plugin/package is close but not exact, prefer adapting or patching it over replacing it unless there is concrete evidence that adaptation is less reliable or more costly.
 - Do not expand a speculative architecture until a small representative end-to-end route has actually worked.
 - Treat repeated fragile patches or repeated user retesting as evidence that the implementation route may be wrong.
 - Never mistake "more code completed" for "more progress". Progress means getting the user's real workflow closer to a reliable, low-effort result.
-- Routine development goes directly to `workflow-dev`; do not create side branches for ordinary fixes, features, tests or documentation. Use another branch only when there is a concrete isolation/review need, and keep `workflow-dev` as the durable development line.
+- Routine Codex development goes directly to `workflow-C`; do not create side branches for ordinary fixes, features, tests or documentation. Use another branch only when there is a concrete isolation/review need.
 
 ## Research/reuse requirement
 
@@ -241,4 +256,4 @@ If the first search suggests no exact match, run a second search with alternativ
 - Synthetic CSV fixtures/examples should be obviously fictional.
 - Do not change repository visibility as part of ordinary development.
 - Keep public-facing documentation focused on this repository's actual purpose; do not import unrelated predecessor-project history or rules.
-- Do not treat pull requests or side branches as the default for routine work. Direct incremental commits to `workflow-dev` are the normal development path; reserve isolation branches for genuinely separate or risky work.
+- Do not treat pull requests or side branches as the default for routine work. Direct incremental commits to `workflow-C` are the normal Codex development path; reserve isolation branches for genuinely separate or risky work.
