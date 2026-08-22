@@ -129,6 +129,34 @@ For example, if no useful result exists for “count apples,” search for estab
 
 Keep research proportional and evidence-driven. This is a research-before-repetition rule, not permission for an exhaustive literature review. Record the decisive source or conclusion concisely when it materially affects implementation. If bounded research finds nothing applicable, proceed with the smallest justified experiment rather than repeating equivalent searches or tests.
 
+## Research memory and duplicate-search avoidance
+
+Research should accumulate as reusable project evidence rather than being rediscovered in each agent session.
+
+Before starting online research, check `docs/research/INDEX.md`. If a matching topic exists, read only that topic file first. Reuse prior conclusions and do not repeat substantially equivalent searches unless at least one of these is true:
+
+- the prior evidence is stale for the relevant software/version/platform;
+- the prior search was explicitly incomplete;
+- a new failure provides materially different evidence or changes the question;
+- a new implementation route requires a distinct search;
+- the user explicitly asks for fresh or broader research.
+
+When research materially affects an implementation decision, maintain a concise topic-specific file under `docs/research/`. Do not create a development diary and do not log every trivial query. Record only enough to prevent repeated work and preserve useful evidence:
+
+- the concrete goal/problem;
+- exact or near-exact search phrases that were meaningfully tried;
+- decisive useful findings and sources;
+- plausible routes ruled out and why;
+- relevant local implementation attempts/results;
+- the current preferred route or current unknown;
+- explicit conditions that would justify searching again.
+
+Keep `docs/research/INDEX.md` deliberately small: one compact entry per topic with status, one-line conclusion, last-checked date, and a link to the detail file. The index is the normal first read; topic files are opened only when relevant.
+
+Do not fabricate or reconstruct exact historical search queries that were not actually recorded. For older work, log known conclusions/local failures and mark prior search terms as unrecorded. Prefer prospective logging from this point onward.
+
+Research-memory maintenance is part of the same bounded task that triggered the research. Keep it concise enough that writing or reading the log does not become a significant token/time cost itself.
+
 ## Immediate practicality test
 
 Prefer routes that can be demonstrated quickly as a small end-to-end working slice using representative synthetic/test data.
