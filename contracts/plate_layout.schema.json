@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "plate_layout.schema.json",
+  "title": "PlateLayout",
+  "type": "object",
+  "required": ["contract_version", "layout_id", "grid_rows", "grid_cols", "vertical_labels", "strain_bands"],
+  "properties": {
+    "contract_version": {"const": 1},
+    "layout_id": {"type": "string", "minLength": 1},
+    "grid_rows": {"type": "integer", "minimum": 1},
+    "grid_cols": {"type": "integer", "minimum": 1},
+    "vertical_labels": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["pos", "label"],
+        "properties": {
+          "pos": {"type": "integer", "minimum": 1},
+          "label": {"type": "string"}
+        },
+        "additionalProperties": false
+      }
+    },
+    "strain_bands": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["order", "row_start", "row_end", "labels"],
+        "properties": {
+          "order": {"type": "integer", "minimum": 1},
+          "profile": {"type": ["string", "null"]},
+          "row_start": {"type": "integer", "minimum": 1},
+          "row_end": {"type": "integer", "minimum": 1},
+          "labels": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["pos", "label"],
+              "properties": {
+                "pos": {"type": "integer", "minimum": 1},
+                "label": {"type": "string"}
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}
