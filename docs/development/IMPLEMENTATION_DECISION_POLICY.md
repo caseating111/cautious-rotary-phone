@@ -112,46 +112,128 @@ Before substantial custom implementation:
 10. check wrappers, macros, patching, preprocessing/postprocessing, file exchange, coordinate conversion and CSV translation;
 11. repeat the search using alternate terminology before concluding that the route is unavailable.
 
-## Mandatory research-before-second-attempt rule
+## Failure classification: component defect versus endpoint failure
 
-One failed implementation or integration attempt is enough to trigger research before another speculative patch. This applies both to a specific component and to the overall end goal: a later failure with a technically different error message still counts when it prevents the same user outcome.
+Do not apply the same response to every error.
 
-After that first failure:
+A **component defect** is a localized defect inside an otherwise-proven route, such as a syntax error, typo, malformed argument, incorrect variable, isolated parser issue, or narrow regression. Fix it locally and validate the affected path; broad architecture research is normally unnecessary.
 
-1. stop further trial-and-error implementation temporarily;
-2. run a bounded, targeted online search for an existing solution to the exact failure or function;
-3. prioritize authoritative documentation and source, established projects and plugins, GitHub issues/code, Stack Overflow, Image.sc or the relevant specialist/user discussion hubs;
-4. compare version, platform, execution context and maintenance evidence before adopting a result;
-5. if no exact solution is found, search again by the underlying function and by similar, parallel or analogous problems, using alternate terminology and broader categories;
-6. select the best-supported practical route and verify it locally with the smallest relevant test before requesting user validation.
+An **endpoint failure** means the user-visible goal itself is not reliably achieved, or achieving it keeps requiring new workarounds/fallbacks. Different technical errors can all belong to one endpoint failure when they block the same intended outcome. Multiple component defects encountered while trying to make an unproven endpoint work can therefore become evidence of endpoint/architecture failure.
 
-For example, if no useful result exists for “count apples,” search for established ways to count fruit, produce or similar objects. The purpose is to reuse transferable solutions, not to require identical wording or an identical application.
+When uncertain, ask: **Has this overall route already proven the user's real endpoint reliably?** If not, repeated integration/runtime failures should bias toward endpoint-level reassessment rather than another local patch.
 
-Keep research proportional and evidence-driven. This is a research-before-repetition rule, not permission for an exhaustive literature review. Record the decisive source or conclusion concisely when it materially affects implementation. If bounded research finds nothing applicable, proceed with the smallest justified experiment rather than repeating equivalent searches or tests.
+## Mandatory endpoint-first research-before-second-attempt rule
+
+One meaningful failed implementation or integration attempt toward a user-visible endpoint is enough to trigger bounded research before another speculative implementation attempt.
+
+**Avoid tunnel vision.** A failed implementation does not establish that its architecture, library, protocol, launcher, integration mechanism, process ownership model, abstraction, or existing custom code should be preserved.
+
+### Mandatory research order after an endpoint failure
+
+1. **Restate the endpoint without implementation terminology.** Describe what the user needs to accomplish, not how the current code currently attempts it.
+   - Bad framing: `Make the Fiji RMI connection work.`
+   - Correct framing: `Allow a Python application to control one interactive Fiji session, run Fiji/ImageJ operations, retain GUI interaction, and avoid duplicate application instances.`
+2. **Check prior endpoint memory first.** Read the matching `docs/research/INDEX.md` topic and its endpoint-failure history before searching or implementing.
+3. **Search for mature end-to-end solutions to the endpoint.** Start with current official documentation/source, supported integrations, mature libraries/plugins/programs, established projects and community practice.
+4. **Search architectural alternatives before implementation repairs.** Explicitly consider whether the current route can be replaced, bypassed, simplified, composed, or inverted. Consider official/native APIs, supported application modes, process ownership changes, in-process versus subprocess/IPC integration, mature programs/plugins, built-in scripting systems, and partial/manual routes.
+5. **Run technology-independent searches.** At least one meaningful query must describe the endpoint without naming the currently failing implementation technologies, unless no technology-independent formulation is possible.
+6. **Search the current officially supported/recommended route.** At least one query must explicitly ask how the endpoint is currently/recommendedly accomplished on the relevant current software/version/platform.
+7. **Only then research repair of the existing mechanism.** Repairing the current mechanism is one candidate, not the default candidate.
+8. **Compare candidates by endpoint success and total user cost.** Compare reliability, setup, user interaction, testing burden, maintenance, platform/version fit and how much custom glue could disappear.
+9. **Prove the smallest uncertain property.** Once one mature candidate clearly looks viable, stop broad research and run the smallest isolated proof of the key uncertainty before production integration.
+
+Research is insufficient if it searches only:
+- the current error message;
+- the current library/protocol/launcher;
+- fixes to the current implementation;
+- variants of an already-failed mechanism;
+- increasingly elaborate fallback chains around the same architecture.
+
+Different errors do not reset this trigger when they block the same user outcome.
+
+### Mandatory pre-second-attempt checkpoint
+
+Before a second architectural/integration attempt toward a failed endpoint, record or be able to state concisely:
+
+`Endpoint:` the user-visible outcome, without implementation terminology where possible.
+
+`Current approach:` the architecture/mechanism just tried.
+
+`Why it failed:` the practical endpoint result and decisive evidence.
+
+`Official/mature alternatives found:` including at least one architecture-level alternative when one exists.
+
+`Smallest next proof:` the narrow test that will establish whether the chosen next route can satisfy the uncertain requirement.
+
+If these cannot be answered, another architectural implementation attempt is premature.
+
+### Repeated endpoint failures: stronger stop rule
+
+After repeated materially distinct routes fail toward the same endpoint, do not add another fallback, compatibility layer, IPC mechanism, launcher workaround, retry path or custom abstraction until the agent has explicitly answered:
+
+- What is the actual endpoint?
+- What does current upstream/official documentation recommend for that endpoint?
+- What mature alternatives exist?
+- Can process/control ownership be inverted?
+- Can existing custom code be deleted rather than repaired?
+- Is the current architecture still demonstrably preferable?
+
+If these questions have not been answered, further implementation on the same architecture is prohibited.
+
+### Sunk-code / architecture escape hatch
+
+Existing implementation is sunk cost. It receives no preference merely because substantial code, tests or debugging effort already exist.
+
+**Deletion/replacement is a valid successful outcome.** When a mature integration can replace custom orchestration, explicitly consider how much launcher logic, IPC, retry code, state handling, AHK glue, compatibility code, tests and failure modes could be removed. Prefer a simpler mature route when it meets the endpoint more directly.
+
+### Research stopping condition
+
+Research remains bounded. Once a mature candidate clearly appears capable of satisfying the endpoint, stop broad searching and perform the smallest isolated proof of the uncertain requirement.
+
+Do not fully integrate or rewrite production code merely to learn whether a candidate can support the critical requirement. For a GUI workflow, for example, first prove `host -> supported integration -> visible GUI -> required manual interaction -> result returned` before rebuilding the production path around it.
+
+If bounded endpoint-first research finds nothing applicable, proceed with the smallest justified experiment rather than repeating equivalent searches indefinitely.
 
 ## Research memory and duplicate-search avoidance
 
 Research should accumulate as reusable project evidence rather than being rediscovered in each agent session.
 
-Before starting online research, check `docs/research/INDEX.md`. If a matching topic exists, read only that topic file first. Reuse prior conclusions and do not repeat substantially equivalent searches unless at least one of these is true:
+Before starting online research, check `docs/research/INDEX.md`. If a matching endpoint/topic exists, read only that topic file first. Reuse prior conclusions and do not repeat substantially equivalent searches unless at least one of these is true:
 
 - the prior evidence is stale for the relevant software/version/platform;
 - the prior search was explicitly incomplete;
-- a new failure provides materially different evidence or changes the question;
-- a new implementation route requires a distinct search;
+- a new failure provides materially different evidence or changes the endpoint question;
+- a genuinely new implementation architecture requires a distinct search;
 - the user explicitly asks for fresh or broader research.
 
-When research materially affects an implementation decision, maintain a concise topic-specific file under `docs/research/`. Do not create a development diary and do not log every trivial query. Record only enough to prevent repeated work and preserve useful evidence:
+### Index by user-visible endpoint, not failing technology
 
-- the concrete goal/problem;
+Research/failure memory should be indexed primarily by the **user-visible endpoint or durable functional problem**, with attempted technologies recorded underneath it.
+
+Prefer a topic such as:
+
+`Python-controlled interactive Fiji session`
+
+with routes underneath such as `IJ1 direct JVM`, `socket handoff`, `RMI`, `Jaunch`, `PyImageJ`, `Fiji Python mode`, or `Appose`, rather than creating isolated unrelated topics for each technology when they serve the same endpoint.
+
+This prevents a future agent from treating a new error/library as a brand-new problem and repeating the same architecture failure under another name.
+
+When research materially affects an implementation decision, maintain a topic-specific file under `docs/research/`. Do not create a chronological development diary and do not log every trivial query. Record enough to prevent repeated work and preserve useful evidence:
+
+- **Endpoint:** the user-visible outcome in technology-independent language where possible;
+- current status and preferred/unknown route;
 - exact or near-exact search phrases that were meaningfully tried;
+- at least one technology-independent endpoint search after a meaningful endpoint failure;
+- current official/recommended route findings where available;
 - decisive useful findings and sources;
+- architectural alternatives considered;
 - plausible routes ruled out and why;
 - relevant local implementation attempts/results;
-- the current preferred route or current unknown;
+- what existing custom code could become unnecessary if a mature route succeeds;
+- the smallest next proof;
 - explicit conditions that would justify searching again.
 
-Keep `docs/research/INDEX.md` deliberately small. It is a routing/index document, not a research or failure log. Each topic gets one row containing a short stable topic name, compact status, endpoint-history route count when warranted, last-checked date, a current conclusion normally no longer than 30 words, and a link to the topic file. Search queries, individual errors, test chronology, source lists, and detailed failure explanations belong in the topic file, not the index.
+Keep `docs/research/INDEX.md` deliberately small. It is a routing/index document, not a research or failure log. Each topic gets one row containing a short stable endpoint/topic name, compact status, endpoint-history route count when warranted, last-checked date, a current conclusion normally no longer than 30 words, and a link to the topic file. Search queries, individual errors, test chronology, source lists, and detailed failure explanations belong in the topic file, not the index.
 
 Do not fabricate or reconstruct exact historical search queries that were not actually recorded. For older work, log known conclusions/local failures and mark prior search terms as unrecorded. Prefer prospective logging from this point onward.
 
@@ -165,13 +247,14 @@ When the same practical endpoint has failed through three or more materially dis
 
 Record materially distinct routes and debugging evidence that would help a future agent avoid rediscovering the same facts. Do not record every syntax mistake, typo, transient environment error, individual failing unit test, or routine edit unless it reveals a reusable integration/runtime lesson.
 
-Before implementing or substantially changing an endpoint that already has an indexed topic—or a sufficiently similar endpoint where the same lesson plausibly applies—read that topic's endpoint-failure history and compare the proposed approach with prior failed routes. Do not repeat a materially equivalent route merely under different naming, helper structure, or implementation detail unless new evidence gives a concrete reason it should now succeed.
+Before implementing or substantially changing an endpoint that already has an indexed topic—or a sufficiently similar endpoint where the same lesson plausibly applies—read that topic's endpoint-failure history and compare the proposed approach with prior failed routes. Do not repeat a materially equivalent route merely under different naming, helper structure, library wrapper, protocol variant, or implementation detail unless new evidence gives a concrete reason it should now succeed.
 
 Preserve debugging steps when they establish reusable information about the endpoint, integration boundaries, tool/runtime behavior, validation limits, or why a plausible route should not be repeated. It is acceptable for a topic file to be detailed when that detail is cheaper than re-debugging the same route. Omit or consolidate iterations that add no materially new information.
 
 Do not impose an aggressive total word limit on topic files. When a file becomes large, consolidate entries only when they represent the same route and reached the same conclusion. Preserve materially different attempts, decisive evidence, and debugging facts that would help recognize or avoid a failed approach. Raw verbose logs should normally be reduced to the unique facts they establish rather than copied wholesale.
 
 A materially distinct endpoint-failure entry should normally state:
+- the user-visible endpoint;
 - what architecture/integration/debugging route was tried;
 - the observed practical endpoint result;
 - the decisive evidence or debugging steps that established what happened;
