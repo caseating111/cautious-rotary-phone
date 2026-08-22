@@ -49,6 +49,15 @@ def open_window_titles() -> list[str]:
     return titles
 
 
+def fiji_is_open() -> bool:
+    """Best-effort detection of the legacy Fiji/ImageJ toolbar window on Windows."""
+    for title in open_window_titles():
+        folded = title.strip().casefold()
+        if folded == "fiji" or folded == "imagej" or folded.startswith("fiji ("):
+            return True
+    return False
+
+
 def proof_plate_is_open(filename: str) -> bool:
     """Block only when the exact selected source plate window is already open in Fiji."""
     wanted = Path(filename).name.strip().casefold()
@@ -113,9 +122,10 @@ def patch_roi_click_interaction(source: str) -> str:
             '        CLICK_ROI = 108;\n'
             '        accepted = 0;\n'
             '        makeRectangle(round(viewW / 2 - CLICK_ROI / 2), round(viewH / 2 - CLICK_ROI / 2), CLICK_ROI, CLICK_ROI);',
-            '        // Alignment visibility only. Read the ROI 1-click rectangle size from the\n'
-            '        // plugin preferences, derive a roughly 3.3x CLAHE block size from its\n'
-            '        // larger dimension, and run the user-proven CLAHE settings twice.\n'
+            '        // Alignment visibility only. The central rectangle above is only a\n'
+            '        // scale/reference region; clear it BEFORE CLAHE so both passes apply\n'
+            '        // uniformly to the whole disposable alignment image.\n'
+            '        run("Select None");\n'
             '        roiBoxW = call("ij.Prefs.get", "rect.width", 108);\n'
             '        roiBoxH = call("ij.Prefs.get", "rect.height", 108);\n'
             '        roiBoxSize = maxOf(roiBoxW, roiBoxH);\n'
@@ -123,10 +133,13 @@ def patch_roi_click_interaction(source: str) -> str:
             '        if (claheBlock < 1) claheBlock = 356;\n'
             '        claheOptions = "blocksize=" + claheBlock + " histogram=256 maximum=1000 mask=*None* fast_(less_accurate)";\n'
             '        run("Enhance Local Contrast (CLAHE)", claheOptions);\n'
-            '        run("Enhance Local Contrast (CLAHE)", claheOptions);\n'
-            '        run("Select None");\n\n'
-            '        // setTool(name) only supports ImageJ built-ins. Find the installed ROI\n'
-            '        // 1-click macro tool among the documented custom slots 15..21 instead.\n'
+            '        run("Enhance Local Contrast (CLAHE)", claheOptions);\n\n'
+            '        // Reload/install the already-present ROI 1-click toolset, then select\n'
+            '        // its custom toolbar slot. This reuses the mature plugin instead of\n'
+            '        // reproducing its click behavior.\n'
+            '        roiToolsetPath = getDirectory("macros") + "toolsets" + File.separator + "Roi 1-Click Tools.ijm";\n'
+            '        if (File.exists(roiToolsetPath))\n'
+            '            run("Install...", "install=[" + roiToolsetPath + "]");\n'
             '        roiClickToolFound = 0;\n'
             '        for (toolCandidate = 15; toolCandidate <= 21; toolCandidate++) {\n'
             '            setTool(toolCandidate);\n'
@@ -136,7 +149,9 @@ def patch_roi_click_interaction(source: str) -> str:
             '            }\n'
             '        }\n'
             '        if (roiClickToolFound == 0)\n'
-            '            exit("ROI 1-click Rotated Rectangle Click Tool is not active in the Fiji toolbar. Reload/select the Roi 1-Click Tools toolset and retry.");\n\n'
+            '            showMessage("ROI 1-click", "The Rotated Rectangle Click Tool could not be selected automatically. The Fiji toolbar has been left available so you can select it manually, then continue.");\n\n'
+            '        QC_W = roiBoxW;\n'
+            '        QC_H = roiBoxH;\n'
             '        accepted = 0;',
         ),
         (
@@ -157,11 +172,74 @@ def patch_roi_click_interaction(source: str) -> str:
         ),
         (
             '            R1LX = x + w / 2;\n            R1LY = y + h / 2;',
-            '            R1LX = x + w / 2;\n            R1LY = y + h / 2;\n            QC_W = w;\n            QC_H = h;',
+            '            R1LX = x + w / 2;\n            R1LY = y + h / 2;',
         ),
         (
-            '                    Overlay.drawRect(qcX - CLICK_ROI / 2, qcY - CLICK_ROI / 2, CLICK_ROI, CLICK_ROI);',
-            '                    Overlay.drawRect(qcX - QC_W / 2, qcY - QC_H / 2, QC_W, QC_H);',
+            '            // Pure mathematical 8 x N lattice from the four authoritative centres.\n'
+            '            Overlay.remove;\n'
+            '            setColor("cyan");\n'
+            '            for (qcRow = 1; qcRow <= 8; qcRow++) {',
+            '            // Pure mathematical 8 x N lattice from the four authoritative centres.\n'
+            '            // Derive the two plate axes from the four clicks so QC boxes and\n'
+            '            // lattice lines rotate/skew with the actual plate instead of staying\n'
+            '            // screen-axis aligned.\n'
+            '            gridHX = ((R1RX - R1LX) + (R5RX - R5LX)) / 2;\n'
+            '            gridHY = ((R1RY - R1LY) + (R5RY - R5LY)) / 2;\n'
+            '            gridVX = ((R5LX - R1LX) + (R5RX - R1RX)) / 2;\n'
+            '            gridVY = ((R5LY - R1LY) + (R5RY - R1RY)) / 2;\n'
+            '            hLen = sqrt(gridHX * gridHX + gridHY * gridHY);\n'
+            '            vLen = sqrt(gridVX * gridVX + gridVY * gridVY);\n'
+            '            if (hLen <= 0 || vLen <= 0)\n'
+            '                exit("Four-point geometry collapsed to a zero-length grid axis.");\n'
+            '            hux = gridHX / hLen;\n'
+            '            huy = gridHY / hLen;\n'
+            '            vux = gridVX / vLen;\n'
+            '            vuy = gridVY / vLen;\n'
+            '            halfW = QC_W / 2;\n'
+            '            halfH = QC_H / 2;\n\n'
+            '            Overlay.remove;\n'
+            '            setColor("cyan");\n'
+            '            for (qcRow = 1; qcRow <= 8; qcRow++) {',
+        ),
+        (
+            '                for (qcCol = 1; qcCol <= gridCols; qcCol++) {\n'
+            '                    u = (qcCol - 1) / (gridCols - 1);\n'
+            '                    qcX = qcLeftX + u * (qcRightX - qcLeftX);\n'
+            '                    qcY = qcLeftY + u * (qcRightY - qcLeftY);\n'
+            '                    Overlay.drawRect(qcX - CLICK_ROI / 2, qcY - CLICK_ROI / 2, CLICK_ROI, CLICK_ROI);\n'
+            '                }\n'
+            '            }',
+            '                Overlay.drawLine(qcLeftX, qcLeftY, qcRightX, qcRightY);\n'
+            '                for (qcCol = 1; qcCol <= gridCols; qcCol++) {\n'
+            '                    u = (qcCol - 1) / (gridCols - 1);\n'
+            '                    qcX = qcLeftX + u * (qcRightX - qcLeftX);\n'
+            '                    qcY = qcLeftY + u * (qcRightY - qcLeftY);\n'
+            '                    p1x = qcX - halfW * hux - halfH * vux;\n'
+            '                    p1y = qcY - halfW * huy - halfH * vuy;\n'
+            '                    p2x = qcX + halfW * hux - halfH * vux;\n'
+            '                    p2y = qcY + halfW * huy - halfH * vuy;\n'
+            '                    p3x = qcX + halfW * hux + halfH * vux;\n'
+            '                    p3y = qcY + halfW * huy + halfH * vuy;\n'
+            '                    p4x = qcX - halfW * hux + halfH * vux;\n'
+            '                    p4y = qcY - halfW * huy + halfH * vuy;\n'
+            '                    Overlay.drawLine(p1x, p1y, p2x, p2y);\n'
+            '                    Overlay.drawLine(p2x, p2y, p3x, p3y);\n'
+            '                    Overlay.drawLine(p3x, p3y, p4x, p4y);\n'
+            '                    Overlay.drawLine(p4x, p4y, p1x, p1y);\n'
+            '                }\n'
+            '            }\n'
+            '            for (qcCol = 1; qcCol <= gridCols; qcCol++) {\n'
+            '                u = (qcCol - 1) / (gridCols - 1);\n'
+            '                topX = R1LX + u * (R1RX - R1LX);\n'
+            '                topY = R1LY + u * (R1RY - R1LY);\n'
+            '                bottomLeftX = R1LX + 1.75 * (R5LX - R1LX);\n'
+            '                bottomLeftY = R1LY + 1.75 * (R5LY - R1LY);\n'
+            '                bottomRightX = R1RX + 1.75 * (R5RX - R1RX);\n'
+            '                bottomRightY = R1RY + 1.75 * (R5RY - R1RY);\n'
+            '                bottomX = bottomLeftX + u * (bottomRightX - bottomLeftX);\n'
+            '                bottomY = bottomLeftY + u * (bottomRightY - bottomLeftY);\n'
+            '                Overlay.drawLine(topX, topY, bottomX, bottomY);\n'
+            '            }',
         ),
         (
             '            } else {\n                Overlay.remove;\n                makeRectangle(round(R1LX - CLICK_ROI / 2), round(R1LY - CLICK_ROI / 2), CLICK_ROI, CLICK_ROI);\n            }',
@@ -242,7 +320,13 @@ def run(filename: str | None = None, *, legacy: bool = False) -> dict[str, str]:
 
     macro, selected = prepare(filename, legacy=legacy)
     try:
-        _ACTIVE_FIJI_PROCESS = subprocess.Popen([str(fiji), "-macro", str(macro)])
+        if fiji_is_open():
+            # Prefer the launcher's normal single-instance handoff, using ImageJ's
+            # mature Macro_Runner rather than deliberately creating a second UI.
+            command = [str(fiji), "--no-splash", "--run", "Macro_Runner", str(macro)]
+        else:
+            command = [str(fiji), "--no-splash", "-macro", str(macro)]
+        _ACTIVE_FIJI_PROCESS = subprocess.Popen(command)
     except OSError as exc:
         raise SystemExit(f"Could not launch Fiji one-plate validation: {exc}") from exc
     return selected
