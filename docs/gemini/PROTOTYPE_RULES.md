@@ -42,6 +42,20 @@ If a prerequisite is missing, report exactly what is missing (`GRID_REQUIRED`, c
 
 Optimize for the actual workflow and user time. Mature packages, Fiji/ImageJ features, Pillow, OpenCV/scikit-image, small scripts and modest manual confirmation are preferable to large bespoke systems when they reach the endpoint more reliably.
 
+## Research posture — avoid tunnel vision
+
+Prototype isolation is **not** permission to tunnel into the first architecture chosen. After the first meaningful failure toward a prototype's user-visible endpoint, follow the endpoint-first rule in `IMPLEMENTATION_DECISION_POLICY.md` before another architectural attempt.
+
+- Restate the endpoint without the failed library/tool/protocol terminology.
+- Check `docs/research/INDEX.md` and the matching endpoint history first.
+- Search current official/mature end-to-end solutions and architectural alternatives before repair-specific searches.
+- At least one search must omit the failing technology names and at least one must ask for the current supported/recommended way to accomplish the endpoint.
+- Consider replacing, bypassing, composing, or inverting the current design; prototype code is sunk cost and may be discarded.
+- Stop broad research once one candidate clearly looks viable and prove the smallest uncertain property with a targeted synthetic/public test.
+- Do not create another fallback chain merely because the prototype already contains code for the failed route.
+
+A prototype is more useful when it proves a mature integration boundary cleanly than when it accumulates custom compatibility machinery.
+
 ## Shared project-state / manifest posture
 
 Shared project state is the interoperability layer between standalone applets and the eventual overall controller. Machine-readable state should map canonical image identity to relevant assets/results (raw, working, orientation, crop, grid, processed, annotation, crop exports, matrices) without requiring one process to remain open.
