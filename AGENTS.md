@@ -225,7 +225,7 @@ Generated crop names may encode useful metadata for human readability, but scrip
 - Do not expand a speculative architecture until a small representative end-to-end route has actually worked.
 - Treat repeated fragile patches or repeated user retesting as evidence that the implementation route may be wrong.
 - Never mistake "more code completed" for "more progress". Progress means getting the user's real workflow closer to a reliable, low-effort result.
-- Prioritize useful, coherent pre-release milestones over creating branches for every small idea. Use feature branches when needed for safety/review, but keep durable progress moving toward `workflow-dev`.
+- Routine development goes directly to `workflow-dev`; do not create side branches for ordinary fixes, features, tests or documentation. Use another branch only when there is a concrete isolation/review need, and keep `workflow-dev` as the durable development line.
 
 ## Research/reuse requirement
 
@@ -241,4 +241,4 @@ If the first search suggests no exact match, run a second search with alternativ
 - Synthetic CSV fixtures/examples should be obviously fictional.
 - Do not change repository visibility as part of ordinary development.
 - Keep public-facing documentation focused on this repository's actual purpose; do not import unrelated predecessor-project history or rules.
-- Prefer a feature branch for changes and a reviewable pull request rather than casual direct edits to the default branch.
+- Do not treat pull requests or side branches as the default for routine work. Direct incremental commits to `workflow-dev` are the normal development path; reserve isolation branches for genuinely separate or risky work.
