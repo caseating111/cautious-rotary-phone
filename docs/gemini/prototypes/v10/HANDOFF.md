@@ -21,7 +21,7 @@ Read the synthetic V10 workbook and produce `ProjectModel` v1 plus normalized la
 ## Completion record
 
 - Branch: `gemini-v10`
-- Commit: `2e38e4e`
+- Commit: `30b9078`
 - Interface: `load_v10(path) -> dict` (ProjectModel), `extract_layouts(path) -> dict` (PlateLayout mappings)
 - Tests: ran synthetic fixture test in `test_adapter.py`
 - Dependencies: `pandas`, `openpyxl`

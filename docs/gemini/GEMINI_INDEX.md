@@ -4,7 +4,7 @@ Compact index of completed or active isolated prototypes on Gemini branches. Kee
 
 | Prototype | Status | Branch/commit | Interface | Handoff |
 | --- | --- | --- | --- | --- |
-| V10 adapter | Proven | `gemini-v10` (`2e38e4e`) | `load_v10(path) -> ProjectModel` | `docs/gemini/prototypes/v10/HANDOFF.md` |
+| V10 adapter | Proven | `gemini-v10` (`30b9078`) | `load_v10(path) -> ProjectModel` | `docs/gemini/prototypes/v10/HANDOFF.md` |
 | Grid/layout derivation | Planned | `gemini-prototypes` | `derive_plate_layout(project, image_uid) -> PlateLayout` | `docs/gemini/prototypes/layout/HANDOFF.md` |
 | Annotation/composition | Planned | `gemini-prototypes` | shared metadata/layout -> annotation result | `docs/gemini/prototypes/annotation/HANDOFF.md` |
 | Whole-plate rotation | Planned | `gemini-prototypes` | `estimate_plate_rotation(path) -> RotationResult` | `docs/gemini/prototypes/plate_rotation/HANDOFF.md` |
