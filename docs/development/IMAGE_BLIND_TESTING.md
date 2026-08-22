@@ -1,0 +1,91 @@
+# Image-blind local Fiji testing contract
+
+This is a hard privacy/testing rule for local Codex work on `workflow-C`.
+
+## Inviolable model-input rule
+
+Real/sample experimental images and any pixel-bearing derivatives must **not** be opened, rendered, previewed, OCRed, screenshotted, encoded, attached, summarized visually, or otherwise supplied to Codex/another model context.
+
+The agent may pass filesystem paths to local programs such as Fiji/ImageJ, AutoHotkey v2, Python subprocesses, or deterministic utilities **without reading image pixels itself**. The agent may consume only non-pixel telemetry such as:
+
+- existence / open-success / exit status;
+- filename/basename and sanitized path references;
+- width, height, bit depth, channel/slice/frame counts;
+- ROI count, ROI bounds, centres, angles and other numeric geometry;
+- crop/output counts and expected-vs-actual filenames;
+- Fiji/ImageJ textual logs, parser errors, stack traces and macro line numbers;
+- generated macro/AHK/Python source text;
+- window titles, handles, coordinates and dimensions;
+- timing, return codes and deterministic checksums where useful;
+- CSV/JSON/text metadata that the user has deliberately made non-sensitive.
+
+If a decision genuinely requires seeing pixels, the agent must stop that sub-check, write a concise `MANUAL_VISUAL_VALIDATION_REQUIRED` item describing exactly what the user should inspect, and continue with any remaining image-blind checks.
+
+## Storage boundary
+
+Pixel-bearing files belong outside the Git worktree. Recommended layout:
+
+```text
+C:\LocalWorkflowData\
+├── Images\                 # real source images; private/pixel-bearing
+├── PrivateTemp\            # Fiji/Java/OS temp; private/pixel-bearing possible
+│   ├── Windows\
+│   └── Java\
+├── Crops\                  # derived pixel outputs
+├── Matrices\               # derived pixel outputs
+└── Metadata\               # user-sanitized CSV/config files
+```
+
+Codex-readable telemetry may be written to the ignored worktree directory:
+
+```text
+<repo>\.local-test-telemetry\
+```
+
+That directory must contain text/JSON/CSV/log/geometry data only. Never place screenshots, thumbnails, previews, crops or other pixel-bearing files there.
+
+## Temp redirection
+
+For privacy-sensitive local tests, launch the controller/Fiji from `start_controller_private_test.cmd`. It sets process-local `TEMP`, `TMP`, and Java `java.io.tmpdir` to the external `C:\LocalWorkflowData\PrivateTemp` tree before invoking the normal controller launcher. Child processes launched by the controller inherit these locations.
+
+Do not globally modify the user's Windows TEMP/TMP or Java configuration merely for this project.
+
+A Fiji process that was already running before the private launcher started did **not** inherit these process-local temp settings. For image-blind/private automated testing, close existing Fiji first and let the private launcher start the Fiji instance used for the test.
+
+## Agent behavior around external image paths
+
+The image directories may be outside the Codex worktree. That is intentional. The workflow should pass paths to Fiji rather than copying files into the repository.
+
+If Codex/default sandbox permissions block invocation against an external path, request the narrow permission needed to launch/use that path. Do not solve the permission problem by copying the images into the worktree.
+
+The fact that the agent's OS account technically has filesystem permission to a path is not permission to inspect its pixel contents. The no-view rule still applies.
+
+## Git/exfiltration guard
+
+`.gitignore` rejects common image formats and known local/private test directories. This is defense in depth, not the primary rule. Before any push after privacy-sensitive testing, inspect `git status --short` and the staged diff. Do not stage binary/image files, private local paths containing identifying information, screenshots, or raw Fiji image outputs.
+
+External reviewer/model packets (including Antigravity/Gemini) must contain only bounded source diffs, generated script text, sanitized logs, geometry/telemetry and explicit review questions. Never send real/sample images or screenshots of them.
+
+## What automated testing should produce
+
+Prefer telemetry records such as:
+
+```json
+{
+  "image_opened": true,
+  "width": 1750,
+  "height": 1750,
+  "channels": 1,
+  "roi_count": 4,
+  "macro_completed": false,
+  "error_line": 388,
+  "output_crop_count": 24,
+  "window": {"x": 10, "y": 10, "width": 420, "height": 100}
+}
+```
+
+The model may reason about these values. It must not request or generate a screenshot merely to make automated testing easier.
+
+## Scope
+
+This privacy rule outranks convenience, debugging speed and the normal desire to automate desktop validation. A visual-only problem may remain for the user; that is preferable to exposing the images to model context.
