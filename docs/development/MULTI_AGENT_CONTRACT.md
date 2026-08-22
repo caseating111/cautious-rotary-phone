@@ -13,7 +13,7 @@ This document defines how Codex/integration work and Gemini/other prototype work
 
 Cross-agent work should meet at explicit contracts rather than by copying controller internals or guessing each other's state.
 
-The machine-facing prototype handshake is under `contracts/` where present. Read `contracts/README.md` before implementing or integrating a component that consumes another agent's output.
+The machine-facing prototype handshake is under `contracts/`. Read `contracts/README.md` before implementing or integrating a component that consumes another agent's output.
 
 Shared project/runtime state that must survive between standalone applets is described by `docs/development/PROJECT_ASSET_CONTRACT.md` where present.
 
@@ -35,11 +35,21 @@ Codex/integration work should then review the proven branch/commit and choose wh
 
 ## Parallel-work rule
 
-Parallel work is useful when components have narrow, non-overlapping ownership. Do not create parallel branches for routine tiny fixes. Use them when independent agents can genuinely work without touching the same files/endpoint.
+Parallel work is useful when components have narrow, non-overlapping ownership. Examples:
+
+- Codex stabilizes the current Fiji/grid runtime while Gemini explores the V10 adapter;
+- one Gemini branch proves plate preprocessing while another proves annotation from synthetic contracts;
+- the integration branch consumes a completed prototype only after the active runtime checkpoint is coherent.
+
+Do not create parallel branches for routine tiny fixes. Use them when independent agents can genuinely work without touching the same files/endpoint.
 
 ## Main-controller versus standalone applets
 
-The eventual main controller is an orchestrator/convenience layer, not the only way components may run. Focused applets should normally be independently runnable and should consume shared project state/contracts. The controller should call the same underlying core/API rather than maintain a second controller-only implementation.
+The eventual main controller is an orchestrator/convenience layer, not the only way components may run.
+
+Focused applets should normally be independently runnable and should consume shared project state/contracts. The controller should call the same underlying core/API rather than maintain a second controller-only implementation.
+
+Grid registration should eventually be separable as a producer of a durable `GridCoordinateAsset`; downstream annotation, visibility, crop export, and composition consume that asset rather than rerunning alignment.
 
 ## Conflict/merge discipline
 
