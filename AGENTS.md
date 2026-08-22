@@ -190,7 +190,7 @@ Preferred normal approach once total-grid geometry exists:
 ### Separation of responsibilities
 
 - **Fiji/ImageJ:** interactive alignment/calibration, ROI/grid preview, image display/QC and scientific-image operations where Fiji already provides the strongest solution.
-- **AutoHotkey v2:** tablet/global hotkeys and small window-placement conveniences. No experiment/workflow logic.
+- **AutoHotkey v2 only:** tablet/global hotkeys and small window-placement conveniences. All repository AHK scripts must use AutoHotkey v2 syntax and run under an AutoHotkey v2 executable. AutoHotkey v1 compatibility is not required and must not influence implementation; do not use v1 syntax or v1/v2 hybrid patterns.
 - **Python/Pillow:** deterministic rotation/export, matrix generation, annotation/composition and metadata-driven derived outputs where Pillow is sufficient.
 - **Python controller (later):** paths/configuration, validation and orchestration. Keep processing modular and callable outside the GUI.
 
