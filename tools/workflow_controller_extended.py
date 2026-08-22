@@ -234,15 +234,6 @@ class ExtendedController(Controller):
         if not self.save():
             return
 
-        if one_plate_validation.proof_is_running():
-            messagebox.showinfo(
-                "One-plate validation",
-                "A one-plate Fiji proof launched from this controller is already running. "
-                "Finish or close that Fiji instance before starting another proof.",
-            )
-            self.status.set("Existing one-plate Fiji proof is still running; no second Fiji instance was launched.")
-            return
-
         image_root = self.vars["image_root"].get().strip()
         chosen = filedialog.askopenfilename(
             title="Choose one pending plate for the 4-point proof",
@@ -286,7 +277,7 @@ class ExtendedController(Controller):
             "One-plate validation",
             f"Launched exactly one selected pending source:\n{filename}\n\nContext: {context or 'not specified'}\n\n"
             "The proof uses the four centre clicks, mathematical full-grid QC, and fixed crop dimensions. "
-            "The normal pending list remains complete, and a second proof launch is blocked while Fiji is still running.",
+            "If Fiji is already open, the launcher attempts its normal single-instance Macro Runner handoff instead of deliberately opening another Fiji UI.",
         )
 
     def standard_output_count(self, alias: str, config: dict) -> int:
