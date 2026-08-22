@@ -29,14 +29,7 @@ The basic CSV route intentionally remains simpler than V10. **Do not retrofit V1
 
 ### Reusable-grid requirement
 
-The accepted four-click grid result is no longer conceptually just an immediate crop-export intermediate. Persist/expose it as a durable project asset so later actions can reuse it for:
-
-- raw/unprocessed culture crop export;
-- processed culture crop export later without realignment;
-- overall-grid ROI statistics for visibility adjustment;
-- automatic whole-plate annotation placement;
-- QC overlays/previews;
-- selected-strain/matrix crop resolution.
+The accepted four-click grid result is no longer conceptually just an immediate crop-export intermediate. Persist/expose it as a durable project asset so later actions can reuse it for raw/unprocessed crop export, processed crop export later without realignment, overall-grid ROI statistics, automatic annotation placement, QC overlays/previews and selected-strain/matrix crop resolution.
 
 Registration and crop export should therefore remain separable.
 
@@ -58,8 +51,8 @@ Implement in bounded slices:
 10. derive rows from vertical `Pos` and each strain-band width from strain `Pos`;
 11. widest strain band defines overall grid columns;
 12. use strain-profile `Order` for top-to-bottom bands;
-13. default even row distribution for multiple ordered strain profiles when appropriate, with explicit/manual row-band override available later;
-14. first prove multi-session 8x12 operation for the simpler cases;
+13. default even row distribution for multiple ordered strain profiles when appropriate, with explicit/manual row-band override available;
+14. first prove simpler 8x12 operation;
 15. then prove the 8x10 two-strain-band case;
 16. compatibility handoffs only where existing Fiji/Pillow code actually needs them.
 
@@ -79,17 +72,35 @@ Once V10 canonical identity is available:
 
 Replace manual Photoshop straightening with a tiny pre-grid helper.
 
-Preferred first route is **two crosshair point clicks along one trustworthy straight plate edge** (or one equivalent native straight-line drag), not the colony ROI-box plugin.
+Preferred first route is **one straight-line drag along a clear top or bottom physical plate edge**, not two separate point-click dialogues and not the colony ROI-box plugin.
 
-Calculate correction angle, show preview, Accept/Retry/Skip, save working derivative + transform. Automatic CV orientation is optional future convenience and must never block the working four-click grid route.
+Calculate correction angle needed to make that line horizontal, show preview, then Accept/Retry/Skip. Save the per-image orientation derivative + transform. Automatic CV orientation is optional future convenience and must never block the working four-click grid route.
 
 ## Priority 5 — optional whole-plate crop preprocessing
 
-Use four crosshair boundary/extreme clicks (left/right/top/bottom), not the colony ROI-box plugin.
+Keep **crop-size calibration** separate from **per-image placement**.
 
-Generate a default square crop from measured extent, round side **down to nearest 50 px by default**, preview, then Accept/Retry. Optional left-edge + top-edge re-anchor can reposition the same square when needed; do not require those extra two clicks on every plate.
+### Size calibration
 
-Persist crop geometry/transform for downstream coordinate-space handling.
+On a representative plate, use four forgiving boundary/extreme clicks (left/right/top/bottom), not exact corners and not the colony ROI-box plugin.
+
+Derive a default square crop size and round its side **down to nearest 50 px by default**, with configurable rounding. Save that size as reusable calibration.
+
+### Placement for every image
+
+Even when size is reused, a plate may appear at a different x/y camera-frame offset.
+
+For every image:
+
+- click somewhere on the left plate edge -> x anchor;
+- click somewhere on the top plate edge -> y anchor;
+- place the calibrated-size crop from those anchors;
+- preview and Accept/Retry placement;
+- Recalibrate size only when needed.
+
+Do not require exact-corner clicks. Do not reuse another image's crop center merely because dimensions match.
+
+Persist crop-size calibration separately from per-image crop rectangle/transform.
 
 ## Priority 6 — automated visibility adjustment with manual-review fallback
 
@@ -109,15 +120,9 @@ Processed whole plates should preserve registered geometry where possible so gri
 
 Annotation should no longer depend on Photoshop templates/manual per-image label alignment.
 
-Use:
+Use canonical strain/row identity from V10/PlateLayout plus accepted measured culture/grid coordinates for actual placement.
 
-- canonical strain/row identity from V10/PlateLayout;
-- accepted measured culture/grid coordinates for actual placement;
-- strain labels rotated 90 degrees clockwise by default (top facing right);
-- vertical labels upright by default;
-- deterministic figure/date/experiment/Set/media/condition anchors;
-- reusable font/size/color/orientation/offset presets;
-- fast **non-destructive preview** before final render.
+Required presentation behavior includes strain labels rotated 90 degrees clockwise by default (top facing right), vertical labels upright by default, deterministic figure/date/experiment/Set/media/condition anchors, reusable font/size/color/orientation/offset presets, and a fast **non-destructive preview** before final render.
 
 Spacing should derive from actual measured coordinates. Manual placement overrides are exception/fallback behavior, not the normal workflow.
 
