@@ -115,50 +115,80 @@ For the current supported scope, the workbook does not need a separate grid tabl
 
 ### Vertical profile scope
 
-Current scope supports one assigned/resolved vertical profile per annotationSet for grid derivation. Multiple vertical-profile blocks are deferred until there is a real need.
+Current scope supports one assigned vertical profile per annotationSet for grid derivation. Multiple vertical-profile blocks are deferred until there is a real need.
 
 A vertical profile may be reused by different experiments/annotation sets.
 
-The resolved vertical `Pos` sequence defines physical grid rows. For the currently supported shape:
+**Ignore the `Set` column inside the vertical-profile table.** It remains present because removing it currently disrupts workbook behavior, but workflow-C must not use it to filter, partition, or otherwise interpret vertical labels. Treat the selected vertical profile's ordered nonblank `labels_vertical` / `Pos` records as one reusable physical row sequence.
+
+For the currently supported shape:
 
 ```text
-GridRows = maximum resolved vertical Pos
+GridRows = maximum applicable vertical Pos
 ```
 
-### Strain profiles
+The current sample profile is eight rows (`Pos` 1-8), so it defines an 8-row physical grid wherever that vertical profile is assigned.
 
-One or more strain profiles may be assigned to one annotationSet.
+### Strain profiles and strain label bands
 
-For the current image/Set, resolve the applicable strain-label rows and use:
+One assigned strain profile may contain one or more `Set` blocks in the strain-label table. In the current workbook these strain-table `Set` values are **label-band grouping markers**, not filters against the Master Registry image `Set`.
+
+Therefore:
+
+- do not choose strain labels by comparing the image's Master Registry `Set` to the strain-profile table `Set`;
+- within the assigned strain profile, each distinct populated strain-table `Set` block defines one ordered strain-label band;
+- strain-table blocks are interpreted top-to-bottom in their workbook order for the current scope;
+- within each block, `Pos` defines logical columns and `labels_strain` supplies the labels;
+- `GridCols` is the maximum `Pos` across all strain-label bands in the assigned strain profile.
+
+If the assigned strain profile has one strain-label band, that band spans the full physical row range.
+
+If it has multiple strain-label bands and the number of physical rows divides evenly by the number of bands, allocate equal contiguous row bands from top to bottom. For the current 8-row, two-band case:
 
 ```text
-GridCols = maximum resolved strain Pos across assigned strain profiles
+band 1 -> rows 1-4
+band 2 -> rows 5-8
 ```
 
-If one strain profile is assigned, it spans the full physical row range.
+If row allocation is not deterministic, flag metadata validation instead of guessing.
 
-If multiple strain profiles are assigned, `Order` defines their top-to-bottom ordering. Infer their physical row bands only when the vertical-label sequence provides a clear deterministic repeated-block structure. If the band assignment is ambiguous, flag metadata validation instead of guessing.
+The widest strain-label band defines the overall physical grid width. A shorter lower band does not shrink the global grid; it means that row band has fewer occupied logical columns.
 
-The widest strain profile defines the overall physical grid width. A shorter lower profile does not shrink the global grid; it means that row band has fewer occupied logical columns.
+Current intended examples:
+
+```text
+annotationSet 1 -> Strain 1
+Strain 1 band A -> strain1 ... strain12, Pos 1-12
+Vertical 1 -> Pos 1-8
+=> 8 x 12 grid, one strain-label band spanning all rows
+```
+
+```text
+annotationSet 2 -> Strain 2
+Strain 2 band A -> exp2_strain1 ... exp2_strain10, Pos 1-10
+Strain 2 band B -> exp2_culture1 ... exp2_culture10, Pos 1-10
+Vertical 1 -> Pos 1-8
+=> 8 x 10 grid, band A rows 1-4, band B rows 5-8
+```
 
 ### Four-click geometry implication
 
 The eventual V10-aware four-click alignment should carry the true logical row/column coordinate for every click rather than assuming both reference rows share the same last column.
 
-Example:
+For the common one-band 8-row layout, the reference rows remain row 1 and row 5 (`ceil(GridRows / 2) + 1` for the current even-row cases), using the first and last occupied columns on each reference row.
+
+For a two-band 8 x 10 layout whose two bands both contain ten columns, the four reference clicks are naturally:
 
 ```text
-rows 1-3: 10-column strain profile
-rows 4-6: 4-column strain profile
-
-reference clicks:
 R1C1
 R1C10
-R4C1
-R4C4
+R5C1
+R5C10
 ```
 
-The geometry solver should use known row/column intervals to estimate per-column and per-row vectors. `R4C4` is not the right edge of a 10-column grid; it is logical column 4 on the lower reference row.
+If a lower band is shorter, use its true last occupied logical column rather than pretending it spans the full grid width.
+
+The geometry solver should use known row/column intervals to estimate per-column and per-row vectors.
 
 ## Other labels
 
