@@ -26,14 +26,16 @@ A live Fiji process is not proof that a one-plate proof is still running. Other 
 
 The actual Fiji main-window title observed on the user's desktop is `(Fiji Is Just) ImageJ`; existing-instance detection must recognize it. The proof currently attempts Fiji/ImageJ's normal single-instance/Macro Runner handoff when Fiji is already open. This is still a desktop-validation point because the user's Fiji installation previously showed a stale ImageJ single-instance/RMI stub connection error.
 
-The proof should explicitly use ImageJ/Fiji's own **Window -> Show All** behavior before interaction so the main Fiji interface is visible. AHK should only position already-visible windows, not act as the primary mechanism for unhiding Fiji. The small main Fiji toolbar/interface should remain available in the upper-right so the ROI tool can be changed manually if automatic selection fails.
+The proof should explicitly use ImageJ/Fiji's own **Window -> Show All** behavior before interaction. ImageJ's `Show All`/`WindowOrganizer` brings windows to the front but does not reposition the main ImageJ frame, so a remembered off-screen/bad toolbar position can still make the main GUI appear missing. The AHK helper currently rescues this case by moving the already-created Fiji/ImageJ `SunAwtFrame` into the visible upper-right. AHK may assist with positioning, but the proof must not depend on AHK for basic creation/visibility of the Fiji GUI; keep a non-AHK visibility path working as well. The small main Fiji toolbar/interface should remain available in the upper-right so the ROI tool can be changed manually if automatic selection fails.
 
 Fresh launches use `--no-splash`; the previously observed persistent central "Launching Fiji" splash should therefore remain gone, but this still needs desktop confirmation.
 
 ## AHK v2
-The helper is AutoHotkey **v2**, not v1. Keep it thin: Z advances/accepts recognized alignment dialogs, X selects Retry on either `Alignment QC` or `Full-grid QC`, Esc exits, placement dialogs go upper-left, and the visible Fiji toolbar is positioned upper-right.
+**Hard runtime contract: AutoHotkey v2 only. AutoHotkey v1 compatibility is not required or desired.** Every repository AHK helper must use valid v2 syntax and must run under an AutoHotkey v2 executable. Do not copy v1 syntax, do not write v1/v2 hybrid code, and do not spend time preserving v1 behavior.
 
-Recent v2 mistakes that must not recur include using a one-line `try` before `else if`, and omitting `&` on `WinGetPos` output variables. Dialog movement uses the normal shell-hook move plus one small delayed catch-up pass (~120 ms); do not reintroduce permanent polling unless concrete evidence requires it.
+Keep the helper thin: Z advances/accepts recognized alignment dialogs, X selects Retry on either `Alignment QC` or `Full-grid QC`, Esc exits, placement dialogs go upper-left, and the visible Fiji toolbar is positioned upper-right.
+
+Recent v2 mistakes that must not recur include using v1-style catch/try shorthand such as `catch title := ""`, using a one-line `try` before `else if`, and omitting `&` on `WinGetPos` output variables. Use explicit v2 `catch { ... }` blocks where assignment is needed. Dialog movement uses the normal shell-hook move plus one small delayed catch-up pass (~120 ms); do not reintroduce permanent polling unless concrete evidence requires it.
 
 ## Active workflow
 - **Fiji/ImageJ:** four centre clicks -> mathematical 8 x N grid -> rotated/skewed full-grid QC -> crop export from original image.
