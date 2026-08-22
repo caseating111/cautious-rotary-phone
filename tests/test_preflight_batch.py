@@ -92,6 +92,16 @@ class PreflightBatchTests(unittest.TestCase):
         self.assertIn("Images still requiring batch work: 1", lines)
         self.assertIn("Crops still to produce/rebuild: 4", lines)
 
+    def test_source_filename_matching_is_case_insensitive_but_preserves_csv_display_value(self) -> None:
+        (self.source_folder / "plate1.jpg").rename(self.source_folder / "PLATE1.JPG")
+
+        lines, problems, pending = build_report(self.config)
+
+        self.assertFalse(problems)
+        self.assertEqual([row["Filename"] for row in pending], ["plate1.jpg"])
+        self.assertNotIn("UNMAPPED SOURCE IMAGES", lines)
+        self.assertIn("Expected images not physically present: 0", lines)
+
     def test_valid_csv_row_without_physical_image_is_expected_not_present_and_non_blocking(self) -> None:
         self.images_csv.write_text(
             "Filename,Experiment,Set,Type\n"

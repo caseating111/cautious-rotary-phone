@@ -123,10 +123,14 @@ for (folderIndex = 0; folderIndex < folders.length; folderIndex++) {
             if (lengthOf(line) == 0)
                 continue;
 
-            quotedPrefix = "\"" + fileName + "\",";
-            plainPrefix  = fileName + ",";
+            // Windows filename identity is case-insensitive. Match on normalized
+            // keys while preserving the original physical and CSV display values.
+            lowerLine = toLowerCase(line);
+            lowerFileName = toLowerCase(fileName);
+            quotedPrefix = "\"" + lowerFileName + "\",";
+            plainPrefix  = lowerFileName + ",";
 
-            if (startsWith(line, quotedPrefix)) {
+            if (startsWith(lowerLine, quotedPrefix)) {
 
                 rest = substring(line, lengthOf(quotedPrefix));
                 f = split(rest, ",");
@@ -138,7 +142,7 @@ for (folderIndex = 0; folderIndex < folders.length; folderIndex++) {
                 }
             }
 
-            else if (startsWith(line, plainPrefix)) {
+            else if (startsWith(lowerLine, plainPrefix)) {
 
                 rest = substring(line, lengthOf(plainPrefix));
                 f = split(rest, ",");

@@ -197,14 +197,17 @@ def build_report(
 
     metadata_by_name: dict[str, list[dict[str, str]]] = defaultdict(list)
     for row in images:
-        metadata_by_name[row.get("Filename", "")].append(row)
+        metadata_by_name[row.get("Filename", "").casefold()].append(row)
 
-    source_name_counts = Counter(path.name for path in sources)
+    source_name_counts = Counter(path.name.casefold() for path in sources)
     source_names = set(source_name_counts)
-    csv_names = {row.get("Filename", "") for row in images if row.get("Filename", "")}
 
-    unmapped_sources = [path for path in sources if path.name not in metadata_by_name]
-    csv_missing_files = sorted(csv_names - source_names)
+    unmapped_sources = [path for path in sources if path.name.casefold() not in metadata_by_name]
+    csv_missing_files = sorted(
+        row.get("Filename", "")
+        for row in images
+        if row.get("Filename", "") and row.get("Filename", "").casefold() not in source_names
+    )
     duplicate_source_names = sorted(name for name, count in source_name_counts.items() if count > 1)
     duplicate_csv_names = sorted(name for name, rows in metadata_by_name.items() if name and len(rows) > 1)
 
@@ -224,7 +227,7 @@ def build_report(
     current_prefixes: set[str] = set()
 
     for source in sources:
-        metadata_rows = metadata_by_name.get(source.name, [])
+        metadata_rows = metadata_by_name.get(source.name.casefold(), [])
         if len(metadata_rows) != 1:
             continue
         meta = metadata_rows[0]

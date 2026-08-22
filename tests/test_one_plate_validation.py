@@ -66,14 +66,14 @@ class OnePlateValidationTests(unittest.TestCase):
             patched.index('run("Select None")'),
             patched.index('run("Enhance Local Contrast (CLAHE)", claheOptions)'),
         )
-        self.assertIn('roiBoxW = call("ij.Prefs.get", "rect.width", 108)', patched)
-        self.assertIn('roiBoxH = call("ij.Prefs.get", "rect.height", 108)', patched)
+        self.assertIn('roiBoxW = parseFloat(call("ij.Prefs.get", "rect.width", 108))', patched)
+        self.assertIn('roiBoxH = parseFloat(call("ij.Prefs.get", "rect.height", 108))', patched)
         self.assertIn("roiBoxSize = maxOf(roiBoxW, roiBoxH)", patched)
         self.assertIn("claheBlock = round(roiBoxSize * 3.3)", patched)
         self.assertEqual(patched.count('run("Enhance Local Contrast (CLAHE)", claheOptions)'), 2)
         self.assertIn('" histogram=256 maximum=1000 mask=*None* fast_(less_accurate)"', patched)
         self.assertIn('run("Install...", "install=[" + roiToolsetPath + "]")', patched)
-        self.assertIn('run("Show All")', patched)
+        self.assertNotIn('run("Show All")', patched)
         self.assertIn("for (toolCandidate = 15; toolCandidate <= 21; toolCandidate++)", patched)
         self.assertIn('startsWith(IJ.getToolName, "Rotated Rectangle Click Tool")', patched)
         self.assertIn("gridHX =", patched)

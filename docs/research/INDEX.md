@@ -4,7 +4,7 @@ Read this index before starting online research or substantially changing an end
 
 | Topic | Status | Endpoint history | Last checked | Current conclusion | Detail |
 | --- | --- | --- | --- | --- | --- |
-| Fiji four-point runtime / launch lifecycle | active / repeated-failure | 3 materially distinct routes | 2026-08-22 | Exact Fiji runtime still fails before reliable grid/QC; consult prior adapter, validation, and launch/reuse failures before changing this endpoint. | [fiji-four-point-runtime.md](fiji-four-point-runtime.md) |
+| Fiji four-point runtime / launch lifecycle | active / repeated-failure | 3 materially distinct routes | 2026-08-22 | Numeric coercion and Show All removal pass a synthetic real-Fiji QC/CLAHE probe; manual one-plate validation remains. | [fiji-four-point-runtime.md](fiji-four-point-runtime.md) |
 | SDL-MCP with Codex | deferred / repeated-failure / shell usable | 3+ setup/integration routes | 2026-08-22 | Shell retrieval works; native MCP remains unreliable and is outside current product work unless explicitly revisited. | [sdl-codex.md](sdl-codex.md) |
 
 Index discipline:

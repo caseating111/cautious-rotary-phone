@@ -133,10 +133,10 @@ def ensure_fiji_main_window_visible(timeout_seconds: float = 10.0, poll_seconds:
             ):
                 width = max(1, window_rect.right - window_rect.left)
                 height = max(1, window_rect.bottom - window_rect.top)
-                resize = width < 480 or height < 80
+                resize = width < 640 or height < 160
                 if resize:
                     width = min(640, work_rect.right - work_rect.left)
-                    height = min(120, work_rect.bottom - work_rect.top)
+                    height = min(180, work_rect.bottom - work_rect.top)
                 x = max(work_rect.left, work_rect.right - width - 10)
                 y = min(max(work_rect.top + 10, work_rect.top), max(work_rect.top, work_rect.bottom - height))
                 user32.SetWindowPos(
@@ -237,8 +237,10 @@ def patch_roi_click_interaction(source: str) -> str:
             '        // sampling ROI is needed for CLAHE. Explicitly clear any ROI copied\n'
             '        // into the duplicate because CLAHE respects active selections.\n'
             '        run("Select None");\n'
-            '        roiBoxW = call("ij.Prefs.get", "rect.width", 108);\n'
-            '        roiBoxH = call("ij.Prefs.get", "rect.height", 108);\n'
+            '        // call() always returns a string; convert saved ROI dimensions once,\n'
+            '        // at their source, before CLAHE or QC arithmetic uses them.\n'
+            '        roiBoxW = parseFloat(call("ij.Prefs.get", "rect.width", 108));\n'
+            '        roiBoxH = parseFloat(call("ij.Prefs.get", "rect.height", 108));\n'
             '        roiBoxSize = maxOf(roiBoxW, roiBoxH);\n'
             '        claheBlock = round(roiBoxSize * 3.3);\n'
             '        if (claheBlock < 1) claheBlock = 356;\n'
@@ -249,9 +251,9 @@ def patch_roi_click_interaction(source: str) -> str:
             '        roiToolsetPath = getDirectory("macros") + "toolsets/Roi 1-Click Tools.ijm";\n'
             '        if (File.exists(roiToolsetPath))\n'
             '            run("Install...", "install=[" + roiToolsetPath + "]");\n\n'
-            '        // Use ImageJ itself to make its main interface visible and raise it.\n'
-            '        // AHK only positions that already-visible window afterwards.\n'
-            '        run("Show All");\n\n'
+            '        // The launcher and AHK position the existing ImageJ frame. Do not call\n'
+            '        // Window Organizer > Show All here: forwarded single-instance macros can\n'
+            '        // run while IJ.getInstance() is null, and that command dereferences it.\n\n'
             '        roiClickToolFound = 0;\n'
             '        for (toolCandidate = 15; toolCandidate <= 21; toolCandidate++) {\n'
             '            setTool(toolCandidate);\n'
