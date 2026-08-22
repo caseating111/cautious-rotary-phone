@@ -11,12 +11,16 @@ Compact routing index for isolated prototype work. Keep this file short; detaile
 | Plate crop preprocessing | Planned | dedicated child branch when implementation begins | reusable `CropSizeCalibration` + per-image `CropResult` | `docs/gemini/prototypes/plate_crop/HANDOFF.md` |
 | Visibility adjustment / review | Planned | dedicated child branch when implementation begins | `adjust_plate_visibility(...) -> AdjustmentResult` | `docs/gemini/prototypes/visibility_adjustment/HANDOFF.md` |
 | Annotation/composition | Planned | dedicated child branch when implementation begins | saved grid + metadata/layout -> annotation/composition result | `docs/gemini/prototypes/annotation/HANDOFF.md` |
+| Grid registration applet | Future divestment | production route currently lives on `workflow-C` | `register_plate_grid(...) -> GridCoordinateAsset` | extract only after current route remains proven |
 
 ## Index rules
 
 - `geminimain` is the common Gemini baseline/specification branch. Feature implementation should normally happen on a dedicated child branch so parallel work does not collide.
 - Read `FUTURE_WORKFLOW.md` before implementing a prototype whose inputs/outputs depend on other workflow stages; do not duplicate the full sequence inside every handoff.
 - Read `docs/development/PROJECT_ASSET_CONTRACT.md` when the prototype creates, consumes, invalidates or transforms reusable project geometry/state.
+- Mini-apps are intended to remain independently runnable. The eventual main controller is an orchestrator/convenience layer, not a required parent process.
+- Applets should check only their true prerequisites from shared project state rather than enforce the preferred full workflow order.
+- The same callable/core path should support standalone and controller-launched operation where practical.
 - Update only at coherent prototype checkpoints, not after every edit/test.
 - Use `Planned`, `In progress`, `Proven`, `Rejected`, or `Integrated` as status.
 - Record the exact successful child branch and commit SHA when a prototype becomes `Proven`.
