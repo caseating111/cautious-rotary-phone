@@ -2,7 +2,6 @@
 #SingleInstance Force
 
 SetTitleMatchMode(2)
-DetectHiddenWindows True
 
 PlacementDialogTitle(title)
 {
@@ -18,8 +17,8 @@ PlacementDialogTitle(title)
 
 MoveFijiToolbarOnce()
 {
-    ; Fiji's toolbar title is not consistent across installs. Look for the small
-    ; Java AWT frame rather than assuming an exact "Fiji"/"ImageJ" title.
+    ; Fiji itself is responsible for making its main interface visible. This helper
+    ; only positions the already-visible short Java AWT main window.
     bestHwnd := 0
     bestWidth := 0
 
@@ -39,7 +38,7 @@ MoveFijiToolbarOnce()
         catch
             continue
 
-        ; Image windows are much taller; the main toolbar is a short, wide frame.
+        ; Image windows are much taller; the main Fiji/ImageJ toolbar is short and wide.
         if (w < 250 || h < 40 || h > 320)
             continue
         if (InStr(title, "1 / 4") || InStr(title, "2 / 4") || InStr(title, "3 / 4") || InStr(title, "4 / 4"))
@@ -57,9 +56,6 @@ MoveFijiToolbarOnce()
 
     try
     {
-        WinShow(bestHwnd)
-        if (WinGetMinMax(bestHwnd) = -1)
-            WinRestore(bestHwnd)
         WinGetPos(, , &w, &h, bestHwnd)
         MonitorGetWorkArea(1, &left, &top, &right, &bottom)
         x := Max(left, right - w - 10)
@@ -79,7 +75,7 @@ MoveKnownWorkflowWindowsOnce()
     MoveFijiToolbarOnce()
 }
 
-; Put an already-open Fiji toolbar in place when this helper starts.
+; Position an already-visible Fiji toolbar when this helper starts.
 MoveKnownWorkflowWindowsOnce()
 
 ; Reuse the original four-point helper's shell-hook behavior: move a placement
