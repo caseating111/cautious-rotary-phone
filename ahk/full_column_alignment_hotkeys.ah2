@@ -17,23 +17,49 @@ PlacementDialogTitle(title)
 
 MoveFijiToolbarOnce()
 {
-    ; Keep only the exact Fiji/ImageJ main toolbar window in the upper-right.
+    ; Fiji's toolbar title is not consistent across installs. Look for the small
+    ; Java AWT frame rather than assuming an exact "Fiji"/"ImageJ" title.
+    bestHwnd := 0
+    bestWidth := 0
+
     for hwnd in WinGetList()
     {
-        try title := WinGetTitle(hwnd)
+        try className := WinGetClass(hwnd)
         catch
             continue
-        if (title != "Fiji" && title != "ImageJ")
+        if (className != "SunAwtFrame")
             continue
 
         try
         {
             WinGetPos(, , w, h, hwnd)
-            MonitorGetWorkArea(1, &left, &top, &right, &bottom)
-            x := Max(left, right - w - 10)
-            WinMove(x, top + 10, , , hwnd)
+            title := WinGetTitle(hwnd)
         }
+        catch
+            continue
+
+        ; Image windows are much taller; the main toolbar is a short, wide frame.
+        if (w < 250 || h < 40 || h > 220)
+            continue
+        if (InStr(title, "1 / 4") || InStr(title, "2 / 4") || InStr(title, "3 / 4") || InStr(title, "4 / 4"))
+            continue
+
+        if (w > bestWidth)
+        {
+            bestHwnd := hwnd
+            bestWidth := w
+        }
+    }
+
+    if !bestHwnd
         return
+
+    try
+    {
+        WinGetPos(, , w, h, bestHwnd)
+        MonitorGetWorkArea(1, &left, &top, &right, &bottom)
+        x := Max(left, right - w - 10)
+        WinMove(x, top + 10, , , bestHwnd)
     }
 }
 
@@ -71,10 +97,6 @@ ShellMessage(wParam, lParam, msg, hwnd)
     if PlacementDialogTitle(title)
     {
         try WinMove(10, 10, , , "ahk_id " lParam)
-    }
-    else if (title == "Fiji" || title == "ImageJ")
-    {
-        MoveFijiToolbarOnce()
     }
 
     ; One catch-up pass only: no permanent timer, polling or repeated jitter.
