@@ -104,14 +104,22 @@ def patch_roi_click_interaction(source: str) -> str:
     replacements = [
         (
             '            "A temporary boosted alignment view will open. Centre the 108x108 box four times."',
-            '            "A temporary boosted alignment view will open. The ROI 1-click Rotated Rectangle Click Tool will be selected automatically for the four colony-centre clicks."',
+            '            "A temporary CLAHE alignment view will open. The ROI 1-click Rotated Rectangle Click Tool will be selected automatically for the four colony-centre clicks."',
         ),
         (
             '        run("Enhance Contrast", "saturated=0.35");\n\n'
             '        CLICK_ROI = 108;\n'
             '        accepted = 0;\n'
             '        makeRectangle(round(viewW / 2 - CLICK_ROI / 2), round(viewH / 2 - CLICK_ROI / 2), CLICK_ROI, CLICK_ROI);',
-            '        run("Enhance Contrast", "saturated=0.35");\n'
+            '        // Alignment visibility only. Read the ROI 1-click rectangle size from the\n'
+            '        // plugin preference, derive a roughly 3.3x CLAHE block size, and run the\n'
+            '        // user-proven CLAHE settings twice on this disposable duplicate.\n'
+            '        roiBoxW = call("ij.Prefs.get", "rect.width", 108);\n'
+            '        claheBlock = round(roiBoxW * 3.3);\n'
+            '        if (claheBlock < 1) claheBlock = 356;\n'
+            '        claheOptions = "blocksize=" + claheBlock + " histogram=256 maximum=1000 mask=*None* fast_(less_accurate)";\n'
+            '        run("Enhance Local Contrast (CLAHE)", claheOptions);\n'
+            '        run("Enhance Local Contrast (CLAHE)", claheOptions);\n'
             '        run("Select None");\n'
             '        setTool("Rotated Rectangle Click Tool - Cf00R11cc");\n\n'
             '        accepted = 0;',
