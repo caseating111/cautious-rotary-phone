@@ -17,37 +17,58 @@ PlacementDialogTitle(title)
 
 MoveFijiToolbarOnce()
 {
-    ; Fiji itself is responsible for making its main interface visible. This helper
-    ; only positions the already-visible short Java AWT main window.
+    ; Fiji itself is responsible for making its main interface visible. Prefer
+    ; the exact title observed on the target desktop; use geometry only as a
+    ; compatibility fallback for other Fiji/ImageJ builds.
     bestHwnd := 0
-    bestWidth := 0
 
-    for hwnd in WinGetList()
+    for title in ["(Fiji Is Just) ImageJ", "ImageJ", "Fiji"]
     {
-        try className := WinGetClass(hwnd)
-        catch
-            continue
-        if (className != "SunAwtFrame")
-            continue
-
-        try
+        if hwnd := WinExist(title)
         {
-            WinGetPos(, , &w, &h, hwnd)
-            title := WinGetTitle(hwnd)
+            try
+            {
+                className := WinGetClass(hwnd)
+                WinGetPos(, , &w, &h, hwnd)
+                if (className = "SunAwtFrame" && w >= 250 && h >= 40 && h <= 320)
+                {
+                    bestHwnd := hwnd
+                    break
+                }
+            }
         }
-        catch
-            continue
+    }
 
-        ; Image windows are much taller; the main Fiji/ImageJ toolbar is short and wide.
-        if (w < 250 || h < 40 || h > 320)
-            continue
-        if (InStr(title, "1 / 4") || InStr(title, "2 / 4") || InStr(title, "3 / 4") || InStr(title, "4 / 4"))
-            continue
-
-        if (w > bestWidth)
+    if !bestHwnd
+    {
+        bestWidth := 0
+        for hwnd in WinGetList()
         {
-            bestHwnd := hwnd
-            bestWidth := w
+            try className := WinGetClass(hwnd)
+            catch
+                continue
+            if (className != "SunAwtFrame")
+                continue
+
+            try
+            {
+                WinGetPos(, , &w, &h, hwnd)
+                title := WinGetTitle(hwnd)
+            }
+            catch
+                continue
+
+            ; Image windows are much taller; the main Fiji/ImageJ toolbar is short and wide.
+            if (w < 250 || h < 40 || h > 320)
+                continue
+            if (InStr(title, "1 / 4") || InStr(title, "2 / 4") || InStr(title, "3 / 4") || InStr(title, "4 / 4"))
+                continue
+
+            if (w > bestWidth)
+            {
+                bestHwnd := hwnd
+                bestWidth := w
+            }
         }
     }
 
