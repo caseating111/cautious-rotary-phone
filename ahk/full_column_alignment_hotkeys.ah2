@@ -112,8 +112,12 @@ ShellMessage(wParam, lParam, msg, hwnd)
     if (wParam != 1)
         return
 
-    try title := WinGetTitle("ahk_id " lParam)
-    catch title := ""
+    try
+        title := WinGetTitle("ahk_id " lParam)
+    catch
+    {
+        title := ""
+    }
 
     if PlacementDialogTitle(title)
     {
