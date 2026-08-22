@@ -4,124 +4,185 @@ Status: Planned
 
 ## Goal
 
-Create a focused project-setup component that uses canonical V10 metadata to prepare the working project tree and optionally rename working copies of raw images without altering the raw originals.
+Create a focused project-setup component that uses canonical V10 metadata to prepare the project tree and optionally create human-readable renamed **working copies** of raw images without altering raw originals.
 
-This replaces the old need to manually/script-rename source files before downstream processing while preserving a simple audit trail.
+This replaces the old requirement to manually/script-rename source files before downstream processing while preserving an easy human audit trail.
 
-## Required folder behavior
+See `docs/gemini/FUTURE_WORKFLOW.md` and `docs/development/PROJECT_ASSET_CONTRACT.md`.
 
-The project root should support sibling working areas such as:
+## Intended project tree
 
-- `raw/` — authoritative untouched source images, retaining names such as `image1.jpg`, `image2.jpg`, etc.;
-- `working/` — duplicated working copies that may receive V10-derived human-readable names;
-- later output parents such as crops/matrices/processed/annotated according to the production integration.
+The exact names remain configurable, but the project root should conceptually support sibling areas such as:
 
-The setup component should not move/rename the authoritative raw originals merely to make downstream matching easier.
+```text
+<project>/
+  raw/
+  working/
+  processed/
+  annotated/
+  crops/
+    unprocessed/
+    processed/
+  matrices/
+  state/            # or another unobtrusive machine-state location
+  image_name_conversions.txt
+```
+
+Preserve experiment/date/Set/Condition subfolders where they are useful. Do not flatten everything merely because canonical UIDs exist.
+
+The setup component may create only the folders required/selected for the current run, but the structure should be compatible with later stages rather than inventing unrelated trees per mini-app.
+
+## Raw source rule
+
+`raw/` is authoritative untouched input.
+
+Files may retain generic camera/export names such as:
+
+- `image1.jpg`;
+- `image2.jpg`;
+- repeated generic names in different session/date folders.
+
+Do not rename/move the authoritative raw image merely to make later matching easier.
 
 ## Renaming is optional
 
-Renaming must remain optional.
+The user must be able to choose:
 
-Downstream identity should rely on structured `Image UID`/session metadata rather than requiring every physical file to have a descriptive filename. A project containing repeated generic source names such as `image1.jpg` in different raw date/session folders must still be processable when V10 assigns unique identities.
+- **keep generic names** and process through UID/path mapping; or
+- **create renamed working copies** using V10 nomenclature.
 
-If renaming is enabled, rename/copy the **working copies**, not the raw originals.
+Downstream identity relies on structured `Image UID`/session metadata, not on requiring descriptive filenames.
+
+If renaming is enabled, create/copy the `working/` derivative and use V10 `Working filename` semantics. If renaming is disabled, a working copy may keep its original generic filename or downstream steps may operate through the mapped source according to integration policy.
+
+## UID-safe naming and collisions
+
+`Image UID` remains canonical identity even when two human-readable names are similar.
+
+Do not automatically clutter every human filename with a UID if the V10 working name is already unique and readable. Instead:
+
+1. use canonical UID internally;
+2. preview proposed names;
+3. detect filesystem collisions before writing;
+4. if two different UIDs would collide, report clearly and apply a deterministic UID-aware suffix/disambiguation only when needed or after user-approved policy.
+
+Case-only differences should not create accidental Windows collisions.
+
+## Step-by-step intended user function
+
+1. User selects/loads canonical V10 project state.
+2. User selects/confirms project root/raw root if not already known.
+3. App scans only expected source locations needed for mapping.
+4. Reconcile present physical raw files to expected image records/UIDs.
+5. Show a concise preview table: raw relative path -> UID -> proposed working relative path/name -> disposition.
+6. Missing expected files are listed but do not block present files.
+7. Ambiguous/collision records are blocked individually rather than guessed.
+8. User chooses whether renamed working copies should be created.
+9. Apply setup: create required parent/subfolders and copy/rename working derivatives as selected.
+10. Write/update human-readable conversion map at project root.
+11. Save machine state so rerunning setup is idempotent and does not create duplicate rename chains.
+
+Preview performs no writes.
 
 ## V10-derived names
 
-Working filenames should use the intended V10 `Working filename`/nomenclature rather than inventing a second naming scheme.
+Use V10 `Working filename`/nomenclature rather than inventing a second unrelated naming scheme.
 
-The exact human-readable filename may contain experiment/media/condition/etc. according to V10, but `Image UID` remains the identity. Similar-looking names must therefore not create ambiguity internally.
+The adapter/project model supplies Experiment, Set, Media, Condition, replicate, Image UID and other relevant context. The setup component should consume structured fields rather than parse identity back out of a human filename.
 
-Comparison should be case-insensitive where semantically appropriate while preserving original display capitalization.
+Generic raw filenames remain valid because reconciliation maps them to UID before renaming.
 
 ## Conversion/audit text file
 
-At project root, generate/update a small human-readable text mapping that records raw-to-working name conversions, for example conceptually:
+At project root generate/update a small human-readable conversion file, e.g. `image_name_conversions.txt`.
+
+Conceptual entry:
 
 `image1.jpg -> ypda+type1,01.jpg`
 
-Requirements:
+Format requirements:
 
-- group entries with clear dividers/headings by experiment and Set for easy visual checking;
-- include enough identity information (preferably Image UID and/or sessionUID) to disambiguate similar filenames;
-- preserve original raw relative path/name;
-- preserve working relative path/name;
-- deterministic ordering;
-- append/regenerate safely rather than silently losing prior mappings;
-- no private absolute machine paths.
+- clear divider/header for each Experiment;
+- within experiment, clear Set headings/dividers when Set exists;
+- optionally Condition grouping if it improves readability without duplicating information;
+- original raw relative path/name;
+- resulting working relative path/name;
+- Image UID (and sessionUID when useful) for disambiguation;
+- deterministic stable ordering;
+- no absolute private machine paths;
+- regeneration/update must not silently delete useful historical mapping for the same project state.
 
-This file is a human QC aid, not the canonical machine database.
+This file is for human visual checking, not the canonical machine database.
 
-## Reconciliation behavior
+## Incomplete datasets
 
-The component should be able to match V10 expected image records to raw files using structured metadata/known folder context without requiring the final working filename to already exist.
+Expected-but-missing images are normal. Setup should create working copies for present images while recording missing expected records.
 
-Incomplete image sets are valid. Expected-but-missing files should be reported rather than blocking creation of working copies for the images that are present.
+Do not require every expected V10 image before project setup can proceed.
 
-Ambiguous matches must be surfaced, not guessed.
+## Idempotence/safety
 
-## Safety/idempotence
+Repeated setup must not create:
 
-Running setup repeatedly should not create endless duplicate working copies or rename chains.
+- `working/working/...` chains;
+- `RENAMED RENAMED ...` filename chains;
+- duplicate copies of the same UID/source;
+- overwrites of a different UID because display names collide.
 
-Before copying/renaming:
+Use UID/source mapping and saved state to decide whether a working copy is already current.
 
-- detect whether the target working copy already corresponds to the same Image UID/source;
-- avoid overwriting a different image merely because its proposed filename collides;
-- produce clear collision/ambiguity diagnostics;
-- preserve raw originals unchanged.
+## Output/future integration
 
-## Interface
-
-Conceptually:
+Result concept:
 
 `prepare_working_copy(project_model, raw_root, working_root, options) -> RenameResult`
 
-Result should include per-image disposition such as copied/unchanged/missing/ambiguous/collision plus conversion-map output path.
+Per image disposition may include:
 
-## Mini-app option
+- `COPIED_RENAMED`;
+- `COPIED_ORIGINAL_NAME`;
+- `UNCHANGED_CURRENT`;
+- `EXPECTED_NOT_PRESENT`;
+- `AMBIGUOUS_SOURCE`;
+- `TARGET_COLLISION`;
+- `SKIPPED`.
 
-A small setup applet may show:
+Return conversion-map path and created folder information.
 
-- project/V10 source;
-- raw and working roots;
-- rename-working-copies toggle;
-- preview of proposed mappings;
-- missing/ambiguous records;
-- apply/setup action.
+Later orientation/crop/grid mini-apps consume Image UID + working path from project state; they do not redo source reconciliation.
 
-Preview should not modify files.
+## Required proofs
+
+1. generic raw names remain untouched;
+2. optional renamed working copies receive V10 working names;
+3. rename-disabled mode still produces usable UID/path mapping;
+4. similar names stay unambiguous through UID;
+5. Windows case-only collision is caught;
+6. conversion file grouped by Experiment/Set is easy to scan;
+7. rerunning is idempotent;
+8. incomplete expected set does not block present images;
+9. ambiguous/collision cases are reported, not guessed;
+10. preview performs no writes;
+11. resulting project tree is compatible with processed/annotated/crop/matrix stages.
 
 ## Out of scope
 
-- pixel processing;
+- image pixel processing;
 - plate orientation/cropping;
 - four-click grid registration;
 - annotation rendering;
 - modifying raw filenames in place by default;
 - forcing descriptive filenames as identity.
 
-## Required proofs
-
-1. generic `image1/image2/...` raw files remain untouched;
-2. optional working copies receive V10-derived names;
-3. Image UID keeps similar names unambiguous;
-4. conversion text file is grouped by experiment/Set and human-readable;
-5. rerunning is idempotent;
-6. incomplete expected set does not block present images;
-7. collision/ambiguity is reported safely;
-8. preview performs no writes.
-
 ## Completion record
-
-When proven, update with:
 
 - Branch:
 - Commit:
 - Interface:
 - Tests:
 - Dependencies:
-- Folder behavior proven:
+- Folder tree behavior:
+- Rename-disabled behavior:
 - Mapping-file format:
 - Collision/idempotence behavior:
 - Known limitations:
