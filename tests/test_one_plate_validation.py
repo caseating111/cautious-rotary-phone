@@ -49,7 +49,7 @@ class OnePlateValidationTests(unittest.TestCase):
             with self.assertRaises(SystemExit):
                 proof.patch_prepared_macro("other = 1;\n", target)
 
-    def test_roi_click_adapter_uses_double_clahe_and_finds_custom_tool_slots(self) -> None:
+    def test_roi_click_adapter_uses_whole_image_double_clahe_and_rotated_qc(self) -> None:
         source = proof.batch.enhance_four_point_macro(proof.batch.SOURCE_MACRO.read_text(encoding="utf-8"))
         patched = proof.patch_roi_click_interaction(source)
         self.assertNotIn("CLICK_ROI = 108", patched)
@@ -59,16 +59,21 @@ class OnePlateValidationTests(unittest.TestCase):
         self.assertIn('roiBoxH = call("ij.Prefs.get", "rect.height", 108)', patched)
         self.assertIn("roiBoxSize = maxOf(roiBoxW, roiBoxH)", patched)
         self.assertIn("claheBlock = round(roiBoxSize * 3.3)", patched)
+        first_select_none = patched.index('run("Select None")')
+        first_clahe = patched.index('run("Enhance Local Contrast (CLAHE)", claheOptions)')
+        self.assertLess(first_select_none, first_clahe)
         self.assertEqual(patched.count('run("Enhance Local Contrast (CLAHE)", claheOptions)'), 2)
         self.assertIn('" histogram=256 maximum=1000 mask=*None* fast_(less_accurate)"', patched)
-        self.assertIn('run("Select None")', patched)
-        self.assertNotIn('setTool("Rotated Rectangle Click Tool', patched)
+        self.assertIn('run("Install...", "install=[" + roiToolsetPath + "]")', patched)
         self.assertIn("for (toolCandidate = 15; toolCandidate <= 21; toolCandidate++)", patched)
-        self.assertIn("setTool(toolCandidate)", patched)
         self.assertIn('startsWith(IJ.getToolName, "Rotated Rectangle Click Tool")', patched)
-        self.assertIn("QC_W = w;", patched)
-        self.assertIn("QC_H = h;", patched)
-        self.assertIn("Overlay.drawRect(qcX - QC_W / 2", patched)
+        self.assertIn("gridHX =", patched)
+        self.assertIn("gridVX =", patched)
+        self.assertIn("hux = gridHX / hLen", patched)
+        self.assertIn("vux = gridVX / vLen", patched)
+        self.assertIn("Overlay.drawLine(p1x, p1y, p2x, p2y)", patched)
+        self.assertIn("Overlay.drawLine(topX, topY, bottomX, bottomY)", patched)
+        self.assertNotIn("Overlay.drawRect(qcX", patched)
 
     def test_selected_plate_window_match_is_exact_and_case_insensitive(self) -> None:
         with patch.object(
@@ -76,6 +81,7 @@ class OnePlateValidationTests(unittest.TestCase):
             "open_window_titles",
             return_value=["Fiji", "other.jpg", "PLATE1.JPG", "plate1.jpg - notes"],
         ):
+            self.assertTrue(proof.fiji_is_open())
             self.assertTrue(proof.proof_plate_is_open("plate1.jpg"))
             self.assertFalse(proof.proof_plate_is_open("plate2.jpg"))
             self.assertFalse(proof.proof_plate_is_open("notes"))
@@ -100,7 +106,7 @@ class OnePlateValidationTests(unittest.TestCase):
 
         with patch.object(proof, "_ACTIVE_FIJI_PROCESS", RunningProcess()), patch.object(
             proof, "proof_plate_is_open", return_value=False
-        ), patch.object(
+        ), patch.object(proof, "fiji_is_open", return_value=False), patch.object(
             proof, "prepare", return_value=(Path("proof.ijm"), selected)
         ) as prepare, patch.object(
             proof.batch, "load_config", return_value=fake_config
@@ -112,7 +118,26 @@ class OnePlateValidationTests(unittest.TestCase):
 
         self.assertEqual(result, selected)
         prepare.assert_called_once_with("plate1.jpg", legacy=False)
-        popen.assert_called_once()
+        command = popen.call_args.args[0]
+        self.assertIn("--no-splash", command)
+        self.assertIn("-macro", command)
+
+    def test_existing_fiji_uses_macro_runner_single_instance_handoff(self) -> None:
+        selected = {"Filename": "plate1.jpg"}
+        fake_fiji = Path(__file__)
+        fake_config = {"fiji_executable": str(fake_fiji)}
+        macro = Path("proof.ijm")
+        with patch.object(proof, "proof_plate_is_open", return_value=False), patch.object(
+            proof, "fiji_is_open", return_value=True
+        ), patch.object(proof, "prepare", return_value=(macro, selected)), patch.object(
+            proof.batch, "load_config", return_value=fake_config
+        ), patch.object(proof.subprocess, "Popen") as popen:
+            result = proof.run("plate1.jpg")
+        self.assertEqual(result, selected)
+        self.assertEqual(
+            popen.call_args.args[0],
+            [str(fake_fiji), "--no-splash", "--run", "Macro_Runner", str(macro)],
+        )
 
     def test_new_roi_click_patch_requires_one_restart_before_legacy_proof(self) -> None:
         fake_fiji = Path(__file__)
