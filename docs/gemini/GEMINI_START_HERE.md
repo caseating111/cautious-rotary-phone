@@ -12,8 +12,9 @@ Read only:
 4. `contracts/README.md`
 5. `docs/gemini/GEMINI_INDEX.md`
 6. `docs/gemini/FUTURE_WORKFLOW.md` when the assigned prototype depends on or feeds another workflow stage
-7. the HANDOFF for the prototype you are assigned
-8. only the narrow existing project docs/files actually needed for that prototype
+7. `docs/development/PROJECT_ASSET_CONTRACT.md` when the prototype creates/consumes/transforms reusable project state or geometry
+8. the HANDOFF for the prototype you are assigned
+9. only the narrow existing project docs/files actually needed for that prototype
 
 Do not reconstruct the full repository history or ingest the current runtime broadly.
 
@@ -38,6 +39,7 @@ Start with the smallest useful proof for the assigned component rather than atte
 - Prefer mature packages/software and thin glue.
 - Use targeted tests; do not broadly regression-test the active application.
 - Do not repeatedly read large existing files when a narrow contract or bounded excerpt is enough.
+- Reuse already-proven project state rather than making another component rediscover it.
 - Keep checkpoint handoffs short so the eventual integrator can evaluate the prototype without consuming large context.
 
 ## Successful checkpoint
