@@ -27,6 +27,22 @@ Per image/Image UID, preserve where applicable:
 
 Reusable group/project calibration state may additionally include a `CropSizeCalibration` that is **not tied to one image's x/y placement**.
 
+## Shared machine-readable project state
+
+Standalone mini-apps and the eventual main controller need a small persistent interoperability layer. Use a machine-readable project manifest/state area that maps canonical image identity to the relevant assets/results above.
+
+The exact file/database representation can remain lightweight (for example JSON plus small per-image result files, or another simple mature store), but it should satisfy these rules:
+
+- project state persists when no controller/app is open;
+- applets can be launched directly with a project root/state reference;
+- one applet can discover the assets it needs without parsing another applet's human-readable logs;
+- paths should be project-relative where practical;
+- Image UID remains the canonical identity when V10 is available;
+- state records include format/method/version information sufficient to reject incompatible stale assets;
+- concurrent/independent applets should update only their owned result records rather than rewriting unrelated project state unnecessarily.
+
+Human-readable conversion maps, summaries and logs are QC aids, not the machine API.
+
 ## Geometry has distinct reusable layers
 
 Do not collapse these into one generic alignment record.
@@ -90,6 +106,37 @@ Once an accepted coordinate asset exists, later operations should independently 
 - support selected-strain exports without rerunning alignment.
 
 A later action should check for the state it actually needs rather than require the full workflow to be replayed in order.
+
+## Applet prerequisite contract
+
+Standalone applets should be prerequisite-driven, not wizard-driven. Each applet declares the assets it genuinely needs and may run whenever those assets exist.
+
+Examples:
+
+- orientation: compatible source/working image only;
+- plate crop placement: compatible image + crop-size calibration (or permission to calibrate one);
+- grid registration: compatible image + logical layout/grid dimensions needed for registration;
+- visibility adjustment: compatible image + accepted `GridCoordinateAsset`;
+- processed crop export: accepted `GridCoordinateAsset` + compatible processed image;
+- annotation: canonical metadata/layout + accepted grid asset + compatible source derivative;
+- matrix/composition: requested crop assets.
+
+If a prerequisite is absent, return a concise missing-prerequisite status. Do not force unrelated earlier stages to run merely because they precede it in the preferred full workflow.
+
+## Standalone + controller parity
+
+Every future mini-app should be runnable independently of the main controller. The overall controller is a convenience/orchestration layer, not a runtime dependency.
+
+Where practical, one callable/core implementation should serve all of these entry routes:
+
+- standalone single-image mini-app;
+- standalone selected-batch mini-app;
+- main-controller launch/action;
+- targeted automated tests/CLI-style invocation.
+
+Do not maintain separate controller-only and standalone processing implementations for the same operation.
+
+Grid registration should eventually follow this same rule: the current proven four-click route can later be divested into a focused grid-registration applet whose principal output is `GridCoordinateAsset`. It should not remain the owner of crop export, visibility, annotation or matrix workflows.
 
 ## Transform discipline
 
