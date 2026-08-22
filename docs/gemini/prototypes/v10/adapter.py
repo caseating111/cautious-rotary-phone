@@ -162,9 +162,9 @@ def extract_layouts(excel_path):
 if __name__ == "__main__":
     import sys
     path = "fixtures/v10/v10_sample_synthetic_sanitized.xlsx"
-    pm = parse_project_model(path)
+    pm = load_v10(path)
     print("ProjectModel parsed successfully. Images count:", len(pm["images"]))
-    layouts = parse_layouts(path)
+    layouts = extract_layouts(path)
     print("Layouts parsed successfully. Layouts count:", len(layouts))
     for k, v in layouts.items():
         print(f"Layout {k}: grid={v['grid_rows']}x{v['grid_cols']} bands={len(v['strain_bands'])}")
