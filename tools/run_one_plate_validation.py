@@ -50,10 +50,15 @@ def open_window_titles() -> list[str]:
 
 
 def fiji_is_open() -> bool:
-    """Best-effort detection of the legacy Fiji/ImageJ toolbar window on Windows."""
+    """Best-effort detection of the legacy Fiji/ImageJ main toolbar window on Windows."""
     for title in open_window_titles():
         folded = title.strip().casefold()
-        if folded == "fiji" or folded == "imagej" or folded.startswith("fiji ("):
+        if (
+            folded == "fiji"
+            or folded == "imagej"
+            or folded.startswith("fiji (")
+            or ("fiji" in folded and folded.endswith("imagej"))
+        ):
             return True
     return False
 
@@ -118,14 +123,20 @@ def patch_roi_click_interaction(source: str) -> str:
             '            "A temporary CLAHE alignment view will open. The ROI 1-click Rotated Rectangle Click Tool will be selected automatically for the four colony-centre clicks."',
         ),
         (
+            '        getDimensions(viewW, viewH, viewC, viewZ, viewT);\n'
+            '        sampleW = round(viewW * 0.30);\n'
+            '        sampleH = round(viewH * 0.30);\n'
+            '        sampleX = round((viewW - sampleW) / 2);\n'
+            '        sampleY = round((viewH - sampleH) / 2);\n'
+            '        makeRectangle(sampleX, sampleY, sampleW, sampleH);\n'
             '        run("Enhance Contrast", "saturated=0.35");\n\n'
             '        CLICK_ROI = 108;\n'
             '        accepted = 0;\n'
             '        makeRectangle(round(viewW / 2 - CLICK_ROI / 2), round(viewH / 2 - CLICK_ROI / 2), CLICK_ROI, CLICK_ROI);',
-            '        // Alignment visibility only. The central rectangle above is only a\n'
-            '        // scale/reference region; clear it BEFORE CLAHE so both passes apply\n'
-            '        // uniformly to the whole disposable alignment image.\n'
-            '        run("Select None");\n'
+            '        getDimensions(viewW, viewH, viewC, viewZ, viewT);\n'
+            '        // Alignment visibility only: run the user-tested CLAHE settings\n'
+            '        // twice across the ENTIRE disposable alignment image. No temporary\n'
+            '        // sampling ROI is needed for CLAHE.\n'
             '        roiBoxW = call("ij.Prefs.get", "rect.width", 108);\n'
             '        roiBoxH = call("ij.Prefs.get", "rect.height", 108);\n'
             '        roiBoxSize = maxOf(roiBoxW, roiBoxH);\n'
@@ -134,12 +145,13 @@ def patch_roi_click_interaction(source: str) -> str:
             '        claheOptions = "blocksize=" + claheBlock + " histogram=256 maximum=1000 mask=*None* fast_(less_accurate)";\n'
             '        run("Enhance Local Contrast (CLAHE)", claheOptions);\n'
             '        run("Enhance Local Contrast (CLAHE)", claheOptions);\n\n'
-            '        // Reload/install the already-present ROI 1-click toolset, then select\n'
-            '        // its custom toolbar slot. This reuses the mature plugin instead of\n'
-            '        // reproducing its click behavior.\n'
+            '        // Reload/install the already-present ROI 1-click toolset.\n'
             '        roiToolsetPath = getDirectory("macros") + "toolsets/Roi 1-Click Tools.ijm";\n'
             '        if (File.exists(roiToolsetPath))\n'
-            '            run("Install...", "install=[" + roiToolsetPath + "]");\n'
+            '            run("Install...", "install=[" + roiToolsetPath + "]");\n\n'
+            '        // Use ImageJ itself to make its main interface visible and raise it.\n'
+            '        // AHK only positions that already-visible window afterwards.\n'
+            '        run("Show All");\n\n'
             '        roiClickToolFound = 0;\n'
             '        for (toolCandidate = 15; toolCandidate <= 21; toolCandidate++) {\n'
             '            setTool(toolCandidate);\n'
@@ -149,7 +161,7 @@ def patch_roi_click_interaction(source: str) -> str:
             '            }\n'
             '        }\n'
             '        if (roiClickToolFound == 0)\n'
-            '            showMessage("ROI 1-click", "The Rotated Rectangle Click Tool could not be selected automatically. The Fiji toolbar has been left available so you can select it manually, then continue.");\n\n'
+            '            showMessage("ROI 1-click", "The Rotated Rectangle Click Tool could not be selected automatically. The Fiji toolbar is visible so you can select it manually, then continue.");\n\n'
             '        QC_W = roiBoxW;\n'
             '        QC_H = roiBoxH;\n'
             '        accepted = 0;',
@@ -169,10 +181,6 @@ def patch_roi_click_interaction(source: str) -> str:
         (
             '                sourceTitle + "\\n\\nCentre box on ROW 5, COLUMN " + gridCols + ".\\n\\nReposition as needed, then click OK."',
             '                sourceTitle + "\\n\\nClick the centre of ROW 5, COLUMN " + gridCols + " with the ROI 1-click Rotated Rectangle Click Tool, then click OK."',
-        ),
-        (
-            '            R1LX = x + w / 2;\n            R1LY = y + h / 2;',
-            '            R1LX = x + w / 2;\n            R1LY = y + h / 2;',
         ),
         (
             '            // Pure mathematical 8 x N lattice from the four authoritative centres.\n'
