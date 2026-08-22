@@ -22,12 +22,12 @@ if not errorlevel 1 (
     call conda run --no-capture-output -n base python tools\workflow_controller_extended.py
     if not errorlevel 1 exit /b 0
     echo.
-    echo Anaconda base could not run the controller; trying the Windows Python launcher.
+    echo Anaconda base could not run the controller; trying Python 3.14 via the Windows launcher.
 )
 
 where py >nul 2>nul
 if not errorlevel 1 (
-    py -3 tools\workflow_controller_extended.py
+    py -3.14 tools\workflow_controller_extended.py
     if not errorlevel 1 exit /b 0
 )
 
@@ -35,7 +35,7 @@ rem Last fallback for systems where python.exe itself is on PATH.
 python tools\workflow_controller_extended.py
 if errorlevel 1 (
     echo.
-    echo Could not start the controller. Create the conda environment from environment.yml or make Python 3 available on PATH.
+    echo Could not start the controller. Current supported target is Windows with Python 3.14.
     pause
     exit /b 1
 )
