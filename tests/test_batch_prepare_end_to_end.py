@@ -125,7 +125,8 @@ class BatchPrepareEndToEndTests(unittest.TestCase):
             self.assertIn("claheBlock = round(roiBoxSize * 3.3)", text)
             self.assertIn('histogram=256 maximum=1000 mask=*None* fast_(less_accurate)', text)
             self.assertNotIn("CLICK_ROI = 108", text)
-            self.assertIn('roiBoxW = call("ij.Prefs.get", "rect.width", 108)', text)
+            self.assertIn('roiBoxW = parseFloat(call("ij.Prefs.get", "rect.width", 108))', text)
+            self.assertNotIn('run("Show All")', text)
             self.assertIn('startsWith(IJ.getToolName, "Rotated Rectangle Click Tool")', text)
             self.assertNotIn("makeRectangle(round(viewW / 2", text)
             self.assertIn("Overlay.drawLine(p1x, p1y, p2x, p2y)", text)
@@ -133,6 +134,8 @@ class BatchPrepareEndToEndTests(unittest.TestCase):
             self.assertIn("CROP_H = 48;", text)
             self.assertNotIn("FULL-COLUMN COMPOSED ROUTE", text)
             self.assertNotIn('"path here"', text)
+            self.assertIn("lowerFileName = toLowerCase(fileName)", text)
+            self.assertIn("startsWith(lowerLine, plainPrefix)", text)
 
             proof_csv = app_dir / "one_plate_validation_images.csv"
             proof_macro = app_dir / "one_plate_four_point_validation.configured.ijm"

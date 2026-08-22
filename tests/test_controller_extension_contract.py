@@ -33,7 +33,7 @@ class ControllerExtensionContractTests(unittest.TestCase):
         self.assertIn("filename = Path(chosen).name", block)
         self.assertIn("selected = one_plate_validation.run(filename, legacy=True)", block)
         self.assertIn("authoritative prepare-only results remain available", block)
-        self.assertIn("single-instance Macro Runner handoff", block)
+        self.assertIn("Fiji macro handoff", block)
 
     def test_standard_multi_output_jobs_preview_first_by_default_with_opt_out(self) -> None:
         text = EXTENDED.read_text(encoding="utf-8")

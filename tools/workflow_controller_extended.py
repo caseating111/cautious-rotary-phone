@@ -277,7 +277,7 @@ class ExtendedController(Controller):
             "One-plate validation",
             f"Launched exactly one selected pending source:\n{filename}\n\nContext: {context or 'not specified'}\n\n"
             "The proof uses the four centre clicks, mathematical full-grid QC, and fixed crop dimensions. "
-            "If Fiji is already open, the launcher attempts its normal single-instance Macro Runner handoff instead of deliberately opening another Fiji UI.",
+            "The Fiji macro handoff reuses an existing valid Fiji instance instead of deliberately opening another Fiji UI.",
         )
 
     def standard_output_count(self, alias: str, config: dict) -> int:

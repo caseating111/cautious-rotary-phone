@@ -79,10 +79,10 @@ MoveFijiToolbarOnce()
     {
         WinGetPos(, , &w, &h, bestHwnd)
         MonitorGetWorkArea(1, &left, &top, &right, &bottom)
-        if (w < 480 || h < 80)
+        if (w < 640 || h < 160)
         {
             w := Min(640, right - left)
-            h := Min(120, bottom - top)
+            h := Min(180, bottom - top)
         }
         x := Max(left, right - w - 10)
         WinMove(x, top + 10, w, h, bestHwnd)

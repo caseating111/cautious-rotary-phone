@@ -66,14 +66,14 @@ class OnePlateValidationTests(unittest.TestCase):
             patched.index('run("Select None")'),
             patched.index('run("Enhance Local Contrast (CLAHE)", claheOptions)'),
         )
-        self.assertIn('roiBoxW = call("ij.Prefs.get", "rect.width", 108)', patched)
-        self.assertIn('roiBoxH = call("ij.Prefs.get", "rect.height", 108)', patched)
+        self.assertIn('roiBoxW = parseFloat(call("ij.Prefs.get", "rect.width", 108))', patched)
+        self.assertIn('roiBoxH = parseFloat(call("ij.Prefs.get", "rect.height", 108))', patched)
         self.assertIn("roiBoxSize = maxOf(roiBoxW, roiBoxH)", patched)
         self.assertIn("claheBlock = round(roiBoxSize * 3.3)", patched)
         self.assertEqual(patched.count('run("Enhance Local Contrast (CLAHE)", claheOptions)'), 2)
         self.assertIn('" histogram=256 maximum=1000 mask=*None* fast_(less_accurate)"', patched)
         self.assertIn('run("Install...", "install=[" + roiToolsetPath + "]")', patched)
-        self.assertIn('run("Show All")', patched)
+        self.assertNotIn('run("Show All")', patched)
         self.assertIn("for (toolCandidate = 15; toolCandidate <= 21; toolCandidate++)", patched)
         self.assertIn('startsWith(IJ.getToolName, "Rotated Rectangle Click Tool")', patched)
         self.assertIn("gridHX =", patched)
@@ -81,6 +81,9 @@ class OnePlateValidationTests(unittest.TestCase):
         self.assertIn("hux = gridHX / hLen", patched)
         self.assertIn("vux = gridVX / vLen", patched)
         self.assertIn("Overlay.drawLine(p1x, p1y, p2x, p2y)", patched)
+        self.assertNotIn("halfW =", patched)
+        self.assertNotIn("halfH =", patched)
+        self.assertIn("p1x = qcX - (QC_W / 2) * hux", patched)
         self.assertIn("Overlay.drawLine(topX, topY, bottomX, bottomY)", patched)
         self.assertNotIn("Overlay.drawRect(qcX", patched)
 
@@ -178,9 +181,10 @@ class OnePlateValidationTests(unittest.TestCase):
         visible.assert_called_once_with()
         command = popen.call_args.args[0]
         self.assertIn("--no-splash", command)
-        self.assertIn("-macro", command)
+        self.assertEqual(command[-2:], ["-macro", str(Path("proof.ijm"))])
+        self.assertEqual(popen.call_args.kwargs["cwd"], Path(fake_config["fiji_executable"]).parent)
 
-    def test_existing_fiji_uses_macro_runner_single_instance_handoff(self) -> None:
+    def test_existing_fiji_uses_legacy_macro_single_instance_handoff(self) -> None:
         selected = {"Filename": "plate1.jpg"}
         fake_fiji = Path(__file__)
         fake_config = {"fiji_executable": str(fake_fiji)}
@@ -197,8 +201,9 @@ class OnePlateValidationTests(unittest.TestCase):
         visible.assert_called_once_with()
         self.assertEqual(
             popen.call_args.args[0],
-            [str(fake_fiji), "--no-splash", "--run", "Macro_Runner", str(macro)],
+            [str(fake_fiji), "--no-splash", "-macro", str(macro)],
         )
+        self.assertEqual(popen.call_args.kwargs["cwd"], fake_fiji.parent)
 
     def test_new_roi_click_patch_requires_one_restart_before_legacy_proof(self) -> None:
         fake_fiji = Path(__file__)

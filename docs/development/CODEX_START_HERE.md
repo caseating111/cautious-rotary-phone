@@ -118,6 +118,8 @@ A major objective of this migration is to stop using the user as a parser/debugg
 
 Use targeted, minimum-sufficient validation under the authoritative validation-efficiency policy in `IMPLEMENTATION_DECISION_POLICY.md`; broaden testing only for the evidence-based triggers defined there or when the user explicitly requests it.
 
+After the first failed implementation or integration attempt for a component or the same overall end goal, follow the authoritative research-before-second-attempt rule in `IMPLEMENTATION_DECISION_POLICY.md` before further speculative patching; different error messages do not reset the trigger.
+
 ### Codex sandbox and Python temporary directories
 
 On 2026-08-22, Python `tempfile`-based tests failed before test code ran because the Codex filesystem sandbox denied creation below the normal Windows user temp directory. Redirecting `TEMP`/`TMP` to a workspace-local directory produced the same denial for child-created temporary directories and should not be retried as a workaround. When a bounded synthetic test command fails at setup for this specific permission reason, rerun that same targeted command with the required sandbox approval instead of changing test code, changing application behavior, or trying more temporary-directory locations. Keep the approved command narrow and verify that the traceback failed in `tempfile`/directory setup before escalating.
