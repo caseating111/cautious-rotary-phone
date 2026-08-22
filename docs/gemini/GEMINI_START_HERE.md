@@ -6,13 +6,17 @@ This branch exists to let Gemini make useful parallel progress without interferi
 
 Read only:
 
-1. `docs/gemini/PROTOTYPE_RULES.md`
-2. `contracts/README.md`
-3. `docs/gemini/GEMINI_INDEX.md`
-4. the HANDOFF for the prototype you are assigned
-5. only the narrow existing project docs/files actually needed for that prototype
+1. root `AGENTS.md`
+2. `docs/development/IMPLEMENTATION_DECISION_POLICY.md`
+3. `docs/gemini/PROTOTYPE_RULES.md`
+4. `contracts/README.md`
+5. `docs/gemini/GEMINI_INDEX.md`
+6. the HANDOFF for the prototype you are assigned
+7. only the narrow existing project docs/files actually needed for that prototype
 
 Do not reconstruct the full repository history or ingest the current runtime broadly.
+
+Before online research, check `docs/research/INDEX.md`; if a matching topic exists, read only that topic file first and follow the implementation policy's duplicate-search/logging rules.
 
 ## Ownership
 
