@@ -4,125 +4,107 @@ Status: Planned
 
 ## Goal
 
-Build an optional **preprocessing** component that straightens the overall plate/image orientation before the current four-click grid-registration step.
+Build an optional **preprocessing** mini-app that straightens the overall plate/image before whole-plate cropping and before the current four-click culture-grid registration.
 
-This is separate from grid/colony alignment. Its purpose is visual normalization of the plate as a physical object so later cropping/annotation/processing starts from a less crooked image.
-
-The working four-click route remains authoritative for actual culture/grid coordinates. Failure or uncertainty in this preprocessing step must **never block** that route.
+This is physical plate straightening, not culture/grid alignment. The proven four-click route remains authoritative for culture coordinates, and orientation preprocessing must never block it.
 
 See `docs/gemini/FUTURE_WORKFLOW.md` and `docs/development/PROJECT_ASSET_CONTRACT.md`.
 
-## Do not use the colony ROI-box plugin
+## Required interaction: one straight-line drag
 
-The ROI 1-click rotated-rectangle tool is useful for the current fixed-size colony-center workflow but adds no value here. Whole-plate orientation only needs a reliable reference angle.
+Do **not** use the ROI 1-click rotated-rectangle/108x108 colony plugin here. It solves a different problem.
 
-Do **not** reuse/adapt the 108x108 ROI-box interaction for plate straightening.
+The preferred first implementation is one ordinary straight-line drag along a long, visually trustworthy **top or bottom physical plate edge**.
 
-## Preferred first route: two crosshair point clicks
+Routine user flow:
 
-The first practical prototype should favor a reliable two-click route over a large automatic CV system.
+1. Open the current working whole-plate image.
+2. Activate a normal straight-line/crosshair line tool.
+3. User drags one line along the top or bottom plate edge, choosing whichever is clearer.
+4. The line remains visibly overlaid so the measured reference is obvious.
+5. Calculate the observed edge angle from the line endpoints.
+6. Calculate the correction required to make that edge horizontal.
+7. Show a non-destructive corrected preview.
+8. Fast actions: `Accept`, `Retry`, `Skip`.
+9. On Accept, create/update the working derivative and persist the orientation transform/result.
 
-Preferred interaction:
+Do not add separate top-edge/bottom-edge dialogue branches. Both represent the same horizontal-reference calculation. The user simply chooses whichever long horizontal plate edge is easiest to see.
 
-1. display one working image;
-2. switch to a precise crosshair/point cursor;
-3. instruct the user to click **two well-separated points along one long trustworthy straight plate edge**;
-4. first click places visible marker A;
-5. second click places visible marker B and a line between A/B;
-6. calculate the edge angle from those coordinates;
-7. convert that to the correction angle needed to make the chosen edge horizontal (or another explicitly selected reference convention);
-8. show a non-destructive corrected preview;
-9. provide fast `Accept`, `Retry`, and `Skip/Cancel` actions;
-10. on Accept, write/update a derived working image and persist the result/transform.
+A line drag is preferred over two separate point clicks because it expresses the actual operation directly, requires one interaction rather than two, and uses mature Fiji/ImageJ line-selection behavior where available.
 
-A native straight-line drag may be offered as an equivalent alternative if Fiji/ImageJ makes that route materially simpler, but the default should remain conceptually **two precise points defining one line**.
+## Result/state
 
-The markers/line should stay visible until accept/retry so the user can see exactly what was measured.
+Conceptual interface:
 
-Primary conceptual interface:
+`capture_plate_orientation(line, image_geometry, options) -> OrientationResult`
 
-`capture_plate_orientation(points, image_geometry, options) -> RotationResult`
-
-## Why this route
-
-- only angle is needed;
-- two distant points along a plate edge average out small local irregularities better than clicking a tiny ROI;
-- crosshair placement is fast and easy to retry;
-- no colony or grid assumptions are required;
-- no automatic detector needs to be trusted before the preprocessing app is useful.
-
-## Angle/result semantics
-
-Choose one deterministic convention and test it explicitly:
-
-- define clockwise/counter-clockwise sign;
-- define whether the stored value is observed tilt or correction-to-apply;
-- save the original two reference points as evidence;
-- store method/version so downstream transforms are reproducible.
-
-`RotationResult` should contain at least:
+Persist at least:
 
 - image UID/reference;
-- selected points A/B;
-- observed edge angle;
+- line endpoints in the source coordinate space;
+- observed angle;
 - correction angle;
-- angle convention;
-- method (`two_point`, future automatic method name, etc.);
-- accepted/skipped/manual-review state;
-- source/output dimensions/path reference;
-- enough transform information for later plate-crop/grid coordinate-space handling.
+- explicit clockwise/counter-clockwise convention;
+- method/version (`manual_horizontal_edge_line` or equivalent);
+- accepted/skipped state;
+- source and output dimensions/path references;
+- transform sufficient to map later crop/grid state correctly.
+
+The accepted orientation is **per image**. Do not assume the same translation/position for another image merely because plates have the same size.
 
 ## Source/output behavior
 
-- raw source images remain untouched;
+- raw image remains untouched;
 - operate on/create a working derivative;
 - preview is non-destructive;
-- accepted orientation becomes reusable project state so later crop/grid steps do not request the same clicks;
-- rerun/reset remains possible;
-- changing an accepted orientation after downstream geometric work exists should mark dependent crop/grid state stale rather than silently applying mismatched coordinates.
+- rerun/reset is allowed;
+- Skip leaves downstream crop/four-click routes available;
+- changing orientation after downstream geometric state exists must mark dependent crop/grid state stale or explicitly transform it; never silently reuse incompatible coordinates.
+
+## Relationship to crop calibration
+
+Straightening and crop placement are distinct:
+
+- orientation stores a per-image rotational transform;
+- crop-size calibration may be reusable across multiple similarly imaged plates;
+- crop **position/translation remains per image** because the plate may appear at a different x/y offset in each camera image.
+
+Do not infer that a reusable crop size implies a reusable crop center.
 
 ## Optional automatic estimator later
 
-Automatic physical-plate orientation remains useful as a later convenience, but do not let it delay the reliable two-point route.
+Automatic physical-plate orientation can be explored later as an optional suggestion, but must not delay this reliable one-line route.
 
-Before custom CV, compare a bounded set of mature routes such as Fiji/ImageJ edge/deskew/shape tools, OpenCV minimum-area rectangle/Hough/contour facilities, and scikit-image edge/Hough methods.
+Research mature Fiji/ImageJ, OpenCV or scikit-image deskew/edge/rectangle methods before custom CV. A useful automatic suggestion with immediate manual fallback is enough; do not turn this into a large detector project.
 
-A good-enough automatic suggestion plus immediate manual confirmation/fallback is preferable to a complex brittle detector. Stop when the practical route is fast and reliable enough; do not spend disproportionate effort eliminating two easy clicks.
+Automatic failure/low confidence must fall back to the one-line route and must never make four-click grid registration unavailable.
 
-Automatic failure/low confidence must fall back to the point-based route and **must never make four-click grid registration unavailable**.
+## Mini-app boundary
 
-## Mini-app role
-
-The focused mini-app may:
+This applet may:
 
 - display one working image;
-- collect the two crosshair points;
-- show markers/reference line;
+- collect/show the straight-line reference;
 - preview corrected orientation;
 - accept/retry/skip;
-- optionally offer automatic estimate later;
-- save `RotationResult` and derived working output.
+- save `OrientationResult` and the working derivative.
 
-It should not implement V10 parsing, whole-plate crop selection, culture/grid registration, visibility adjustment or annotation.
+It should not parse V10, determine crop size/placement, perform four-click grid registration, adjust visibility, or annotate.
 
-## Privacy/test data
+## Required synthetic proofs
 
-Use synthetic/public images only for Gemini development. Do not inspect confidential plate pixels.
-
-## Required proofs
-
-1. modest clockwise synthetic tilt -> correct opposite correction;
+1. modest clockwise tilt -> correct opposite correction;
 2. modest counter-clockwise tilt -> correct opposite correction;
 3. near-zero tilt;
-4. visible two-point markers/reference line;
-5. preview/accept/retry without modifying raw source;
-6. saved result can be consumed by later crop step;
-7. skip leaves downstream grid route valid;
-8. optional straight-line-drag implementation, if included, matches the same sign convention.
+4. top-edge and bottom-edge lines obey the same horizontal-reference rule;
+5. preview/accept/retry/skip are non-destructive to raw source;
+6. saved orientation can be consumed by the plate-crop step;
+7. changing one image's orientation does not imply another image's crop translation;
+8. four-click route remains usable when orientation is skipped.
 
 ## Success criteria
 
-The prototype is `Proven` once a small two-point crosshair app/API reliably captures and applies orientation to derived working images, persists a clear transform/result, remains optional/non-blocking for four-click grid registration, and has targeted synthetic tests. Automatic estimation is future/bonus work, not required for first proof.
+`Proven` means one straight-line drag reliably produces a correct, reusable orientation transform and derived working image with fast preview/accept/retry/skip behavior and targeted synthetic tests. Automatic orientation is optional future work.
 
 ## Completion record
 
