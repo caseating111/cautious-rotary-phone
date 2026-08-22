@@ -303,8 +303,6 @@ def patch_roi_click_interaction(source: str) -> str:
             '            huy = gridHY / hLen;\n'
             '            vux = gridVX / vLen;\n'
             '            vuy = gridVY / vLen;\n'
-            '            halfW = QC_W / 2;\n'
-            '            halfH = QC_H / 2;\n\n'
             '            Overlay.remove;\n'
             '            setColor("cyan");\n'
             '            for (qcRow = 1; qcRow <= 8; qcRow++) {',
@@ -322,14 +320,14 @@ def patch_roi_click_interaction(source: str) -> str:
             '                    u = (qcCol - 1) / (gridCols - 1);\n'
             '                    qcX = qcLeftX + u * (qcRightX - qcLeftX);\n'
             '                    qcY = qcLeftY + u * (qcRightY - qcLeftY);\n'
-            '                    p1x = qcX - halfW * hux - halfH * vux;\n'
-            '                    p1y = qcY - halfW * huy - halfH * vuy;\n'
-            '                    p2x = qcX + halfW * hux - halfH * vux;\n'
-            '                    p2y = qcY + halfW * huy - halfH * vuy;\n'
-            '                    p3x = qcX + halfW * hux + halfH * vux;\n'
-            '                    p3y = qcY + halfW * huy + halfH * vuy;\n'
-            '                    p4x = qcX - halfW * hux + halfH * vux;\n'
-            '                    p4y = qcY - halfW * huy + halfH * vuy;\n'
+            '                    p1x = qcX - (QC_W / 2) * hux - (QC_H / 2) * vux;\n'
+            '                    p1y = qcY - (QC_W / 2) * huy - (QC_H / 2) * vuy;\n'
+            '                    p2x = qcX + (QC_W / 2) * hux - (QC_H / 2) * vux;\n'
+            '                    p2y = qcY + (QC_W / 2) * huy - (QC_H / 2) * vuy;\n'
+            '                    p3x = qcX + (QC_W / 2) * hux + (QC_H / 2) * vux;\n'
+            '                    p3y = qcY + (QC_W / 2) * huy + (QC_H / 2) * vuy;\n'
+            '                    p4x = qcX - (QC_W / 2) * hux + (QC_H / 2) * vux;\n'
+            '                    p4y = qcY - (QC_W / 2) * huy + (QC_H / 2) * vuy;\n'
             '                    Overlay.drawLine(p1x, p1y, p2x, p2y);\n'
             '                    Overlay.drawLine(p2x, p2y, p3x, p3y);\n'
             '                    Overlay.drawLine(p3x, p3y, p4x, p4y);\n'
@@ -428,15 +426,8 @@ def run(filename: str | None = None, *, legacy: bool = False) -> dict[str, str]:
 
     macro, selected = prepare(filename, legacy=legacy)
     try:
-        if fiji_is_open():
-            # Prefer the launcher's normal single-instance handoff, using ImageJ's
-            # mature Macro_Runner rather than deliberately creating a second UI.
-            command = [str(fiji), "--no-splash", "--run", "Macro_Runner", str(macro)]
-        else:
-            command = [str(fiji), "--no-splash", "-macro", str(macro)]
-        _ACTIVE_FIJI_PROCESS = subprocess.Popen(command)
-        # Do not depend on AHK for basic Fiji visibility. ImageJ's Show All raises
-        # the frame but does not repair an off-screen remembered desktop position.
+        command = [str(fiji), "--no-splash", "-macro", str(macro)]
+        _ACTIVE_FIJI_PROCESS = subprocess.Popen(command, cwd=fiji.parent)
         ensure_fiji_main_window_visible()
     except OSError as exc:
         raise SystemExit(f"Could not launch Fiji one-plate validation: {exc}") from exc

@@ -81,6 +81,9 @@ class OnePlateValidationTests(unittest.TestCase):
         self.assertIn("hux = gridHX / hLen", patched)
         self.assertIn("vux = gridVX / vLen", patched)
         self.assertIn("Overlay.drawLine(p1x, p1y, p2x, p2y)", patched)
+        self.assertNotIn("halfW =", patched)
+        self.assertNotIn("halfH =", patched)
+        self.assertIn("p1x = qcX - (QC_W / 2) * hux", patched)
         self.assertIn("Overlay.drawLine(topX, topY, bottomX, bottomY)", patched)
         self.assertNotIn("Overlay.drawRect(qcX", patched)
 
@@ -178,9 +181,10 @@ class OnePlateValidationTests(unittest.TestCase):
         visible.assert_called_once_with()
         command = popen.call_args.args[0]
         self.assertIn("--no-splash", command)
-        self.assertIn("-macro", command)
+        self.assertEqual(command[-2:], ["-macro", str(Path("proof.ijm"))])
+        self.assertEqual(popen.call_args.kwargs["cwd"], Path(fake_config["fiji_executable"]).parent)
 
-    def test_existing_fiji_uses_macro_runner_single_instance_handoff(self) -> None:
+    def test_existing_fiji_uses_legacy_macro_single_instance_handoff(self) -> None:
         selected = {"Filename": "plate1.jpg"}
         fake_fiji = Path(__file__)
         fake_config = {"fiji_executable": str(fake_fiji)}
@@ -197,8 +201,9 @@ class OnePlateValidationTests(unittest.TestCase):
         visible.assert_called_once_with()
         self.assertEqual(
             popen.call_args.args[0],
-            [str(fake_fiji), "--no-splash", "--run", "Macro_Runner", str(macro)],
+            [str(fake_fiji), "--no-splash", "-macro", str(macro)],
         )
+        self.assertEqual(popen.call_args.kwargs["cwd"], fake_fiji.parent)
 
     def test_new_roi_click_patch_requires_one_restart_before_legacy_proof(self) -> None:
         fake_fiji = Path(__file__)
