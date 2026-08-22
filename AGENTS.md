@@ -127,6 +127,8 @@ The "best" technical solution is not necessarily the most elegant or most automa
 
 **Testing efficiency:** Default to targeted, minimum-sufficient validation. Do not perform exhaustive, redundant, or speculative testing. Expand beyond affected paths only when a test fails, observed runtime behavior contradicts expectations, evidence indicates a broader regression, or the user explicitly requests broader audit/regression testing. Reuse valid existing test evidence and do not rerun unchanged tests without a concrete reason. Optimize for reaching a reliably user-testable product quickly.
 
+**Research before a second attempt:** After the first failed implementation or integration attempt for either a specific component or the same overall end goal, pause speculative patching and perform a bounded online search before trying again. Search first for existing exact solutions in authoritative documentation/source, established projects, GitHub issues/code, Stack Overflow and relevant specialist/user discussion hubs. If no exact solution is found, search by underlying function and by similar, parallel or analogous problems using alternate terminology. Use the evidence to select the next route, then verify that route locally with targeted tests. Different error messages do not reset this trigger when they block the same end goal.
+
 The user has already experienced a testing/debugging burden that exceeded the original manual work. **Do not allow that pattern to repeat.**
 
 User testing time is scarce and expensive. Do not casually hand the user successive speculative builds to debug for you.

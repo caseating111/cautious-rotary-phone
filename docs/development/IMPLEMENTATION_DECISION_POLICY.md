@@ -112,6 +112,23 @@ Before substantial custom implementation:
 10. check wrappers, macros, patching, preprocessing/postprocessing, file exchange, coordinate conversion and CSV translation;
 11. repeat the search using alternate terminology before concluding that the route is unavailable.
 
+## Mandatory research-before-second-attempt rule
+
+One failed implementation or integration attempt is enough to trigger research before another speculative patch. This applies both to a specific component and to the overall end goal: a later failure with a technically different error message still counts when it prevents the same user outcome.
+
+After that first failure:
+
+1. stop further trial-and-error implementation temporarily;
+2. run a bounded, targeted online search for an existing solution to the exact failure or function;
+3. prioritize authoritative documentation and source, established projects and plugins, GitHub issues/code, Stack Overflow, Image.sc or the relevant specialist/user discussion hubs;
+4. compare version, platform, execution context and maintenance evidence before adopting a result;
+5. if no exact solution is found, search again by the underlying function and by similar, parallel or analogous problems, using alternate terminology and broader categories;
+6. select the best-supported practical route and verify it locally with the smallest relevant test before requesting user validation.
+
+For example, if no useful result exists for “count apples,” search for established ways to count fruit, produce or similar objects. The purpose is to reuse transferable solutions, not to require identical wording or an identical application.
+
+Keep research proportional and evidence-driven. This is a research-before-repetition rule, not permission for an exhaustive literature review. Record the decisive source or conclusion concisely when it materially affects implementation. If bounded research finds nothing applicable, proceed with the smallest justified experiment rather than repeating equivalent searches or tests.
+
 ## Immediate practicality test
 
 Prefer routes that can be demonstrated quickly as a small end-to-end working slice using representative synthetic/test data.
