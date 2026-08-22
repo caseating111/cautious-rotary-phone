@@ -28,13 +28,12 @@ class ControllerExtensionContractTests(unittest.TestCase):
         start = text.index("def run_one_plate_validation")
         end = text.index("def standard_output_count", start)
         block = text[start:end]
-        self.assertIn("one_plate_validation.proof_is_running()", block)
+        self.assertNotIn("one_plate_validation.proof_is_running()", block)
         self.assertIn("filedialog.askopenfilename(", block)
         self.assertIn("filename = Path(chosen).name", block)
         self.assertIn("selected = one_plate_validation.run(filename, legacy=True)", block)
         self.assertIn("authoritative prepare-only results remain available", block)
-        self.assertIn("normal pending list remains complete", block)
-        self.assertIn("no second Fiji instance was launched", block)
+        self.assertIn("single-instance Macro Runner handoff", block)
 
     def test_standard_multi_output_jobs_preview_first_by_default_with_opt_out(self) -> None:
         text = EXTENDED.read_text(encoding="utf-8")
