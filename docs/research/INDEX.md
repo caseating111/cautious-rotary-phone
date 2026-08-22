@@ -4,7 +4,7 @@ Read this index before starting online research or substantially changing an end
 
 | Topic | Status | Endpoint history | Last checked | Current conclusion | Detail |
 | --- | --- | --- | --- | --- | --- |
-| Fiji four-point runtime / launch lifecycle | active / manual-validation | 4 materially distinct routes | 2026-08-22 | Core export works; direct IJ1 reuse, one-run guard, selected-DONE rerun, and complete dispositions await one batched manual check. | [fiji-four-point-runtime.md](fiji-four-point-runtime.md) |
+| Fiji four-point runtime / launch lifecycle | active / manual-validation | 5 materially distinct routes | 2026-08-22 | Core export works; fail-closed Fiji RMI reuse and native-size upper-right placement await one manual check. | [fiji-four-point-runtime.md](fiji-four-point-runtime.md) |
 | SDL-MCP with Codex | deferred / repeated-failure / shell usable | 3+ setup/integration routes | 2026-08-22 | Shell retrieval works; native MCP remains unreliable and is outside current product work unless explicitly revisited. | [sdl-codex.md](sdl-codex.md) |
 
 Index discipline:

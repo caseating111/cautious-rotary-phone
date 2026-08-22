@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import csv
+import getpass
 import json
 import subprocess
 import sys
+import tempfile
 import time
 import uuid
 from pathlib import Path
@@ -22,6 +24,7 @@ PROOF_MACRO = APP_DIR / "one_plate_validation.configured.ijm"
 PROOF_LEGACY_MACRO = APP_DIR / "one_plate_four_point_validation.configured.ijm"
 PROOF_STATUS_FILE = APP_DIR / "one_plate_four_point_validation.status.txt"
 PROOF_LAUNCH_LOG = APP_DIR / "one_plate_four_point_validation.launch.log"
+FIJI_RMI_HANDOFF = Path(__file__).resolve().with_name("FijiExistingInstanceHandoff.java")
 _ACTIVE_FIJI_PROCESS: subprocess.Popen | None = None
 
 
@@ -140,10 +143,6 @@ def ensure_fiji_main_window_visible(timeout_seconds: float = 10.0, poll_seconds:
             ):
                 width = max(1, window_rect.right - window_rect.left)
                 height = max(1, window_rect.bottom - window_rect.top)
-                resize = width < 640 or height < 160
-                if resize:
-                    width = min(640, work_rect.right - work_rect.left)
-                    height = min(180, work_rect.bottom - work_rect.top)
                 x = max(work_rect.left, work_rect.right - width - 10)
                 y = min(max(work_rect.top + 10, work_rect.top), max(work_rect.top, work_rect.bottom - height))
                 user32.SetWindowPos(
@@ -153,7 +152,7 @@ def ensure_fiji_main_window_visible(timeout_seconds: float = 10.0, poll_seconds:
                     y,
                     0,
                     0,
-                    (0 if resize else SWP_NOSIZE) | SWP_NOZORDER | SWP_SHOWWINDOW,
+                    SWP_NOSIZE | SWP_NOZORDER | SWP_SHOWWINDOW,
                 )
             user32.BringWindowToTop(hwnd)
             return True
@@ -168,25 +167,38 @@ def fiji_is_open() -> bool:
     return any(_is_fiji_main_title(title) for title in open_window_titles())
 
 
+def _fiji_rmi_port() -> int:
+    prefix = f"ImageJ-{getpass.getuser()}-"
+    candidates = sorted(
+        Path(tempfile.gettempdir()).glob(f"{prefix}*.stub"),
+        key=lambda path: path.stat().st_mtime_ns,
+        reverse=True,
+    )
+    for path in candidates:
+        suffix = path.stem.removeprefix(prefix)
+        if suffix.isdigit():
+            return int(suffix)
+    raise SystemExit("Fiji is open, but its existing-instance RMI endpoint was not found; no second GUI was launched.")
+
+
 def fiji_macro_command(fiji: Path, macro: Path, *, existing_fiji: bool) -> tuple[list[str], str]:
-    """Use IJ1's documented socket handoff when Fiji is already usable."""
+    """Use Fiji's own RMI client when its GUI exists; never spawn plain ImageJ."""
     if existing_fiji:
-        jars = sorted((fiji.parent / "jars").glob("ij-*.jar"), reverse=True)
-        javaw = sorted((fiji.parent / "java" / "win64").glob("**/bin/javaw.exe"), reverse=True)
-        if jars and javaw:
-            return (
-                [
-                    str(javaw[0]),
-                    "-cp",
-                    str(jars[0]),
-                    "ij.ImageJ",
-                    "-ijpath",
-                    str(fiji.parent),
-                    "-macro",
-                    str(macro),
-                ],
-                "ij1-socket-handoff",
-            )
+        java = sorted((fiji.parent / "java" / "win64").glob("**/bin/java.exe"), reverse=True)
+        legacy = sorted((fiji.parent / "jars").glob("imagej-legacy-*.jar"), reverse=True)
+        if not java or not legacy or not FIJI_RMI_HANDOFF.is_file():
+            raise SystemExit("Fiji is open, but its supported existing-instance handoff components are unavailable.")
+        return (
+            [
+                str(java[0]),
+                "-cp",
+                str(fiji.parent / "jars" / "*"),
+                str(FIJI_RMI_HANDOFF),
+                str(_fiji_rmi_port()),
+                str(macro),
+            ],
+            "fiji-rmi-handoff",
+        )
     return [str(fiji), "--no-splash", "-macro", str(macro)], "fiji-launcher"
 
 
@@ -536,10 +548,10 @@ def run(filename: str | None = None, *, legacy: bool = False, rerun_done: bool =
 
     macro, selected = prepare(filename, legacy=legacy, rerun_done=rerun_done)
     token = uuid.uuid4().hex
-    arm_invocation(macro, token)
     decisions = source_dispositions(config, selected.get("Filename", ""))
     existing_fiji = fiji_is_open()
     command, route = fiji_macro_command(fiji, macro, existing_fiji=existing_fiji)
+    arm_invocation(macro, token)
     launch_record = {
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
         "controller_pid": __import__("os").getpid(),
@@ -550,13 +562,23 @@ def run(filename: str | None = None, *, legacy: bool = False, rerun_done: bool =
         "dispositions": decisions,
     }
     try:
-        _ACTIVE_FIJI_PROCESS = subprocess.Popen(command, cwd=fiji.parent)
+        if existing_fiji:
+            handed_off = subprocess.run(command, cwd=fiji.parent, capture_output=True, text=True, timeout=12, check=False)
+            if handed_off.returncode != 0:
+                detail = (handed_off.stdout + handed_off.stderr).strip()
+                raise SystemExit(detail or "Fiji existing-instance macro handoff failed; no second GUI was launched.")
+            _ACTIVE_FIJI_PROCESS = None
+        else:
+            _ACTIVE_FIJI_PROCESS = subprocess.Popen(command, cwd=fiji.parent)
         launcher_pid = getattr(_ACTIVE_FIJI_PROCESS, "pid", None)
         launch_record["launcher_pid"] = launcher_pid if isinstance(launcher_pid, int) else None
         with PROOF_LAUNCH_LOG.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(launch_record, ensure_ascii=False) + "\n")
         ensure_fiji_main_window_visible()
-    except OSError as exc:
+    except SystemExit:
+        PROOF_STATUS_FILE.unlink(missing_ok=True)
+        raise
+    except (OSError, subprocess.TimeoutExpired) as exc:
         PROOF_STATUS_FILE.unlink(missing_ok=True)
         raise SystemExit(f"Could not launch Fiji one-plate validation: {exc}") from exc
     selected["_dispositions"] = "\n".join(decisions)

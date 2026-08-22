@@ -192,7 +192,7 @@ class OnePlateValidationTests(unittest.TestCase):
         self.assertEqual(command[-2:], ["-macro", str(Path("proof.ijm"))])
         self.assertEqual(popen.call_args.kwargs["cwd"], Path(fake_config["fiji_executable"]).parent)
 
-    def test_existing_fiji_uses_legacy_macro_single_instance_handoff(self) -> None:
+    def test_existing_fiji_uses_rmi_handoff_without_popen_gui(self) -> None:
         selected = {"Filename": "plate1.jpg"}
         fake_fiji = Path(__file__)
         fake_config = {"fiji_executable": str(fake_fiji)}
@@ -206,20 +206,23 @@ class OnePlateValidationTests(unittest.TestCase):
         ), patch.object(proof, "source_dispositions", return_value=[]), patch.object(
             proof, "PROOF_STATUS_FILE", Path(tempfile.gettempdir()) / "proof-test-status.txt"
         ), patch.object(proof, "PROOF_LAUNCH_LOG", Path(tempfile.gettempdir()) / "proof-test-launch.log"), patch.object(
-            proof, "fiji_macro_command", return_value=(["javaw", "-macro", str(macro)], "ij1-socket-handoff")
+            proof, "fiji_macro_command", return_value=(["java", "handoff.java", "57294", str(macro)], "fiji-rmi-handoff")
         ), patch.object(
             proof.batch, "load_config", return_value=fake_config
-        ), patch.object(proof.subprocess, "Popen") as popen, patch.object(
+        ), patch.object(
+            proof.subprocess,
+            "run",
+            return_value=type("Result", (), {"returncode": 0, "stdout": "", "stderr": ""})(),
+        ) as run, patch.object(proof.subprocess, "Popen") as popen, patch.object(
             proof, "ensure_fiji_main_window_visible", return_value=True
         ) as visible:
             result = proof.run("plate1.jpg")
         self.assertEqual(result, selected)
         visible.assert_called_once_with()
-        self.assertEqual(
-            popen.call_args.args[0],
-            ["javaw", "-macro", str(macro)],
-        )
-        self.assertEqual(popen.call_args.kwargs["cwd"], fake_fiji.parent)
+        run.assert_called_once()
+        self.assertEqual(run.call_args.args[0], ["java", "handoff.java", "57294", str(macro)])
+        self.assertEqual(run.call_args.kwargs["cwd"], fake_fiji.parent)
+        popen.assert_not_called()
 
     def test_new_roi_click_patch_requires_one_restart_before_legacy_proof(self) -> None:
         fake_fiji = Path(__file__)
@@ -295,20 +298,27 @@ class OnePlateValidationTests(unittest.TestCase):
         self.assertIn('File.saveString("RUNNING " + proofToken', guarded)
         self.assertIn('File.saveString("DONE abc"', guarded)
 
-    def test_existing_fiji_command_bypasses_fiji_launcher_for_ij1_socket_handoff(self) -> None:
+    def test_existing_fiji_command_uses_rmi_client_without_imagej_gui_entrypoint(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             fiji = root / "fiji-windows-x64.exe"
-            jar = root / "jars" / "ij-1.54p.jar"
-            javaw = root / "java" / "win64" / "jdk" / "bin" / "javaw.exe"
-            jar.parent.mkdir(parents=True)
-            javaw.parent.mkdir(parents=True)
-            jar.touch()
-            javaw.touch()
-            command, route = proof.fiji_macro_command(fiji, Path("proof.ijm"), existing_fiji=True)
-        self.assertEqual(route, "ij1-socket-handoff")
-        self.assertEqual(command[0], str(javaw))
-        self.assertIn("ij.ImageJ", command)
+            legacy = root / "jars" / "imagej-legacy-2.0.3.jar"
+            java = root / "java" / "win64" / "jdk" / "bin" / "java.exe"
+            helper = root / "FijiExistingInstanceHandoff.java"
+            legacy.parent.mkdir(parents=True)
+            java.parent.mkdir(parents=True)
+            legacy.touch()
+            java.touch()
+            helper.touch()
+            with patch.object(proof, "FIJI_RMI_HANDOFF", helper), patch.object(
+                proof, "_fiji_rmi_port", return_value=57294
+            ):
+                command, route = proof.fiji_macro_command(fiji, Path("proof.ijm"), existing_fiji=True)
+        self.assertEqual(route, "fiji-rmi-handoff")
+        self.assertEqual(command[0], str(java))
+        self.assertIn(str(helper), command)
+        self.assertIn("57294", command)
+        self.assertNotIn("ij.ImageJ", command)
         self.assertNotIn(str(fiji), command)
 
     def test_source_dispositions_cover_each_physical_file_with_casefolded_keys(self) -> None:

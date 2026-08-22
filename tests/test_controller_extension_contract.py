@@ -35,6 +35,23 @@ class ControllerExtensionContractTests(unittest.TestCase):
         self.assertIn("authoritative prepare-only results remain available", block)
         self.assertIn("Fiji macro handoff", block)
 
+    def test_controller_exposes_only_canonical_csv_runtime_actions(self) -> None:
+        base = (REPO_ROOT / "tools" / "workflow_controller.py").read_text(encoding="utf-8")
+        extended = EXTENDED.read_text(encoding="utf-8")
+        self.assertIn('text="Reconcile / validate CSV workflow"', base)
+        self.assertIn('text="Run one-plate 4-point proof (choose plate)"', extended)
+        self.assertIn('text="Reset / re-run selected DONE plate"', extended)
+        for retired in (
+            "Synthetic test plate",
+            "Full-column alignment",
+            "Global visibility",
+            "Run full-column batch",
+            "Run 4-point fallback",
+            "Start alignment hotkeys",
+            "Stop alignment hotkeys",
+        ):
+            self.assertNotIn(f'text="{retired}"', base)
+
     def test_standard_multi_output_jobs_preview_first_by_default_with_opt_out(self) -> None:
         text = EXTENDED.read_text(encoding="utf-8")
         self.assertIn("self.preview_standard_outputs = tk.BooleanVar(value=True)", text)

@@ -108,7 +108,9 @@ A blank image-blind probe reproduced the configured Fiji launcher remaining aliv
 
 The proof now uses the Fiji launcher only for a fresh session. When a usable Fiji toolbar already exists it invokes the bundled `javaw`, installed `ij-*.jar`, and documented `ij.ImageJ -macro` path directly. Each generated proof also contains a tokenized READY→RUNNING→DONE claim. A second delivery of the same artifact cannot enter the four-click body, and the controller records timestamp, controller PID, launcher PID, route, token, and physical-file dispositions in one concise JSON-lines log.
 
-**Disposition:** preferred narrow lifecycle route pending one real interactive reuse confirmation.
+Manual validation established that direct `ij.ImageJ` did not attach to the open Fiji listener on this installation: it created a separate regular ImageJ GUI. That route is retired. The supported existing-GUI path now calls Fiji's installed `net.imagej.legacy.SingleInstance.sendArguments()` against the active serialized RMI stub through a source-launched Java bridge. The bridge has no ImageJ GUI entry point and fails closed if delivery fails, so it cannot fall through into a second plain ImageJ window.
+
+**Disposition:** Fiji RMI client is the preferred narrow lifecycle route pending one real interactive reuse confirmation; direct `ij.ImageJ` handoff is ruled out here.
 
 ## Additional durable debugging evidence
 - Four 108x108 ROI 1-click placements themselves have worked as the authoritative manual references; do not redesign them merely because downstream runtime stages failed.
@@ -118,7 +120,7 @@ The proof now uses the Fiji launcher only for a fresh session. When a usable Fij
 - Ordinary DONE status is inferred from exact current derived-crop names, which include mutable grid/strain labels. Changing strain ordering therefore changes the expected-output contract and can make the plate pending again. Explicit proof rerun must select the source from authoritative `images.csv`, not mutate or globally clear ordinary pending/DONE state.
 
 ## Current preferred route / current unknown
-The four-click → grid → Accept → export path has passed manual Fiji validation. Current stabilization uses direct IJ1 socket handoff for an existing GUI, a tokenized one-execution claim, explicit selected-DONE rerun, case-insensitive keys, complete per-file dispositions, and a 640x180 toolbar minimum. Double CLAHE and QC arithmetic already pass real Fiji on synthetic data. Preserve the working interaction unless new evidence implicates it.
+The four-click → grid → Accept → export path has passed manual Fiji validation. Current stabilization uses Fiji's RMI client for an existing GUI, a tokenized one-execution claim, explicit selected-DONE rerun, case-insensitive keys, and complete per-file dispositions. Fiji keeps its native toolbar dimensions; Win32/AHK only restore and position it upper-right. Double CLAHE and QC arithmetic already pass real Fiji on synthetic data.
 
 ## Re-search / retry triggers
 Search or retry when a materially different Fiji/runtime failure changes the question, a distinct launch mechanism is being considered, Fiji/ImageJ version behavior changes, a source documents a concrete fix, or the user explicitly requests broader/fresh research. Do not repeat substantially equivalent searches or implementation routes merely because the error wording changes while the same endpoint remains blocked.

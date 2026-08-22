@@ -15,8 +15,6 @@ APP_DIR = Path.home() / ".cautious-rotary-phone"
 CONFIG_FILE = APP_DIR / "config.json"
 PENDING_IMAGES_CSV = APP_DIR / "pending_images.csv"
 PREFLIGHT_REPORT = APP_DIR / "last_preflight.txt"
-CONFIGURED_BATCH_MACRO = APP_DIR / "batch_full_column.configured.ijm"
-CONFIGURED_LEGACY_BATCH_MACRO = APP_DIR / "batch_four_point_fallback.configured.ijm"
 
 DEFAULTS = {
     "fiji_executable": "",
@@ -111,16 +109,6 @@ def preflight_dialog_text(returncode: int, pending: int, output: str, report_exi
     return output or "Batch preflight failed without a saved report or error message."
 
 
-def preparation_error_text(output: str, report_exists: bool) -> str:
-    if report_exists and "BATCH PREFLIGHT" in output:
-        return (
-            "Batch preparation stopped at preflight.\n\n"
-            "Open the saved preflight report for the full actionable list:\n"
-            f"{PREFLIGHT_REPORT}"
-        )
-    return output
-
-
 class Controller(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
@@ -171,7 +159,6 @@ class Controller(tk.Tk):
 
         r = len(rows)
         ttk.Button(self, text="Save config", command=lambda: self.save(explicit=True)).grid(row=r, column=0, sticky="ew", **pad)
-        ttk.Button(self, text="Validate CSVs", command=self.validate_csvs).grid(row=r, column=1, sticky="w", **pad)
         ttk.Button(self, text="ROI presets", command=lambda: self.launch_python("tools/roi_preset_gui.py")).grid(row=r, column=2, sticky="ew", **pad)
 
         r += 1
@@ -181,23 +168,16 @@ class Controller(tk.Tk):
         ttk.Separator(self).grid(row=r, column=0, columnspan=3, sticky="ew", padx=5, pady=6)
         r += 1
 
-        ttk.Button(self, text="Synthetic test plate", command=lambda: self.launch_fiji_macro("fiji/create_synthetic_grid_plate.ijm")).grid(row=r, column=0, sticky="ew", **pad)
-        ttk.Button(self, text="Full-column alignment", command=lambda: self.launch_fiji_macro("fiji/full_column_alignment.ijm")).grid(row=r, column=1, sticky="ew", **pad)
-        ttk.Button(self, text="Global visibility", command=lambda: self.launch_configured_fiji("visibility")).grid(row=r, column=2, sticky="ew", **pad)
-
-        r += 1
-        ttk.Button(self, text="Batch preflight", command=self.run_batch_preflight).grid(row=r, column=0, sticky="ew", **pad)
-        ttk.Button(self, text="Run full-column batch", command=self.run_full_column_batch).grid(row=r, column=1, sticky="ew", **pad)
-        ttk.Button(self, text="Run 4-point fallback", command=self.run_four_point_batch).grid(row=r, column=2, sticky="ew", **pad)
+        ttk.Button(
+            self,
+            text="Reconcile / validate CSV workflow",
+            command=self.run_batch_preflight,
+        ).grid(row=r, column=0, columnspan=3, sticky="ew", **pad)
 
         r += 1
         ttk.Label(self, text="Pillow output").grid(row=r, column=0, sticky="w", **pad)
         ttk.Combobox(self, textvariable=self.pillow_job, values=list(PILLOW_JOBS), state="readonly", width=34).grid(row=r, column=1, sticky="w", **pad)
         ttk.Button(self, text="Run", command=self.run_pillow_job).grid(row=r, column=2, sticky="ew", **pad)
-
-        r += 1
-        ttk.Button(self, text="Start alignment hotkeys", command=self.start_ahk).grid(row=r, column=0, sticky="ew", **pad)
-        ttk.Button(self, text="Stop alignment hotkeys", command=self.stop_ahk).grid(row=r, column=1, sticky="ew", **pad)
 
         r += 1
         ttk.Button(self, text="Open last preflight report", command=self.open_preflight_report).grid(row=r, column=0, columnspan=2, sticky="ew", **pad)
@@ -301,26 +281,6 @@ class Controller(tk.Tk):
 
         ttk.Button(dialog, text="Save", command=save_and_close).grid(row=len(PROCESSING_SETTINGS), column=0, columnspan=2, sticky="ew", **pad)
 
-    def validate_csvs(self) -> None:
-        paths = [
-            self.vars["grid_csv"].get().strip(),
-            self.vars["images_csv"].get().strip(),
-            self.vars["condition_order_csv"].get().strip(),
-        ]
-        if not all(paths):
-            messagebox.showerror("CSV validation", "Select grid.csv, images.csv and condition_order.csv first.")
-            return
-
-        validator = REPO_ROOT / "tools" / "validate_project_csvs.py"
-        result = subprocess.run([sys.executable, str(validator), *paths], capture_output=True, text=True, check=False)
-        output = (result.stdout + result.stderr).strip() or "No validator output."
-        if result.returncode == 0:
-            messagebox.showinfo("CSV validation", output)
-            self.status.set("CSV structure and cross-file mappings valid.")
-        else:
-            messagebox.showerror("CSV validation", output)
-            self.status.set("CSV validation found issues.")
-
     def batch_preflight_result(self) -> tuple[int, str, int]:
         if not self.save():
             return 2, self.config_load_error or "Config save blocked.", 0
@@ -343,31 +303,6 @@ class Controller(tk.Tk):
             messagebox.showerror("Batch preflight", dialog)
             self.status.set("Batch preflight found items to resolve. Open the saved report for easier review.")
 
-    def fiji_executable(self) -> Path | None:
-        raw = self.vars["fiji_executable"].get().strip()
-        path = Path(raw) if raw else None
-        if not path or not path.is_file():
-            messagebox.showerror("Fiji", "Select the Fiji/ImageJ executable first.")
-            return None
-        return path
-
-    def launch_fiji_macro(self, relative_macro: str) -> None:
-        exe = self.fiji_executable()
-        if exe is None:
-            return
-        macro = REPO_ROOT / relative_macro
-        if not macro.is_file():
-            messagebox.showerror("Fiji", f"Macro not found:\n{macro}")
-            return
-        if not self.save():
-            return
-        try:
-            subprocess.Popen([str(exe), "-macro", str(macro)])
-        except OSError as exc:
-            messagebox.showerror("Fiji launch", str(exc))
-            return
-        self.status.set(f"Launched Fiji macro: {macro.name}")
-
     def launch_python(self, relative_script: str, *args: str) -> None:
         script = REPO_ROOT / relative_script
         if not script.is_file():
@@ -381,93 +316,6 @@ class Controller(tk.Tk):
             messagebox.showerror("Python helper", str(exc))
             return
         self.status.set(f"Launched: {script.name}")
-
-    def launch_configured_fiji(self, macro_alias: str) -> None:
-        script = REPO_ROOT / "tools" / "run_fiji_macro_from_config.py"
-        if not script.is_file():
-            messagebox.showerror("Fiji launch", f"Configured Fiji helper not found:\n{script}")
-            return
-        if not self.save():
-            return
-        result = subprocess.run(
-            [sys.executable, str(script), macro_alias],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        output = (result.stdout + result.stderr).strip()
-        if result.returncode != 0:
-            messagebox.showerror("Fiji launch", output or "Configured Fiji launch failed without a message.")
-            self.status.set("Configured Fiji launch failed.")
-            return
-        self.status.set(f"Launched configured Fiji macro: {macro_alias}")
-
-    def run_prepared_batch(self, legacy: bool) -> None:
-        if not self.save():
-            return
-        script = REPO_ROOT / "tools" / "run_full_column_batch_from_config.py"
-        if not script.is_file():
-            messagebox.showerror("Batch preparation", f"Batch helper not found:\n{script}")
-            self.status.set("Batch not started: helper missing.")
-            return
-
-        args = [sys.executable, str(script), "--prepare-only"]
-        configured_macro = CONFIGURED_BATCH_MACRO
-        route_name = "full-column"
-        if legacy:
-            args.append("--legacy")
-            configured_macro = CONFIGURED_LEGACY_BATCH_MACRO
-            route_name = "4-point fallback"
-
-        prepared = subprocess.run(
-            args,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        output = (prepared.stdout + prepared.stderr).strip() or "No batch preparation output."
-        if prepared.returncode != 0:
-            if "All expected crops already exist" in output:
-                messagebox.showinfo("Batch", output)
-                self.status.set("Batch already complete.")
-            else:
-                messagebox.showerror(
-                    "Batch preparation",
-                    preparation_error_text(output, PREFLIGHT_REPORT.is_file()),
-                )
-                self.status.set(f"{route_name} batch not started: preparation needs attention.")
-            return
-
-        exe = self.fiji_executable()
-        if exe is None:
-            self.status.set(f"{route_name} batch prepared, but Fiji is not configured.")
-            return
-        if not configured_macro.is_file():
-            messagebox.showerror("Batch preparation", f"Prepared macro not found:\n{configured_macro}")
-            self.status.set(f"{route_name} batch not started: prepared macro missing.")
-            return
-
-        ahk_was_running = bool(self.ahk_process and self.ahk_process.poll() is None)
-        ahk = Path(self.vars["ahk_executable"].get().strip())
-        if ahk.is_file() and not ahk_was_running:
-            self.start_ahk()
-        started_ahk_here = not ahk_was_running and bool(self.ahk_process and self.ahk_process.poll() is None)
-
-        try:
-            subprocess.Popen([str(exe), "-macro", str(configured_macro)])
-        except OSError as exc:
-            if started_ahk_here:
-                self.stop_ahk()
-            messagebox.showerror("Fiji launch", str(exc))
-            self.status.set(f"{route_name} batch prepared but Fiji launch failed.")
-            return
-        self.status.set(f"Prepared {route_name} batch launched in Fiji.")
-
-    def run_full_column_batch(self) -> None:
-        self.run_prepared_batch(legacy=False)
-
-    def run_four_point_batch(self) -> None:
-        self.run_prepared_batch(legacy=True)
 
     def run_pillow_job(self) -> None:
         alias = PILLOW_JOBS[self.pillow_job.get()]
