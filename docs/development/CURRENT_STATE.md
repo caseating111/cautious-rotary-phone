@@ -7,6 +7,9 @@ Current repository branches are `main`, `workflow-dev` and `alpha-pre-release`. 
 
 Binding rules: root `AGENTS.md` and `docs/development/IMPLEMENTATION_DECISION_POLICY.md`. Optimize total user time-to-reliable-result, reuse mature tools first, preserve source pixels/manual alignment authority, prove small routes, and stop patch/retest escalation early.
 
+## Current target environment
+The user's current required runtime environment is **Windows with Python 3.14**. Their normal Python installation and Anaconda environment are both Python 3.14. Treat Windows + Python 3.14 as the authoritative compatibility/CI target for current development and release validation. Linux compatibility and Python 3.11 compatibility are not current requirements and should not delay routine implementation or desktop debugging. Preserve broader compatibility when it comes essentially for free, but do not spend user/development time maintaining or repeatedly validating it unless requirements change.
+
 ## Current alignment priority
 The current desktop test route is the established four-point mathematical alignment, not the experimental full-column detector. The four authoritative colony-centre references are R1C1, R1C(last), R5C1 and R5C(last). The complete 8 x N grid is interpolated mathematically from those four centres; there is no colony/peak detection in this route.
 
