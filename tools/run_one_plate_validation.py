@@ -6,10 +6,10 @@ import sys
 from pathlib import Path
 
 try:
-    from tools import patch_roi_click_toolset
+    from tools import roi_preset_gui
     from tools import run_full_column_batch_from_config as batch
 except ModuleNotFoundError:
-    import patch_roi_click_toolset
+    import roi_preset_gui
     import run_full_column_batch_from_config as batch
 
 
@@ -124,8 +124,19 @@ def patch_roi_click_interaction(source: str) -> str:
             '        claheOptions = "blocksize=" + claheBlock + " histogram=256 maximum=1000 mask=*None* fast_(less_accurate)";\n'
             '        run("Enhance Local Contrast (CLAHE)", claheOptions);\n'
             '        run("Enhance Local Contrast (CLAHE)", claheOptions);\n'
-            '        run("Select None");\n'
-            '        setTool("Rotated Rectangle Click Tool - Cf00R11cc");\n\n'
+            '        run("Select None");\n\n'
+            '        // setTool(name) only supports ImageJ built-ins. Find the installed ROI\n'
+            '        // 1-click macro tool among the documented custom slots 15..21 instead.\n'
+            '        roiClickToolFound = 0;\n'
+            '        for (toolCandidate = 15; toolCandidate <= 21; toolCandidate++) {\n'
+            '            setTool(toolCandidate);\n'
+            '            if (startsWith(IJ.getToolName, "Rotated Rectangle Click Tool")) {\n'
+            '                roiClickToolFound = 1;\n'
+            '                break;\n'
+            '            }\n'
+            '        }\n'
+            '        if (roiClickToolFound == 0)\n'
+            '            exit("ROI 1-click Rotated Rectangle Click Tool is not active in the Fiji toolbar. Reload/select the Roi 1-Click Tools toolset and retry.");\n\n'
             '        accepted = 0;',
         ),
         (
@@ -162,6 +173,24 @@ def patch_roi_click_interaction(source: str) -> str:
             raise SystemExit("Prepared four-point proof no longer matches the ROI 1-click adapter contract; refusing to guess.")
         source = source.replace(old, new, 1)
     return source
+
+
+def ensure_roi_click_patch(fiji: Path) -> bool:
+    candidates = roi_preset_gui.find_roi_click_tools(fiji.resolve().parent)
+    if not candidates:
+        raise SystemExit(
+            "ROI 1-click Tools was not found in the configured Fiji installation. Install/select Roi 1-Click Tools first."
+        )
+    if len(candidates) != 1:
+        shown = "\n".join(str(path) for path in candidates)
+        raise SystemExit(
+            "More than one Roi 1-Click Tools macro was found; refusing to guess which Fiji toolset to patch. "
+            f"Use ROI presets to select/repair the intended toolset.\n{shown}"
+        )
+    try:
+        return roi_preset_gui.patch_roi_click_tools(candidates[0]) is not None
+    except (OSError, ValueError) as exc:
+        raise SystemExit(f"Could not patch ROI 1-click Tools safely: {exc}") from exc
 
 
 def prepare(filename: str | None = None, *, legacy: bool = False) -> tuple[Path, dict[str, str]]:
@@ -205,13 +234,11 @@ def run(filename: str | None = None, *, legacy: bool = False) -> dict[str, str]:
     if not fiji.is_file():
         raise SystemExit(f"Fiji executable not found: {fiji}")
 
-    if legacy:
-        toolset, changed = patch_roi_click_toolset.ensure_patched(fiji)
-        if changed:
-            raise SystemExit(
-                "ROI 1-click Tools was patched successfully so its saved rectangle and click-behaviour settings are restored automatically. "
-                f"Close/restart Fiji once so it reloads the patched toolset, then run the proof again. Patched file: {toolset}"
-            )
+    if legacy and ensure_roi_click_patch(fiji):
+        raise SystemExit(
+            "ROI 1-click Tools was patched successfully so its saved rectangle and click-behaviour settings are restored automatically. "
+            "Close/restart Fiji once so it reloads the patched toolset, then run the proof again."
+        )
 
     macro, selected = prepare(filename, legacy=legacy)
     try:
