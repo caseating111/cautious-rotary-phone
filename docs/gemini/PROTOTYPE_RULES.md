@@ -12,17 +12,43 @@ This branch is for isolated future-facing prototypes only. `workflow-C` remains 
 
 ## Architecture posture
 
-The intended end state may be a lightweight overall controller that owns project/file selection and shared state, then launches focused mini-apps for distinct jobs. Do **not** assume every capability belongs inside one large GUI.
+The intended end state is a lightweight overall controller that owns project selection/shared status and launches focused mini-apps for distinct jobs. Do **not** assume every capability belongs inside one large GUI.
+
+A mini-app is a real independently runnable tool, not merely a dialog that only works when launched from the main controller. Except for genuine data prerequisites such as an existing accepted grid asset, each applet should be able to start directly, receive/select a project root or project-state reference, discover the assets it needs, perform its task, and save/update only its own result.
+
+The main controller should call the **same underlying callable/API path** that standalone mode uses. Do not create separate controller-only and standalone implementations of the same operation.
 
 A useful mini-app should:
 
-- consume a narrow shared contract or explicit file/project input;
+- consume a narrow shared contract or explicit project/file input;
 - perform one coherent job;
-- expose its core work through callable functions rather than GUI-only logic;
+- expose core work through callable functions rather than GUI-only logic;
+- support one-image and selected-batch operation through the same core implementation where useful;
 - return/save an explicit result that later steps can consume;
-- avoid duplicating V10 parsing, project discovery or other global state already owned elsewhere.
+- check only its true prerequisites instead of enforcing the entire workflow order;
+- avoid duplicating V10 parsing, project discovery or global state already represented in shared project state;
+- be launchable by the overall controller later without being rewritten into the controller.
+
+Examples of prerequisite behavior:
+
+- annotation: require metadata/layout + accepted grid coordinates + a compatible source image;
+- processed crop export: require accepted grid coordinates + a compatible processed image;
+- matrix/composition: require the selected crop assets;
+- visibility adjustment: require a compatible whole-plate image + accepted grid asset;
+- plate crop: require an image and, when reusing size, a compatible `CropSizeCalibration`;
+- grid registration: eventually becomes its own applet and produces `GridCoordinateAsset`; it should not own later crop/annotation/visibility workflows.
+
+If a prerequisite is missing, report exactly what is missing (`GRID_REQUIRED`, compatible processed image missing, etc.) rather than forcing the user through steps that are irrelevant to that applet.
 
 Optimize for the actual workflow and user time. Mature packages, Fiji/ImageJ features, Pillow, OpenCV/scikit-image, small scripts and modest manual confirmation are preferable to large bespoke systems when they reach the endpoint more reliably.
+
+## Shared project-state / manifest posture
+
+Shared project state is the interoperability layer between standalone applets and the eventual overall controller. Machine-readable state should map canonical image identity to relevant assets/results (raw, working, orientation, crop, grid, processed, annotation, crop exports, matrices) without requiring one process to remain open.
+
+Human-readable mapping/status/log files remain useful QC aids but should not become the machine API between applets.
+
+Applets should update only the state they own. Geometry-changing applets must mark dependent geometry stale when required; display-only/presentation applets must not invalidate unrelated geometric state.
 
 ## CSV baseline versus V10 semantics
 
@@ -67,6 +93,8 @@ Each coherent successful prototype checkpoint must update:
    - exact branch and commit SHA;
    - status and what is actually proven;
    - narrow public/API interface;
+   - standalone launch/usage entry point where relevant;
+   - true prerequisites;
    - tests run;
    - dependencies added;
    - known limitations;
@@ -82,9 +110,11 @@ Gemini prototypes should be designed so the overall controller can later orchest
 - `load_v10(path) -> ProjectModel`
 - `prepare_working_copy(...) -> RenameResult`
 - `derive_plate_layout(project, image_uid) -> PlateLayout`
-- `estimate_or_capture_plate_rotation(...) -> RotationResult`
+- `capture_plate_orientation(...) -> RotationResult`
 - `derive_plate_crop(...) -> CropResult`
+- `register_plate_grid(...) -> GridCoordinateAsset` (future divestment of the current production grid route)
 - `adjust_plate_visibility(...) -> AdjustmentResult`
 - `render_plate_annotation(...) -> AnnotationResult`
+- `compose_matrix(...) -> CompositionResult`
 
 Prototype `Proven` status means the isolated interface works with targeted evidence. It does not mean production integration is automatic or that the current `workflow-C` implementation should be rewritten around it.
