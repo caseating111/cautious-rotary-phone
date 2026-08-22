@@ -1,24 +1,48 @@
 # V10 workbook contract for workflow-C
 
-V10 is the preferred human-facing metadata source for full experiments. workflow-C should consume V10 metadata into one canonical internal project model and keep V10 terminology wherever practical.
+V10 is the preferred human-facing metadata source for full experiments. workflow-C should consume V10 into one canonical internal project model and keep V10 terminology wherever practical.
 
-This document describes the intended current contract. It is deliberately scoped to the features needed for the current workflow and the next annotation stages. Do not generalize beyond this contract unless a real use case requires it.
+This contract is deliberately scoped to the intended workflow. Do not generalize biological/layout semantics beyond it without a real use case.
+
+See also:
+
+- `FUTURE_WORKFLOW_CONTRACT.md` for the end-to-end user workflow;
+- `PROJECT_ASSET_CONTRACT.md` for reusable geometric/project state.
 
 ## Core principles
 
-- Read the existing `.xlsm` directly and preserve VBA/formulas; do not convert it to `.xlsx` merely for machine convenience.
-- Prefer resolved machine-readable workbook fields (`*`) where they exist. Sparse human-entry cells may intentionally rely on workbook fill-down/inheritance logic.
-- `Image UID` is the canonical image identity.
-- `sessionUID*` is the canonical acquisition/session identity.
-- `Original` is the camera/source basename for that session (for example `image1.jpg`). It is a locator, not the canonical identity.
-- `Working filename` is the workbook's intended readable filename. It is also a locator/reference, not the canonical identity.
-- Actual observed files may be raw, working-named, or known derivatives with different prefixes/extensions. workflow-C should reconcile them to the V10 `Image UID` instead of deriving experiment identity from filenames.
-- Full machine-specific source paths remain local workflow-C state rather than workbook metadata.
-- The image-blind privacy contract applies to all workbook-driven filesystem reconciliation and testing.
+- Read the existing workbook read-only and preserve formulas/VBA; do not convert formats merely for machine convenience unless a test fixture explicitly uses `.xlsx`.
+- Prefer resolved machine-readable workbook fields (`*`) where they exist.
+- Human-readable cells may intentionally be sparse because the workbook's machine fields expand/fill values for programmatic consumption.
+- `Image UID` is canonical image identity.
+- `sessionUID*` / normalized `sessionUID` is canonical session identity.
+- `Original` and `Working filename` are locators/names, not identity.
+- Actual observed files may be raw, working-named or known derivatives; reconcile them to Image UID rather than deriving experiment identity from filenames.
+- Machine-specific absolute source paths remain local project state, not workbook metadata.
+- Incomplete expected image sets are valid.
+
+## Human-readable versus machine-readable columns
+
+V10 contains user-friendly entry columns and machine-readable mirrored/expanded columns. Machine columns are generally marked with `*`.
+
+The adapter should use the intended machine-readable representation as the row-complete source while preserving human-facing terminology for UI/diagnostics.
+
+### Example: `Set` and `Set*`
+
+A user may enter one human-readable Set value such as `A` once for a logical block. The corresponding machine-readable `Set*` may contain `A` on **every machine row in that block**.
+
+Therefore:
+
+- blank repeated human cells do not automatically mean missing Set metadata;
+- code should read the expanded machine value where defined;
+- repeated `A` values in `Set*` are not multiple independent human assignments;
+- the user should not be required to type `A` repeatedly merely to satisfy the adapter.
+
+Apply the same general principle to other paired human/machine columns where V10 defines them.
 
 ## Canonical V10 terminology
 
-Prefer these names in workflow-C UI/docs/adapters when the concept is the same:
+Prefer these names externally when the concept matches:
 
 - `Exp`
 - `Date`
@@ -45,169 +69,204 @@ Prefer these names in workflow-C UI/docs/adapters when the concept is the same:
 - `Pos`
 - `Order`
 
-Python identifiers may use safe snake_case equivalents, but external terminology should remain consistent with V10 where practical.
+Python may use safe snake_case identifiers internally.
 
-## Session semantics
+## Session and image identity
 
-Each included Overview row represents one acquisition/session. `Image #` restarts at 1 for each session, matching acquisition software that restarts raw names such as `image1.jpg`, `image2.jpg`, etc.
+Each included acquisition/session may restart raw filenames such as `image1.jpg`, `image2.jpg`, etc.
 
-`sessionUID*` disambiguates otherwise-repeated raw filenames across sessions. `Image UID` combines session identity with image number and should remain stable even if the physical filename later changes.
+`sessionUID` scopes/disambiguates those repeated raw names. `Image UID` identifies the image record and must remain stable if a physical filename later changes.
 
-`Name` and `Time` are optional disambiguators. They should not be required when the resulting session identity/filenames are already unique.
+`Name` and `Time` are optional disambiguating metadata rather than required identity when the canonical UIDs already distinguish records.
 
 ## Media and Condition
 
-`Media` and `Condition` are separate optional metadata components. Do not require both.
+`Media` and `Condition` are independently optional. Do not make a flattened `Type` canonical.
 
-Supported examples include:
+Supported states include:
 
-- Media only: `Media=YPDA`, blank Condition.
-- Condition only: blank Media, `Condition=sugar`.
-- Both: `Media=YPDA`, `Condition=salt`.
+- Media only;
+- Condition only;
+- both;
+- neither where the workbook permits it.
 
-Do not make a flattened `Type` field canonical. If an existing processing handoff temporarily requires one field, generate a compatibility key from the separate V10 values.
+Generate a compatibility display/type key only where legacy code temporarily requires one.
 
-## Expected images versus files currently present
+## Expected images versus present files
 
-The Master Registry describes the expected image records. The filesystem describes what currently exists. An incomplete acquisition is a normal state, not an error by itself.
+The workbook describes expected records. The filesystem describes what currently exists.
 
 Reconciliation states should include at least:
 
-- `READY`: an expected image has one accepted physical-file match.
-- `EXPECTED_NOT_PRESENT`: expected by V10 but no matching file is currently present.
-- `AMBIGUOUS`: more than one plausible file maps to one expected image, or the mapping is otherwise unsafe.
-- `UNMAPPED_FILE`: a physical file is present but no V10 record safely claims it.
+- `READY` — one safe physical match;
+- `EXPECTED_NOT_PRESENT` — expected but not currently present;
+- `AMBIGUOUS` — unsafe/multiple plausible matches;
+- `UNMAPPED_FILE` — present physical file with no safe V10 owner.
 
-Preflight should summarize these states and allow processing of `READY` images after confirmation even when other expected images are absent.
+Missing expected files do not invalidate V10/project setup or block other READY images.
 
 ## File matching
 
-Match physical files to `Image UID` using controlled evidence, not arbitrary fuzzy matching. Preferred evidence order:
+Match to Image UID using controlled evidence:
 
-1. existing workflow-C provenance mapping;
-2. exact `Original` within the connected session folder;
+1. saved project provenance;
+2. exact `Original` within known session/source context;
 3. exact `Working filename`;
-4. a controlled derivative of `Working filename` using explicitly supported transformations such as known prefixes and extension changes;
-5. otherwise mark ambiguous/unmapped and request confirmation.
+4. explicitly supported derivative transformations (known prefixes/extensions);
+5. otherwise ambiguous/unmapped.
 
-Examples of controlled derivative matching may include a known `PROCESSED ` or `ANNOTATED ` prefix and a change from `.jpg` to `.tif`/`.tiff`, provided the remaining normalized name maps uniquely.
+Case comparisons should be insensitive where semantically appropriate on Windows while preserving original display capitalization.
 
-Do not delete arbitrary words or use broad similarity matching. If two candidates normalize to the same expected record, do not guess.
+Do not use arbitrary fuzzy filename matching or strip arbitrary words.
 
-Legal Windows filename characters such as commas and `%` should not be prohibited solely because a fragile parser dislikes them. Fix transport/parsing instead: use structured CSV handling, safe Python path objects, `subprocess` argument lists with `shell=False`, or internal transport aliases where an external tool requires them.
+## Optional working-copy renaming
 
-## Local session-folder mapping
+Raw generic source names may remain untouched in `raw/`.
 
-workflow-C should maintain a local mapping from `sessionUID` to the source/acquisition folder. Do not write absolute local source paths into V10 by default.
+Later project setup may optionally create a parallel `working/` tree using V10 `Working filename` nomenclature. Descriptive renaming is not required for processing because UID remains identity.
+
+If proposed human-readable names collide, use UID-aware project state/collision handling rather than overwriting.
+
+## AnnotationSet/profile model
+
+For current intended semantics, an `annotationSet` supplies the logical labeling/layout definition used by one or more images/experiments.
+
+It may reference:
+
+- **one or more strain profiles**;
+- **one current vertical profile**;
+- optional `other` label/profile data, currently ignored.
+
+### Vertical profile
+
+Current scope supports one effective vertical profile per annotation layout.
+
+The `Set` column physically present in the vertical-profile table is ignored for current image-processing semantics. It remains in V10 because removing it currently causes workbook issues.
+
+A vertical profile may be reused across multiple annotationSets/experiments.
+
+`Pos` gives physical row order. Repeated `labels_vertical` values remain separate positions.
+
+For current grid derivation:
+
+`GridRows = maximum valid applicable vertical Pos`
+
+so Pos 1..8 yields 8 physical rows.
+
+### Strain profile `Pos`
+
+Within each strain profile:
+
+- numeric `Pos` defines logical strain/column position;
+- `labels_strain` supplies display/biological label;
+- maximum/extent of valid `Pos` gives that profile's **local column width**;
+- do not infer position by sorting label text.
+
+Example: Pos 1..12 means local width 12.
+
+### Multiple strain profiles and `Order`
+
+When more than one strain profile is assigned to an annotationSet, `Order` defines **top-to-bottom profile/band order**:
+
+- `Order=1` -> upper row band;
+- `Order=2` -> next/lower row band;
+- later orders continue downward.
+
+`Order` is not the same as `Pos` and does not define strain-column order.
+
+Overall `GridCols` is the width of the **widest assigned strain profile**. Do not add widths together when profiles occupy different row bands.
 
 Example:
 
-```text
-E1_14.08.26_24h -> D:\Acquisitions\14.08.26_24h
-E1_15.08.26_48h -> D:\Acquisitions\15.08.26_48h
-```
+- profile A Pos 1..10;
+- profile B Pos 1..4;
+- overall grid width = 10;
+- lower/local band width remains 4.
 
-Within each connected session folder, `Original` can resolve repeated camera names safely because the `sessionUID` scopes them.
+### Default row-band mapping + override
 
-## Annotation-derived physical grid
+When several ordered strain profiles need physical row bands and no explicit row-band mapping exists, **even contiguous row distribution is the default** when it divides sensibly.
 
-For the current supported scope, the workbook does not need a separate grid table. Derive the physical grid from annotation metadata.
+For 8 rows + 2 ordered profiles:
 
-### Vertical profile scope
+- Order 1 -> rows 1-4;
+- Order 2 -> rows 5-8.
 
-Current scope supports one assigned vertical profile per annotationSet for grid derivation. Multiple vertical-profile blocks are deferred until there is a real need.
+However, equal distribution is a default, not an immutable scientific rule. The canonical layout/result must support explicit/manual row-band override later.
 
-A vertical profile may be reused by different experiments/annotation sets.
+If row distribution is not deterministically resolvable, report ambiguity rather than silently invent a scientifically meaningful mapping.
 
-**Ignore the `Set` column inside the vertical-profile table.** It remains present because removing it currently disrupts workbook behavior, but workflow-C must not use it to filter, partition, or otherwise interpret vertical labels. Treat the selected vertical profile's ordered nonblank `labels_vertical` / `Pos` records as one reusable physical row sequence.
+## Required current examples
 
-For the currently supported shape:
+### 8x12 single profile
 
-```text
-GridRows = maximum applicable vertical Pos
-```
+- one vertical profile Pos 1..8;
+- one strain profile Pos 1..12;
+- one band rows 1..8;
+- overall grid 8x12.
 
-The current sample profile is eight rows (`Pos` 1-8), so it defines an 8-row physical grid wherever that vertical profile is assigned.
+### 8x10 two strain profiles
 
-### Strain profiles and strain label bands
+- vertical profile Pos 1..8;
+- strain profile A Pos 1..10, Order 1;
+- strain profile B Pos 1..10, Order 2;
+- default row bands 1..4 / 5..8;
+- overall grid 8x10.
 
-One assigned strain profile may contain one or more `Set` blocks in the strain-label table. In the current workbook these strain-table `Set` values are **label-band grouping markers**, not filters against the Master Registry image `Set`.
+### Unequal-width synthetic case
 
-Therefore:
+- upper strain profile width 10;
+- lower strain profile width 4;
+- overall grid columns 10;
+- lower band retains local width 4.
 
-- do not choose strain labels by comparing the image's Master Registry `Set` to the strain-profile table `Set`;
-- within the assigned strain profile, each distinct populated strain-table `Set` block defines one ordered strain-label band;
-- strain-table blocks are interpreted top-to-bottom in their workbook order for the current scope;
-- within each block, `Pos` defines logical columns and `labels_strain` supplies the labels;
-- `GridCols` is the maximum `Pos` across all strain-label bands in the assigned strain profile.
+This case should be tested even if not represented by the current fixture because it proves the intended widest-profile semantics.
 
-If the assigned strain profile has one strain-label band, that band spans the full physical row range.
+## Four-click/grid integration
 
-If it has multiple strain-label bands and the number of physical rows divides evenly by the number of bands, allocate equal contiguous row bands from top to bottom. For the current 8-row, two-band case:
+The current four-click grid route is already working and should not be redesigned merely for V10.
 
-```text
-band 1 -> rows 1-4
-band 2 -> rows 5-8
-```
+V10-aware grid registration should receive logical row/column/band information from the canonical `PlateLayout` and persist the accepted measured grid/spot coordinates as a reusable project asset.
 
-If row allocation is not deterministic, flag metadata validation instead of guessing.
+Do not assume every row band necessarily has the same local final occupied column. If a future lower band is narrower, logical metadata must retain that fact.
 
-The widest strain-label band defines the overall physical grid width. A shorter lower band does not shrink the global grid; it means that row band has fewer occupied logical columns.
+Do not bake a specific four-click reference-row choice into the V10 adapter itself; the production alignment layer may select practical reference rows using the known layout.
 
-Current intended examples:
+## Reusable measured grid coordinates
 
-```text
-annotationSet 1 -> Strain 1
-Strain 1 band A -> strain1 ... strain12, Pos 1-12
-Vertical 1 -> Pos 1-8
-=> 8 x 12 grid, one strain-label band spanning all rows
-```
+After alignment accepts a grid, preserve coordinates/transform independently of crop export. Later operations should reuse them for:
 
-```text
-annotationSet 2 -> Strain 2
-Strain 2 band A -> exp2_strain1 ... exp2_strain10, Pos 1-10
-Strain 2 band B -> exp2_culture1 ... exp2_culture10, Pos 1-10
-Vertical 1 -> Pos 1-8
-=> 8 x 10 grid, band A rows 1-4, band B rows 5-8
-```
+- unprocessed culture crops;
+- processed culture crops after visibility processing;
+- overall-grid ROI statistics;
+- automatic strain/vertical annotation placement;
+- QC overlays;
+- selected-strain/matrix resolution.
 
-### Four-click geometry implication
-
-The eventual V10-aware four-click alignment should carry the true logical row/column coordinate for every click rather than assuming both reference rows share the same last column.
-
-For the common one-band 8-row layout, the reference rows remain row 1 and row 5 (`ceil(GridRows / 2) + 1` for the current even-row cases), using the first and last occupied columns on each reference row.
-
-For a two-band 8 x 10 layout whose two bands both contain ten columns, the four reference clicks are naturally:
-
-```text
-R1C1
-R1C10
-R5C1
-R5C10
-```
-
-If a lower band is shorter, use its true last occupied logical column rather than pretending it spans the full grid width.
-
-The geometry solver should use known row/column intervals to estimate per-column and per-row vectors.
+See `PROJECT_ASSET_CONTRACT.md`.
 
 ## Other labels
 
-`other` annotation labels are out of current scope and should be ignored for now. Do not spend implementation effort on them until requested.
+`other` labels remain out of current scope.
 
 ## Compatibility projections
 
-The current processing code may temporarily need generated CSV-shaped handoffs. These are implementation projections from the canonical V10-derived model, not parallel metadata authorities.
+Legacy CSV-shaped handoffs may be generated from the canonical V10 model where existing Fiji/Pillow components still need them. They are compatibility projections, not parallel metadata authorities.
 
-Where current code still expects fields such as `Filename`, `Experiment`, `Type`, `GridCols`, `Column` or `Strain`, generate them from the canonical model as needed while gradually adopting V10 naming in new code.
-
-The user should not normally need to maintain those generated handoff files manually when using V10.
+The user should not maintain them manually when running through V10.
 
 ## Provenance
 
-workflow-C should keep local provenance keyed by `Image UID`, including accepted observed source path/name and derived output paths/stages. Once a derived file has been registered, provenance should outrank future filename guessing.
+Keep local provenance keyed by Image UID, including accepted source/working/processed/annotated paths and stage states. Once a derived file is registered, provenance outranks future filename guessing.
 
-Provenance must remain image-blind: model-facing records may contain paths, names, checksums, counts, dimensions, stage/status and other non-pixel metadata, but never image content/previews.
+Provenance remains image-blind: model-facing state may store paths, checksums, dimensions, coordinates and text/numeric metadata, but not image previews/pixels.
 
 ## Validation posture
 
-Validate the workbook/model before processing and surface concise actionable issues. Do not silently infer ambiguous biological/layout semantics. Missing physical image files are allowed; malformed/ambiguous metadata should be reported separately from simply not-yet-present acquisitions.
+Surface concise actionable metadata errors rather than silently infer ambiguous biological/layout semantics. Distinguish malformed/ambiguous metadata from merely missing physical files.
+
+## Basic CSV compatibility boundary
+
+The currently working basic CSV route intentionally remains a simpler baseline. Do **not** retrofit V10 `Set`/annotationSet/profile-order semantics into that route just to make the inputs structurally identical.
+
+V10 is the richer metadata adapter feeding shared downstream image-processing/state contracts.
