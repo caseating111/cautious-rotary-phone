@@ -8,6 +8,8 @@ Before adding major new functionality, stabilize the current Windows + Python 3.
 
 Continue to obey the image-blind private-test contract and manual-validation backlog. Exhaust static/generated-artifact/telemetry checks before asking for desktop input.
 
+The first practical success target is deliberately narrow: process and composite/select strain matrices from the 14.08.26 and 15.08.26 sample sessions together. Both use annotationSet 1, one 12-column strain-label band, and an 8-row vertical layout. Do not let the more complex 16.08.26 layout delay this first working route.
+
 ## Priority 2 — V10 workbook integration
 
 Make V10 the preferred rich metadata input for full experiments.
@@ -21,10 +23,12 @@ Implement, in bounded slices:
 5. raw/working/known-derivative filename reconciliation;
 6. incomplete-dataset validation and READY / EXPECTED_NOT_PRESENT / AMBIGUOUS / UNMAPPED_FILE states;
 7. local provenance keyed by Image UID;
-8. annotation-derived grid metadata using the currently supported one-vertical-profile scope and ordered strain profiles;
-9. generated compatibility handoffs only where existing Fiji/Pillow code still needs them.
+8. annotation-derived grid metadata using the current one-vertical-profile scope;
+9. first prove multi-session 8 x 12 operation for 14.08.26 + 15.08.26 with annotationSet 1;
+10. then add the 16.08.26 8 x 10 two-strain-band layout from annotationSet 2;
+11. generated compatibility handoffs only where existing Fiji/Pillow code still needs them.
 
-See `V10_WORKBOOK_CONTRACT.md` for the detailed contract.
+See `V10_WORKBOOK_CONTRACT.md` for the detailed contract. In particular, ignore the vertical-profile table's `Set` values; they remain in the workbook only because removing them currently disrupts the workbook.
 
 Do not mix this stage with unrelated image-processing feature expansion.
 
