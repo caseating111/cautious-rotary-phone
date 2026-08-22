@@ -55,7 +55,7 @@ class OnePlateValidationTests(unittest.TestCase):
         self.assertNotIn("CLICK_ROI = 108", patched)
         self.assertNotIn("makeRectangle(round(viewW / 2 - CLICK_ROI", patched)
         self.assertIn('run("Select None")', patched)
-        self.assertIn('setTool("Rotated Rectangle Click Tool")', patched)
+        self.assertIn('setTool("Rotated Rectangle Click Tool - Cf00R11cc")', patched)
         self.assertIn("QC_W = w;", patched)
         self.assertIn("QC_H = h;", patched)
         self.assertIn("Overlay.drawRect(qcX - QC_W / 2", patched)
