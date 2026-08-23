@@ -238,6 +238,12 @@ def enhance_four_point_macro(source: str) -> str:
         accepted = 0;
         makeRectangle(round(viewW / 2 - CLICK_ROI / 2), round(viewH / 2 - CLICK_ROI / 2), CLICK_ROI, CLICK_ROI);
 
+        // Brief yield: let Java AWT finish painting the main ImageJ toolbar and
+        // plate image before the first modal waitForUser dialog appears.
+        // This is needed on cold launch because -macro runs on the main thread
+        // before the Event Dispatch Thread has processed all pending paint events.
+        wait(300);
+
         while (accepted == 0) {
             Overlay.remove;
 

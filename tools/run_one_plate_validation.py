@@ -181,13 +181,31 @@ def write_one_row_csv(path: Path, fieldnames: list[str], row: dict[str, str]) ->
 
 
 def patch_prepared_macro(source: str, proof_csv: Path) -> str:
+    import re
+
     old = f'imagesFile = "{batch.macro_path(batch.PENDING_IMAGES_CSV)}";'
     new = f'imagesFile = "{batch.macro_path(proof_csv)}";'
     if source.count(old) != 1:
         raise SystemExit(
             "Prepared macro no longer contains exactly one pending-images path; refusing to guess where to patch."
         )
-    return source.replace(old, new, 1)
+    source = source.replace(old, new, 1)
+
+    # After the single selected plate is processed, exit() so Fiji closes.
+    # This prevents the macro from iterating further folders (which would show
+    # spurious "NOT LISTED" images), and — critically — closes Fiji so that a
+    # subsequent button press in the controller launches a fresh process rather
+    # than triggering Fiji's single-instance forwarding mechanism, which would
+    # re-execute the macro in the still-running instance.
+    # Use a whitespace-flexible regex so CRLF and LF line endings both match.
+    source = re.sub(
+        r"(processedImages\+\+;)\s*(print\()",
+        r"\1\n        exit();\n\n        \2",
+        source,
+        count=1,
+    )
+    return source
+
 
 
 def patch_roi_click_interaction(source: str) -> str:
