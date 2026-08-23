@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import tkinter as tk
+import subprocess
+import sys
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
@@ -33,6 +35,8 @@ class ExtendedController(Controller):
     def __init__(self) -> None:
         super().__init__()
         self.preview_standard_outputs = tk.BooleanVar(value=True)
+        self.skip_done = tk.BooleanVar(value=True)
+        self.batch_subfolder = tk.StringVar()
         self.project_prefix = tk.StringVar(value=project_layout.default_prefix())
 
         project_frame = ttk.Frame(self)
@@ -84,17 +88,63 @@ class ExtendedController(Controller):
             text="Preview first when a standard Pillow job will create multiple images",
             variable=self.preview_standard_outputs,
         ).grid(row=22, column=0, columnspan=3, sticky="w", padx=5, pady=(3, 6))
+        batch_frame = ttk.Frame(self)
+        batch_frame.grid(row=23, column=0, columnspan=3, sticky="ew", padx=5, pady=(0, 3))
+        ttk.Button(batch_frame, text="Run all 4-point", command=self.run_all_four_point).pack(side="left")
+        ttk.Button(batch_frame, text="Run subfolder", command=self.run_subfolder_four_point).pack(side="left", padx=(5, 0))
+        subfolders = ttk.Combobox(batch_frame, textvariable=self.batch_subfolder, state="readonly", width=28)
+        subfolders.pack(side="left", padx=(8, 0))
+        subfolders.configure(postcommand=lambda: self.refresh_subfolders(subfolders))
+        ttk.Checkbutton(batch_frame, text="Skip done", variable=self.skip_done).pack(side="left", padx=(8, 0))
 
         ttk.Button(
             self,
             text="Run one-plate 4-point proof (choose plate)",
             command=lambda: self.run_one_plate_validation(rerun_done=False),
-        ).grid(row=23, column=0, columnspan=3, sticky="ew", padx=5, pady=(0, 6))
+        ).grid(row=24, column=0, columnspan=3, sticky="ew", padx=5, pady=(0, 6))
         ttk.Button(
             self,
             text="Reset / re-run selected DONE plate",
             command=lambda: self.run_one_plate_validation(rerun_done=True),
-        ).grid(row=24, column=0, columnspan=3, sticky="ew", padx=5, pady=(0, 6))
+        ).grid(row=25, column=0, columnspan=3, sticky="ew", padx=5, pady=(0, 6))
+
+    def refresh_subfolders(self, widget: ttk.Combobox) -> None:
+        root = Path(self.vars["image_root"].get().strip())
+        values = [path.name for path in sorted(root.iterdir()) if path.is_dir()] if root.is_dir() else []
+        widget.configure(values=values)
+        if self.batch_subfolder.get() not in values:
+            self.batch_subfolder.set("")
+
+    def run_all_four_point(self) -> None:
+        self.run_four_point_batch(None)
+
+    def run_subfolder_four_point(self) -> None:
+        folder = self.batch_subfolder.get().strip()
+        if not folder:
+            messagebox.showerror("Run subfolder", "Choose an image-root subfolder from the dropdown first.")
+            return
+        self.run_four_point_batch(folder)
+
+    def run_four_point_batch(self, subfolder: str | None) -> None:
+        if not self.save():
+            return
+        if not self.skip_done.get():
+            messagebox.showerror(
+                "Run four-point batch",
+                "Processing completed plates needs accepted-grid crop replacement, which is not enabled yet. Keep Skip done selected.",
+            )
+            return
+        script = Path(one_plate_validation.batch.__file__).resolve()
+        args = [sys.executable, str(script), "--legacy"]
+        if subfolder:
+            args.extend(["--subfolder", subfolder])
+        try:
+            subprocess.Popen(args)
+        except OSError as exc:
+            messagebox.showerror("Run four-point batch", str(exc))
+            return
+        scope = subfolder or "all pending folders"
+        self.status.set(f"Launched four-point batch for {scope}; completed plates are skipped.")
 
     def choose_csv_folder(self) -> None:
         initial = None
@@ -263,7 +313,11 @@ class ExtendedController(Controller):
             started_ahk_here = bool(self.ahk_process and self.ahk_process.poll() is None)
 
         try:
-            selected = one_plate_validation.run(filename, legacy=True, rerun_done=rerun_done)
+            selected = one_plate_validation.run(
+                filename,
+                legacy=True,
+                rerun_done=rerun_done,
+            )
         except SystemExit as exc:
             if started_ahk_here:
                 self.stop_ahk()
@@ -278,14 +332,6 @@ class ExtendedController(Controller):
             if value
         )
         self.status.set(f"One-plate 4-point proof launched: {filename} | {context}")
-        dispositions = selected.get("_dispositions", "")
-        messagebox.showinfo(
-            "One-plate validation",
-            f"Launched exactly one selected pending source:\n{filename}\n\nContext: {context or 'not specified'}\n\n"
-            "The proof uses the four centre clicks, mathematical full-grid QC, and fixed crop dimensions. "
-            "The Fiji macro handoff reuses an existing valid Fiji instance instead of deliberately opening another Fiji UI."
-            + (f"\n\nCurrent physical-file decisions:\n{dispositions}" if dispositions else ""),
-        )
 
     def standard_output_count(self, alias: str, config: dict) -> int:
         crop_count = None

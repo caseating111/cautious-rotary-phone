@@ -148,6 +148,34 @@ def run_preflight(
     return pending
 
 
+def restrict_pending_to_subfolder(config: dict, subfolder: str | None) -> int:
+    """Keep the normal pending-only contract, optionally scoped to one direct folder."""
+    pending = run_preflight(legacy=True)
+    if not subfolder:
+        return pending
+    try:
+        from tools.preflight_batch import discover_sources
+    except ModuleNotFoundError:
+        from preflight_batch import discover_sources
+    wanted = subfolder.casefold()
+    source_names = {
+        path.name.casefold()
+        for path in discover_sources(Path(config["image_root"]))
+        if path.parent.name.casefold() == wanted
+    }
+    if not source_names:
+        raise SystemExit(f"No image subfolder named {subfolder!r} exists directly under image_root.")
+    with PENDING_IMAGES_CSV.open("r", encoding="utf-8-sig", newline="") as handle:
+        rows = [row for row in csv.DictReader(handle) if (row.get("Filename") or "").casefold() in source_names]
+    if not rows:
+        raise SystemExit("No pending images match the selected subfolder.")
+    with PENDING_IMAGES_CSV.open("w", encoding="utf-8-sig", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=["Filename", "Experiment", "Set", "Type"])
+        writer.writeheader()
+        writer.writerows(rows)
+    return len(rows)
+
+
 def ensure_crop_output_root(config: dict) -> Path:
     root = Path(config["crop_output"])
     try:
@@ -265,7 +293,7 @@ def enhance_four_point_macro(source: str) -> str:
 
             waitForUser(
                 "1 / 4 - R1C1",
-                sourceTitle + "\n\nClick the centre of ROW 1, COLUMN 1 with the ROI 1-click Rotated Rectangle Click Tool, then click OK."
+                "Click the R1C1 colony centre, then OK."
             );
             getSelectionBounds(x, y, w, h);
             if (w <= 0 || h <= 0)
@@ -275,7 +303,7 @@ def enhance_four_point_macro(source: str) -> str:
 
             waitForUser(
                 "2 / 4 - R1C" + gridCols,
-                sourceTitle + "\n\nClick the centre of ROW 1, COLUMN " + gridCols + " with the ROI 1-click Rotated Rectangle Click Tool, then click OK."
+                "Click the R1C" + gridCols + " colony centre, then OK."
             );
             getSelectionBounds(x, y, w, h);
             if (w <= 0 || h <= 0)
@@ -285,7 +313,7 @@ def enhance_four_point_macro(source: str) -> str:
 
             waitForUser(
                 "3 / 4 - R5C1",
-                sourceTitle + "\n\nClick the centre of ROW 5, COLUMN 1 with the ROI 1-click Rotated Rectangle Click Tool, then click OK."
+                "Click the R5C1 colony centre, then OK."
             );
             getSelectionBounds(x, y, w, h);
             if (w <= 0 || h <= 0)
@@ -295,7 +323,7 @@ def enhance_four_point_macro(source: str) -> str:
 
             waitForUser(
                 "4 / 4 - R5C" + gridCols,
-                sourceTitle + "\n\nClick the centre of ROW 5, COLUMN " + gridCols + " with the ROI 1-click Rotated Rectangle Click Tool, then click OK."
+                "Click the R5C" + gridCols + " colony centre, then OK."
             );
             getSelectionBounds(x, y, w, h);
             if (w <= 0 || h <= 0)
@@ -359,8 +387,8 @@ def enhance_four_point_macro(source: str) -> str:
 
             Dialog.create("Full-grid QC");
             Dialog.addMessage(
-                "Inspect the mathematically calculated 8 x " + gridCols + " grid.\n\n" +
-                "Accept exports the fixed-size crops from the unchanged source image. Retry repeats the four centre placements."
+                "Inspect the 8 x " + gridCols + " grid.\n\n" +
+                "Accept exports crops. Retry repeats the four clicks."
             );
             Dialog.addChoice("Action", newArray("Accept", "Retry"), "Accept");
             Dialog.show();
@@ -446,6 +474,7 @@ def main() -> None:
         action="store_true",
         help="validate/preflight and build the configured Fiji macro without requiring or launching Fiji",
     )
+    parser.add_argument("--subfolder", help="process only this immediate image-root subfolder")
     parser.add_argument(
         "--legacy",
         action="store_true",
@@ -461,7 +490,7 @@ def main() -> None:
     validate_csvs(config)
     if args.legacy:
         validate_legacy_grid_widths(config)
-    pending = run_preflight(legacy=args.legacy)
+    pending = restrict_pending_to_subfolder(config, args.subfolder) if args.legacy else run_preflight(legacy=False)
     ensure_crop_output_root(config)
     macro = build_legacy_macro(config) if args.legacy else build_macro(config)
 

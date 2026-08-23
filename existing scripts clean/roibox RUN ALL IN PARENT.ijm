@@ -160,11 +160,6 @@ for (folderIndex = 0; folderIndex < folders.length; folderIndex++) {
         // complete and therefore not in the pending-only metadata file.
         if (experiment == "") {
 
-            print(
-                "NOT LISTED / NOT PENDING: " +
-                fileName
-            );
-
             notListedImages++;
 
             continue;

@@ -75,7 +75,7 @@ class ControllerContractTests(unittest.TestCase):
 
     def test_single_hotkey_helper_covers_full_column_and_four_point_dialogs(self) -> None:
         text = AHK_HELPER.read_text(encoding="utf-8")
-        for title in ("1 / 2", "2 / 2", "Alignment QC", "Full-grid QC", "1 / 4", "2 / 4", "3 / 4", "4 / 4", "ALL DONE"):
+        for title in ("Next plate", "ROI 1-click", "1 / 2", "2 / 2", "Alignment QC", "Full-grid QC", "1 / 4", "2 / 4", "3 / 4", "4 / 4", "ALL DONE"):
             self.assertIn(f'"{title}"', text)
         self.assertIn('#HotIf WinExist("Alignment QC") || WinExist("Full-grid QC")', text)
         self.assertIn("Esc::ExitApp", text)
@@ -103,7 +103,7 @@ class ControllerContractTests(unittest.TestCase):
         self.assertIn('WinMoveBottom("ahk_id " hwnd)', text)
         self.assertIn('WinSetAlwaysOnTop(1, "ahk_id " hwnd)', text)
         self.assertIn('__alignment_view__ ahk_class SunAwtFrame ahk_exe fiji-windows-x64.exe', text)
-        self.assertIn("targetY := top + 360", text)
+        self.assertIn("targetY := top + 230", text)
         self.assertNotIn("WinHide(", text)
         self.assertNotIn("WinClose(", text)
         self.assertNotIn("DetectHiddenWindows True", text)

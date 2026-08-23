@@ -95,8 +95,10 @@ PlaceAlignmentPreviewBelowDialogs()
 
     MonitorGetWorkArea(1, &left, &top, &right, &bottom)
     targetX := left + 10
-    targetY := top + 360
-    for title in ["Next plate", "ROI 1-click", "1 / 4", "2 / 4", "3 / 4", "4 / 4", "Full-grid QC"]
+    ; The next-plate notice precedes the preview, so it does not need to reserve
+    ; screen space.  Keep the preview close to the compact click/QC dialogs.
+    targetY := top + 230
+    for title in ["ROI 1-click", "1 / 4", "2 / 4", "3 / 4", "4 / 4", "Full-grid QC"]
     {
         if dialog := WinExist(title)
         {
@@ -170,7 +172,7 @@ ShellMessage(wParam, lParam, msg, hwnd)
 AlignmentDialogExists()
 {
     for title in [
-        "1 / 2", "2 / 2", "Alignment QC", "Full-grid QC",
+        "Next plate", "ROI 1-click", "1 / 2", "2 / 2", "Alignment QC", "Full-grid QC",
         "1 / 4", "2 / 4", "3 / 4", "4 / 4",
         "ALL DONE"
     ]
@@ -188,7 +190,7 @@ AlignmentDialogExists()
 z::
 {
     for title in [
-        "1 / 2", "2 / 2", "Alignment QC", "Full-grid QC",
+        "Next plate", "ROI 1-click", "1 / 2", "2 / 2", "Alignment QC", "Full-grid QC",
         "1 / 4", "2 / 4", "3 / 4", "4 / 4",
         "ALL DONE"
     ]
