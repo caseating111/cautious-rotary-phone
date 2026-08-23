@@ -1,9 +1,6 @@
 from pathlib import Path
 import csv
 from PIL import Image, ImageDraw, ImageFont
-from pathlib import Path
-import csv
-from PIL import Image, ImageDraw, ImageFont
 
 
 # ============================================================
@@ -407,7 +404,8 @@ def build_matrix(exp, set_name, state, rows, conditions, all_files):
             y,
             ROW_LABEL_WIDTH - 10,
             cell_h,
-            ROW_FONT
+            ROW_FONT,
+            colour=label_colour
         )
 
         for c, condition in enumerate(conditions):

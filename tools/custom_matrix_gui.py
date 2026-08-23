@@ -221,18 +221,6 @@ class CustomMatrixBuilder(tk.Tk):
             return
         self.status.set("Previous custom selection restored.")
 
-    def check_availability(self) -> None:
-        try:
-            selection = self.current_selection()
-            with tempfile_selection_csvs(self.config_data, selection) as filtered:
-                contract = pillow_adapter.expected_crop_contract(filtered["grid_csv"], filtered["images_csv"])
-                selected = pillow_adapter.validate_unique_crop_matches(
-                    Path(self.config_data["crop_output"]), filtered["grid_csv"], filtered["images_csv"], allow_missing=True
-                )
-            total = len(contract)
-            self.status.set(f"Exact current crops available: {len(selected)} / {total}. Build remains strict and will stop if selected crops are missing.")
-        except SystemExit as exc:
-            messagebox.showerror("Crop availability", str(exc))
 
     def build_matrix(self) -> None:
         try:
@@ -265,16 +253,10 @@ class tempfile_selection_csvs:
 
 
 def main() -> None:
-    try:
-        app = CustomMatrixBuilder()
-    except SystemExit as exc:
-        root = tk.Tk()
-        root.withdraw()
-        messagebox.showerror("Custom matrix", str(exc))
-        root.destroy()
-        return
-    app.mainloop()
-
+    raise SystemExit(
+        "This unrecorded custom-matrix GUI entrypoint is retired. "
+        "Use tools/custom_matrix_gui_recorded.py or start_custom_matrix.cmd."
+    )
 
 if __name__ == "__main__":
     main()

@@ -30,7 +30,7 @@ def validate_selected_freshness(
     sources = discover_sources(image_root)
     source_by_name: dict[str, list[Path]] = defaultdict(list)
     for source in sources:
-        source_by_name[source.name].append(source)
+        source_by_name[source.name.casefold()].append(source)
 
     _, grid_rows = custom.read_rows(filtered["grid_csv"])
     _, image_rows = custom.read_rows(filtered["images_csv"])
@@ -45,7 +45,7 @@ def validate_selected_freshness(
     for raw_row in image_rows:
         row = {key: (value or "").strip() for key, value in raw_row.items()}
         filename = row.get("Filename", "")
-        matches = source_by_name.get(filename, [])
+        matches = source_by_name.get(filename.casefold(), [])
         if len(matches) != 1:
             issues.append(f"{filename}: expected one current source image, found {len(matches)}")
             continue
@@ -79,7 +79,6 @@ def inspect_selected_inputs(config: dict, selection: dict) -> tuple[int, int]:
             Path(config["crop_output"]),
             filtered["grid_csv"],
             filtered["images_csv"],
-            allow_missing=False,
         )
         validate_selected_freshness(config, filtered, selected_paths)
         return len(contract), len(selected_paths)

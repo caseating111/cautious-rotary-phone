@@ -165,7 +165,7 @@ def windows_path_key(path: Path, root: Path) -> str:
 
 def build_report(
     config: dict,
-    require_full_column_geometry: bool = True,
+    require_alignment_geometry: bool = True,
     require_fiji_handoff_paths: bool = True,
 ) -> tuple[list[str], bool, list[dict[str, str]]]:
     image_root = Path(config["image_root"])
@@ -186,14 +186,14 @@ def build_report(
     for row in grid:
         grid_by_key[(row.get("Experiment", ""), row.get("Set", ""))].append(row)
 
-    unsupported_full_column_grids: list[str] = []
-    if require_full_column_geometry:
+    unsupported_alignment_grids: list[str] = []
+    if require_alignment_geometry:
         for (exp, set_name), rows_for_grid in sorted(grid_by_key.items()):
             declared_values = {int(row["GridCols"]) for row in rows_for_grid}
             if len(declared_values) == 1:
                 declared = next(iter(declared_values))
                 if declared < 2:
-                    unsupported_full_column_grids.append(f"{exp}/{set_name}: GridCols={declared}")
+                    unsupported_alignment_grids.append(f"{exp}/{set_name}: GridCols={declared}")
 
     metadata_by_name: dict[str, list[dict[str, str]]] = defaultdict(list)
     for row in images:
@@ -324,7 +324,7 @@ def build_report(
     ]
 
     sections = [
-        ("GRIDS UNSUPPORTED BY FULL-COLUMN ALIGNMENT", unsupported_full_column_grids),
+        ("GRIDS UNSUPPORTED BY FOUR-POINT ALIGNMENT", unsupported_alignment_grids),
         ("SOURCE FOLDERS UNSAFE FOR FIJI ARGUMENT HANDOFF", delimiter_unsafe_folders),
         ("UNMAPPED SOURCE IMAGES", [str(path.relative_to(image_root)) for path in unmapped_sources]),
         ("DUPLICATE SOURCE BASENAMES", duplicate_source_names),

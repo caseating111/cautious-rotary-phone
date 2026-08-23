@@ -89,23 +89,23 @@ def build_rows(
 
     existing_by_name: dict[str, list[dict[str, str]]] = defaultdict(list)
     for row in existing:
-        existing_by_name[row.get("Filename", "")].append(row)
+        existing_by_name[row.get("Filename", "").casefold()].append(row)
 
     draft_by_key: dict[tuple[str, str], dict[str, str]] = {}
     for row in previous_review or []:
-        key = (row.get("Folder", ""), row.get("Filename", ""))
+        key = (row.get("Folder", "").casefold(), row.get("Filename", "").casefold())
         if all(key):
             draft_by_key[key] = row
 
-    source_counts = Counter(path.name for path in sources)
+    source_counts = Counter(path.name.casefold() for path in sources)
     source_names = set(source_counts)
     rows: list[dict[str, str]] = []
 
     for source in sources:
-        matches = existing_by_name.get(source.name, [])
-        draft = draft_by_key.get((source.parent.name, source.name), {})
+        matches = existing_by_name.get(source.name.casefold(), [])
+        draft = draft_by_key.get((source.parent.name.casefold(), source.name.casefold()), {})
 
-        if source_counts[source.name] > 1:
+        if source_counts[source.name.casefold()] > 1:
             status = "DUPLICATE_SOURCE_BASENAME"
             metadata = matches[0] if len(matches) == 1 else draft
         elif len(matches) == 1:
@@ -131,7 +131,7 @@ def build_rows(
 
     for row in existing:
         filename = row.get("Filename", "")
-        if filename and filename not in source_names:
+        if filename and filename.casefold() not in source_names:
             rows.append(
                 {
                     "Filename": filename,
@@ -143,7 +143,7 @@ def build_rows(
                 }
             )
 
-    rows.sort(key=lambda row: (row["Folder"], row["Filename"], row["Status"]))
+    rows.sort(key=lambda row: (row["Folder"].casefold(), row["Filename"].casefold(), row["Status"]))
     counts = Counter(row["Status"] for row in rows)
     return rows, dict(counts)
 

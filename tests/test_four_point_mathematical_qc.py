@@ -29,14 +29,14 @@ class FourPointMathematicalQCTests(unittest.TestCase):
 
     def test_full_grid_qc_is_pure_math_and_runs_before_export(self) -> None:
         text = batch.enhance_four_point_macro(self.source)
-        qc = text.index('Dialog.create("Full-grid QC")')
+        qc = text.index('Dialog.create("Full-grid QC --')
         export = text.index("// EXPORT CROPS", qc)
         self.assertLess(qc, export)
         self.assertIn("for (qcRow = 1; qcRow <= 8; qcRow++)", text)
         self.assertIn("for (qcCol = 1; qcCol <= gridCols; qcCol++)", text)
         self.assertIn("v = (qcRow - 1) / 4;", text)
         self.assertIn("u = (qcCol - 1) / (gridCols - 1);", text)
-        self.assertIn('newArray("Accept", "Retry")', text)
+        self.assertIn('newArray("ACCEPT", "RETRY")', text)
         self.assertNotIn("Array.findMaxima", text)
         self.assertNotIn("getProfile()", text)
 

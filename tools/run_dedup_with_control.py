@@ -146,7 +146,6 @@ def build_preview(experiment: str, set_name: str) -> PreviewResult:
         Path(config["crop_output"]),
         Path(config["grid_csv"]),
         Path(config["images_csv"]),
-        allow_missing=False,
     )
     if not selected_crops:
         raise SystemExit("No validated crops are available to preview.")
@@ -196,7 +195,6 @@ def run(experiment: str, set_name: str, no_open_output: bool = False) -> Path:
         crop_root,
         Path(config["grid_csv"]),
         Path(config["images_csv"]),
-        allow_missing=False,
     )
     output_root = pillow_adapter.ensure_matrix_output_root(config)
     before = pillow_adapter.child_directories(output_root)

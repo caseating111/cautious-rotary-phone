@@ -115,7 +115,7 @@ CancelDelayedDuplicatePrompt()
 MoveFijiToolbarOnce()
 {
     bestHwnd := 0
-    for hwnd in WinGetList("ahk_class SunAwtFrame")
+    for hwnd in WinGetList("ahk_class SunAwtFrame ahk_exe fiji-windows-x64.exe")
     {
         title := ""
         try title := WinGetTitle(hwnd)
@@ -128,25 +128,6 @@ MoveFijiToolbarOnce()
         }
     }
 
-    if !bestHwnd
-    {
-        for hwnd in WinGetList()
-        {
-            try className := WinGetClass(hwnd)
-            catch
-                continue
-            if (className != "SunAwtFrame")
-                continue
-            try title := WinGetTitle(hwnd)
-            catch
-                continue
-            if InStr(title, "(Fiji Is Just) ImageJ") || InStr(title, "Fiji") || InStr(title, "ImageJ")
-            {
-                bestHwnd := hwnd
-                break
-            }
-        }
-    }
 
     if !bestHwnd
         return
@@ -244,6 +225,8 @@ OnMessage(SHELLHOOK, ShellMessage)
 ShellMessage(wParam, lParam, msg, hwnd)
 {
     if (wParam != 1)
+        return
+    if !WinExist("ahk_id " lParam " ahk_exe fiji-windows-x64.exe")
         return
     try title := WinGetTitle("ahk_id " lParam)
     catch

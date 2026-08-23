@@ -3,36 +3,55 @@ setlocal
 set "CAUTIOUS_CONTROLLER_LAUNCHER=1"
 cd /d "%~dp0"
 
-rem Production runtime: Miniforge workflow-c (Python 3.11).  Candidate
+set "CLOSE_REQUEST=%USERPROFILE%\.cautious-rotary-phone\controller_close.request"
+if exist "%CLOSE_REQUEST%" del /q "%CLOSE_REQUEST%"
+if exist "%CLOSE_REQUEST%" (
+    echo Could not clear stale controller close request: %CLOSE_REQUEST%
+    exit /b 1
+)
+
+rem Production runtime: Miniforge workflow-c (Python 3.11). Candidate
 rem fallbacks are used only when this runtime is unavailable, never after a
 rem controller error or Ctrl+C.
+set "WORKFLOW_PY=%USERPROFILE%\miniforge3\envs\workflow-c\python.exe"
+call :direct_available
+if not errorlevel 1 goto :run_direct
 set "WORKFLOW_PY=%USERPROFILE%\.conda\envs\workflow-c\python.exe"
-if exist "%WORKFLOW_PY%" goto :run_direct
+call :direct_available
+if not errorlevel 1 goto :run_direct
 set "WORKFLOW_PY=C:\ProgramData\miniforge3\envs\workflow-c\python.exe"
-if exist "%WORKFLOW_PY%" goto :run_direct
+call :direct_available
+if not errorlevel 1 goto :run_direct
 
 where conda >nul 2>nul
 if not errorlevel 1 (
-    call conda run --no-capture-output -n workflow-c python -c "import PIL, tkinter" >nul 2>nul
+    call conda run --no-capture-output -n workflow-c python -c "import PIL, tkinter, sys; raise SystemExit(sys.version_info[:2] != (3, 11))" >nul 2>nul
     if not errorlevel 1 goto :run_conda
 )
 where py >nul 2>nul
 if not errorlevel 1 (
-    py -3.11 -c "import PIL, tkinter" >nul 2>nul
+    py -3.11 -c "import PIL, tkinter, sys; raise SystemExit(sys.version_info[:2] != (3, 11))" >nul 2>nul
     if not errorlevel 1 goto :run_py311
 )
 where python >nul 2>nul
 if not errorlevel 1 (
-    python -c "import PIL, tkinter" >nul 2>nul
+    python -c "import PIL, tkinter, sys; raise SystemExit(sys.version_info[:2] != (3, 11))" >nul 2>nul
     if not errorlevel 1 goto :run_path
 )
 
 echo.
-echo No compatible Python with Pillow and Tkinter was found.
-echo Expected Miniforge workflow-c Python 3.11 at:
+echo No compatible Python 3.11 with Pillow and Tkinter was found.
+echo Expected Miniforge workflow-c Python at:
+echo %USERPROFILE%\miniforge3\envs\workflow-c\python.exe
 echo %USERPROFILE%\.conda\envs\workflow-c\python.exe
+echo C:\ProgramData\miniforge3\envs\workflow-c\python.exe
 pause
 exit /b 1
+
+:direct_available
+if not exist "%WORKFLOW_PY%" exit /b 1
+"%WORKFLOW_PY%" -c "import PIL, tkinter, sys; raise SystemExit(sys.version_info[:2] != (3, 11))" >nul 2>nul
+exit /b %ERRORLEVEL%
 
 :run_direct
 "%WORKFLOW_PY%" tools\workflow_controller_extended.py
@@ -58,8 +77,8 @@ if not "%CONTROLLER_EXIT%"=="0" (
 exit /b %CONTROLLER_EXIT%
 
 :exit_if_controller_requested
-if exist "%USERPROFILE%\.cautious-rotary-phone\controller_close.request" (
-    del /q "%USERPROFILE%\.cautious-rotary-phone\controller_close.request"
+if exist "%CLOSE_REQUEST%" (
+    del /q "%CLOSE_REQUEST%"
     exit /b 0
 )
 exit /b 1

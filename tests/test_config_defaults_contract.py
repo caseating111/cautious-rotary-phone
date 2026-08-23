@@ -13,7 +13,7 @@ from tools import workflow_controller
 
 
 class ConfigDefaultsContractTests(unittest.TestCase):
-    def test_crop_and_alignment_defaults_stay_consistent_across_handoffs(self) -> None:
+    def test_crop_defaults_stay_consistent_across_handoffs(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             config_path = root / "config.json"
@@ -43,8 +43,6 @@ class ConfigDefaultsContractTests(unittest.TestCase):
             self.assertEqual((preflight["crop_width"], preflight["crop_height"]), (130, 546))
             self.assertEqual((pillow["crop_width"], pillow["crop_height"]), (130, 546))
             self.assertEqual((controller["crop_width"], controller["crop_height"]), ("130", "546"))
-            self.assertEqual(batch["alignment_tolerance"], 0.08)
-            self.assertEqual(controller["alignment_tolerance"], "0.08")
 
 
 if __name__ == "__main__":

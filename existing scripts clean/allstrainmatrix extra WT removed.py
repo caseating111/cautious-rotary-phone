@@ -1,9 +1,6 @@
 from pathlib import Path
 import csv
 from PIL import Image, ImageDraw, ImageFont
-from pathlib import Path
-import csv
-from PIL import Image, ImageDraw, ImageFont
 
 
 # ============================================================

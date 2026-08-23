@@ -33,24 +33,66 @@ RESUME_MARKER_FILE = APP_RUNTIME_DIR / "four_point_resume.marker"
 OWNED_FIJI_PIDS_FILE = APP_RUNTIME_DIR / "four_point_owned_fiji_pids.txt"
 CLOSE_REQUEST_FILE = APP_RUNTIME_DIR / "controller_close.request"
 
+
+def process_is_running(pid: int) -> bool:
+    """Check liveness without using os.kill(pid, 0), which kills on Windows."""
+    if pid <= 0:
+        return False
+    if sys.platform == "win32":
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        open_process = kernel32.OpenProcess
+        open_process.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+        open_process.restype = wintypes.HANDLE
+        wait_for_single_object = kernel32.WaitForSingleObject
+        wait_for_single_object.argtypes = (wintypes.HANDLE, wintypes.DWORD)
+        wait_for_single_object.restype = wintypes.DWORD
+        close_handle = kernel32.CloseHandle
+        close_handle.argtypes = (wintypes.HANDLE,)
+        close_handle.restype = wintypes.BOOL
+        handle = open_process(0x00100000, False, pid)
+        if not handle:
+            return False
+        try:
+            return wait_for_single_object(handle, 0) == 0x00000102
+        finally:
+            close_handle(handle)
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
 def active_batch_marker() -> bool:
     """Return true only for a live runner; discard stale crash leftovers."""
     try:
         pid = int(ACTIVE_BATCH_FILE.read_text(encoding="utf-8").strip())
-        os.kill(pid, 0)
     except (FileNotFoundError, OSError, ValueError):
-        try:
-            ACTIVE_BATCH_FILE.unlink()
-        except FileNotFoundError:
-            pass
+        ACTIVE_BATCH_FILE.unlink(missing_ok=True)
         return False
-    return True
+    if process_is_running(pid):
+        return True
+    ACTIVE_BATCH_FILE.unlink(missing_ok=True)
+    return False
+
 
 def owned_fiji_pids() -> set[int]:
     try:
-        return {int(line) for line in OWNED_FIJI_PIDS_FILE.read_text(encoding="utf-8").splitlines() if line.strip()}
-    except (FileNotFoundError, ValueError):
+        lines = OWNED_FIJI_PIDS_FILE.read_text(encoding="utf-8").splitlines()
+    except FileNotFoundError:
         return set()
+    pids: set[int] = set()
+    for line in lines:
+        try:
+            pids.add(int(line.strip()))
+        except ValueError:
+            continue
+    return {pid for pid in pids if pid > 0}
 
 
 def terminate_owned_fiji(pid: int) -> None:
@@ -58,6 +100,12 @@ def terminate_owned_fiji(pid: int) -> None:
     if "fiji-windows-x64.exe" not in probe.stdout.casefold():
         return
     subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True, check=False)
+
+
+def cleanup_stale_owned_fiji_processes() -> None:
+    for pid in owned_fiji_pids():
+        terminate_owned_fiji(pid)
+    OWNED_FIJI_PIDS_FILE.unlink(missing_ok=True)
 
 STANDARD_OUTPUT_TYPES = {
     "matrices": "matrices",
@@ -69,6 +117,8 @@ STANDARD_OUTPUT_TYPES = {
 class ExtendedController(Controller):
     def __init__(self) -> None:
         super().__init__()
+        if not active_batch_marker():
+            cleanup_stale_owned_fiji_processes()
         self.protocol("WM_DELETE_WINDOW", self.close_controller)
         self.preview_standard_outputs = tk.BooleanVar(value=self.config_bool("preview_standard_outputs", True))
         self.replace_existing_crops = tk.BooleanVar(value=self.config_bool("replace_existing_crops", False))
@@ -318,6 +368,24 @@ class ExtendedController(Controller):
         if replace_existing:
             args.append("--replace-existing-crops")
 
+        try:
+            config = one_plate_validation.batch.load_config(
+                require_fiji=True,
+                require_fiji_handoff_paths=False,
+            )
+            fiji_executable = Path(config["fiji_executable"])
+            if one_plate_validation.ensure_roi_click_patch(fiji_executable):
+                messagebox.showinfo(
+                    "Run four-point batch",
+                    "The Fiji one-click ROI patch was installed. Restart Fiji, then start the batch again.",
+                )
+                self.status.set("Fiji ROI patch installed; restart Fiji before batch alignment.")
+                return
+        except SystemExit as exc:
+            messagebox.showerror("Run four-point batch", str(exc))
+            self.status.set("Four-point batch was not launched because Fiji readiness checks failed.")
+            return
+
         ahk_was_running = bool(self.ahk_process and self.ahk_process.poll() is None)
         if not ahk_was_running:
             ahk = Path(self.vars["ahk_executable"].get().strip())
@@ -340,6 +408,30 @@ class ExtendedController(Controller):
         scope = subfolder or "all pending folders"
         action = "accepted-grid crop replacement is enabled" if replace_existing else "completed plates are skipped"
         self.status.set(f"Launched four-point batch for {scope}; {action}.")
+        self.after(300, lambda: self.monitor_batch_process(batch_process, saw_active=False))
+
+    def monitor_batch_process(self, process: subprocess.Popen, *, saw_active: bool) -> None:
+        """Report wrapper completion without treating process exit alone as crop success."""
+        saw_active = saw_active or active_batch_marker()
+        return_code = process.poll()
+        if return_code is None:
+            self.after(300, lambda: self.monitor_batch_process(process, saw_active=saw_active))
+            return
+        self.fiji_processes = [candidate for candidate in self.fiji_processes if candidate.poll() is None]
+        if return_code != 0:
+            messagebox.showerror(
+                "Run four-point batch",
+                f"Four-point batch failed (exit {return_code}). Check the console for details.",
+            )
+            self.status.set(f"Four-point batch failed (exit {return_code}).")
+        elif saw_active:
+            self.status.set("Four-point batch wrapper exited; run preflight to verify crop completion.")
+        else:
+            messagebox.showwarning(
+                "Run four-point batch",
+                "The batch wrapper exited before its active marker was observed. Check the console and run preflight.",
+            )
+            self.status.set("Four-point batch ended before active execution was observed.")
 
     def choose_csv_folder(self) -> None:
         initial = None
@@ -497,7 +589,15 @@ class ExtendedController(Controller):
             self.status.set("One-plate proof cancelled before Fiji launch.")
             return
 
-        filename = Path(chosen).name
+        chosen_path = Path(chosen).resolve()
+        try:
+            chosen_path.relative_to(Path(image_root).resolve())
+        except ValueError:
+            messagebox.showerror("One-plate validation", "Choose a plate inside the configured raw-image folder.")
+            self.status.set("One-plate proof was not launched because the selected file was outside the configured image root.")
+            return
+
+        filename = chosen_path.name
         self.status.set(f"Refreshing pending list and preparing 4-point proof for {filename}…")
         self.update_idletasks()
         ahk_was_running = bool(self.ahk_process and self.ahk_process.poll() is None)
@@ -514,7 +614,7 @@ class ExtendedController(Controller):
             selected, fiji_process = one_plate_validation.run_with_process(
                 filename,
                 rerun_done=rerun_done,
-                replace_existing=self.replace_existing_crops.get(),
+                replace_existing=rerun_done or self.replace_existing_crops.get(),
             )
         except SystemExit as exc:
             if started_ahk_here:
@@ -540,7 +640,6 @@ class ExtendedController(Controller):
                 Path(config["crop_output"]),
                 Path(config["grid_csv"]),
                 Path(config["images_csv"]),
-                allow_missing=False,
             )
             crop_count = len(selected)
         return standard_pillow_preview.estimated_output_count(alias, config, crop_count=crop_count)
@@ -572,7 +671,6 @@ class ExtendedController(Controller):
                     Path(config["crop_output"]),
                     Path(config["grid_csv"]),
                     Path(config["images_csv"]),
-                    allow_missing=False,
                 )
             )
             human_log, _machine_recipe = write_output_records(

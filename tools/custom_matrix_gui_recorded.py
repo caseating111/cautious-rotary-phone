@@ -5,28 +5,24 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 try:
-    from tools.custom_crop_inventory import inventory_summary, presentation_range_issues, selected_inventory
+    from tools.custom_crop_inventory import inventory_summary, selected_inventory
     from tools.custom_matrix_gui import CustomMatrixBuilder
     from tools.custom_matrix_preview import build_preview as build_raw_preview, output_count
-    from tools.custom_matrix_presentation_preview import build_preview as build_presentation_preview
     from tools.output_processing_records import record_paths
     from tools.output_recipe_loader import default_recipe_folder, load_output_recipe
     from tools.run_custom_matrix_job import run_job as run_raw_job
-    from tools.run_custom_matrix_presentation import run_job as run_presentation_job
     from tools.run_existing_pillow_from_config import open_output
 except ModuleNotFoundError:
-    from custom_crop_inventory import inventory_summary, presentation_range_issues, selected_inventory
+    from custom_crop_inventory import inventory_summary, selected_inventory
     from custom_matrix_gui import CustomMatrixBuilder
     from custom_matrix_preview import build_preview as build_raw_preview, output_count
-    from custom_matrix_presentation_preview import build_preview as build_presentation_preview
     from output_processing_records import record_paths
     from output_recipe_loader import default_recipe_folder, load_output_recipe
     from run_custom_matrix_job import run_job as run_raw_job
-    from run_custom_matrix_presentation import run_job as run_presentation_job
     from run_existing_pillow_from_config import open_output
 
 
-DISPLAY_MODES = ("Raw", "Presentation normalized")
+DISPLAY_MODES = ("Raw",)
 
 
 class RecordedCustomMatrixBuilder(CustomMatrixBuilder):
@@ -90,39 +86,17 @@ class RecordedCustomMatrixBuilder(CustomMatrixBuilder):
             return
         summary = inventory_summary(items)
         current = sum(item.status == "current" for item in items)
-        status = f"Selected crop availability: {current} / {len(items)} current."
-
-        if self.display_mode.get() == "Presentation normalized":
-            range_ready, range_problems = presentation_range_issues(self.config_data, items)
-            total_sources = len({item.source_filename.casefold() for item in items if item.source_filename})
-            summary += f"\n\nPresentation display ranges: {range_ready} / {total_sources} source plates ready."
-            if range_problems:
-                summary += "\n\nDisplay ranges needing attention:\n" + "\n".join(
-                    f"- {problem}" for problem in range_problems[:20]
-                )
-                if len(range_problems) > 20:
-                    summary += f"\n... plus {len(range_problems) - 20} more"
-                status += f" Presentation ranges: {range_ready} / {total_sources} ready."
-            else:
-                status += " Presentation ranges ready."
-
-        self.status.set(status)
+        self.status.set(f"Selected crop availability: {current} / {len(items)} current.")
         messagebox.showinfo("Selected crop availability", summary)
 
     def build_matrix(self) -> None:
         preview = None
         try:
             selection = self.current_selection()
-            presentation = self.display_mode.get() == "Presentation normalized"
             if self.preview_first.get() and output_count(selection) > 1:
-                mode_label = "presentation-normalized" if presentation else "raw"
-                self.status.set(f"Building one representative {mode_label} preview…")
+                self.status.set("Building one representative raw preview…")
                 self.update_idletasks()
-                preview = (
-                    build_presentation_preview(selection)
-                    if presentation
-                    else build_raw_preview(selection)
-                )
+                preview = build_raw_preview(selection)
                 open_output(preview.image)
                 accepted = messagebox.askyesno(
                     "Custom matrix preview",
@@ -137,11 +111,7 @@ class RecordedCustomMatrixBuilder(CustomMatrixBuilder):
 
             self.status.set("Checking selected crops and building matrix…")
             self.update_idletasks()
-            output = (
-                run_presentation_job(selection, no_open_output=False)
-                if presentation
-                else run_raw_job(selection, no_open_output=False)
-            )
+            output = run_raw_job(selection, no_open_output=False)
         except SystemExit as exc:
             if preview is not None:
                 preview.cleanup()

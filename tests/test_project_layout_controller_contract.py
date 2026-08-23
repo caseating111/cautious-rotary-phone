@@ -19,7 +19,6 @@ class ProjectLayoutControllerContractTests(unittest.TestCase):
         self.assertIn('self.vars["crop_output"].set(str(layout.crop_output))', text)
         self.assertIn('self.vars["matrix_output"].set(str(layout.matrix_output))', text)
         self.assertIn("Image files are not modified or copied", text)
-        self.assertIn("ATTEMPT1", text)
 
     def test_launchers_prefer_the_shared_miniforge_workflow_runtime(self) -> None:
         controller = START_CONTROLLER.read_text(encoding="utf-8").lower()

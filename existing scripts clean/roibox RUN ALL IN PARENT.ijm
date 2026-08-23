@@ -558,6 +558,18 @@ function exportCrop(sourceTitle, cx, cy, outputName, outDir) {
     close();
 }
 
+function requireCropFits(cx, cy, cropW, cropH, imageW, imageH, title, col, band) {
+    x = round(cx - cropW / 2);
+    y = round(cy - cropH / 2);
+    if (x < 0 || y < 0 || x + cropW > imageW || y + cropH > imageH)
+        exit(
+            "Crop would cross source bounds before any existing crops were archived or outputs written: " +
+            title + ", column " + col + " " + band +
+            ". Re-align or reduce crop dimensions."
+        );
+}
+
+
 
 function pad2(n) {
 

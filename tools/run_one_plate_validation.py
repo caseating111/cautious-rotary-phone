@@ -55,7 +55,11 @@ def proof_plate_is_open(filename: str) -> bool:
     return any(title.strip().casefold() == wanted for title in open_window_titles())
 
 
-def read_pending_rows(path: Path) -> tuple[list[str], list[dict[str, str]]]:
+def read_pending_rows(
+    path: Path,
+    *,
+    delimiter: str = ",",
+) -> tuple[list[str], list[dict[str, str]]]:
     if not path.is_file():
         raise SystemExit(f"Prepared pending-image list not found: {path}")
     with path.open("r", encoding="utf-8-sig", newline="") as handle:
@@ -175,6 +179,7 @@ def ensure_roi_click_patch(fiji: Path) -> bool:
 
 
 def prepare(filename: str | None = None, *, rerun_done: bool = False, replace_existing: bool = False) -> tuple[Path, dict[str, str]]:
+    replace_existing = replace_existing or rerun_done
     args = [sys.executable, str(Path(batch.__file__).resolve()), "--prepare-only"]
     configured = batch.CONFIGURED_FOUR_POINT_MACRO
     proof_macro = FOUR_POINT_PLATE_MACRO
@@ -182,18 +187,18 @@ def prepare(filename: str | None = None, *, rerun_done: bool = False, replace_ex
     result = subprocess.run(args, capture_output=True, text=True, check=False)
     output = (result.stdout + result.stderr).strip()
     if result.returncode != 0:
-        if (rerun_done or filename) and "All expected crops already exist" in output:
+        if rerun_done and "All expected crops already exist" in output:
             configured = _prepare_completed_plate_macro()
         else:
             raise SystemExit(output or "Batch preparation failed before one-plate validation.")
 
-    fieldnames, rows = read_pending_rows(batch.PENDING_IMAGES_TSV, delimiter="\t")
-    if rerun_done or replace_existing:
+    if rerun_done:
         config = batch.load_config(require_fiji=False, require_fiji_handoff_paths=False)
-        fieldnames, authoritative_rows = read_pending_rows(Path(config["images_csv"]))
+        _, authoritative_rows = read_pending_rows(Path(config["images_csv"]))
         selected = choose_pending_row(authoritative_rows, filename)
         configured = _prepare_completed_plate_macro()
     else:
+        _, rows = read_pending_rows(batch.PENDING_IMAGES_TSV, delimiter="\t")
         selected = choose_pending_row(rows, filename)
 
     if not configured.is_file():

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import argparse
 import csv
 import json
 import subprocess
@@ -220,7 +219,6 @@ def run_selection(selection: dict, no_open_output: bool = False) -> Path:
         selected_crops = pillow_adapter.validate_unique_crop_matches(
             Path(config["crop_output"]),
             filtered["grid_csv"], filtered["images_csv"],
-            allow_missing=False,
         )
         staged_root = temp_root / "crops"
         staged_crops = pillow_adapter.stage_selected_crops(selected_crops, staged_root)
@@ -251,17 +249,10 @@ def run_selection(selection: dict, no_open_output: bool = False) -> Path:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Build a focused matrix from existing validated crops.")
-    parser.add_argument("selection_json", type=Path)
-    parser.add_argument("--no-open-output", action="store_true")
-    args = parser.parse_args()
-    try:
-        selection = json.loads(args.selection_json.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        raise SystemExit(f"Could not read selection recipe: {exc}") from exc
-    output = run_selection(selection, no_open_output=args.no_open_output)
-    print(f"Custom matrix output: {output}")
-
+    raise SystemExit(
+        "This legacy direct custom-matrix CLI is retired. "
+        "Use tools/run_custom_matrix_job.py so freshness checks and processing records are enforced."
+    )
 
 if __name__ == "__main__":
     main()

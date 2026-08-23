@@ -1,12 +1,7 @@
-# Global visibility slice
+# Retired global visibility route
 
-`fiji/apply_global_visibility.ijm` uses the accepted `last_alignment.txt` geometry.
+The old global/presentation visibility macros and launcher are not current workflow-C endpoints. They depended on archived full-column geometry and must not be described as active.
 
-- background: median from each top/bottom/left/right strip immediately outside the total-grid bounds, then median-of-side-medians;
-- white/high point: configurable percentile (default 99.5%) from the tilted total-grid quadrilateral;
-- one resulting black/high range is applied uniformly to the whole displayed image;
-- values are persisted to `~/.cautious-rotary-phone/last_display_range.txt`.
+Current alignment visibility is only two CLAHE passes on a disposable whole-image duplicate. Source pixels and exported crops remain based on the original image.
 
-For 8/16/32-bit grayscale, ImageJ `setMinAndMax()` changes display range only. For RGB, ImageJ documents that `setMinAndMax()` alters pixels, so the macro creates an 8-bit `QC - ...` duplicate and adjusts that instead; the original RGB source stays open and untouched.
-
-This remains a QC/display path only. Quantitative scoring should continue from unmodified source pixels.
+Any future visibility applet must use current durable geometry or an independent mature method and receive separate validation. Do not revive the removed macro names or presentation recipes as current routes.

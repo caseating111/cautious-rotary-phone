@@ -42,7 +42,7 @@ class SharedPreflightEntryTests(unittest.TestCase):
 
             for kwargs in (
                 {},
-                {"require_full_column_geometry": False, "require_fiji_handoff_paths": False},
+                {"require_alignment_geometry": False, "require_fiji_handoff_paths": False},
             ):
                 with self.subTest(kwargs=kwargs):
                     with self.assertRaises(SystemExit) as caught:

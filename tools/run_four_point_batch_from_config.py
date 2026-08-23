@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import csv
 import json
-import math
 import os
 import subprocess
 import sys
@@ -74,15 +73,12 @@ def load_config(
                 )
 
     try:
-        data["alignment_tolerance"] = float(data.get("alignment_tolerance", 0.08))
         data["crop_width"] = int(data.get("crop_width", 130))
         data["crop_height"] = int(data.get("crop_height", 546))
     except (TypeError, ValueError) as exc:
-        raise SystemExit(f"Invalid processing setting: {exc}") from exc
-    if not math.isfinite(data["alignment_tolerance"]):
-        raise SystemExit("Alignment tolerance must be a finite number.")
-    if data["alignment_tolerance"] <= 0 or data["crop_width"] <= 0 or data["crop_height"] <= 0:
-        raise SystemExit("Alignment tolerance and crop dimensions must be positive.")
+        raise SystemExit(f"Invalid crop dimension: {exc}") from exc
+    if data["crop_width"] <= 0 or data["crop_height"] <= 0:
+        raise SystemExit("Crop dimensions must be positive.")
     return data
 
 
@@ -446,7 +442,7 @@ def enhance_four_point_macro(source: str) -> str:
             if (batchGridQC) {
                 Dialog.create("Full-grid QC -- Inspect 8R x " + gridCols + "C grid -- Z=ACCEPT, X=RETRY, C=CANCEL");
                 Dialog.addChoice(
-                    "ACCEPT: Export crops and save grid coordinates. [+] RETRY: Repeat four-point calibration.",
+                    "ACCEPT: Export crops. [+] RETRY: Repeat four-point calibration.",
                     newArray("ACCEPT", "RETRY"),
                     "ACCEPT"
                 );
@@ -464,6 +460,39 @@ def enhance_four_point_macro(source: str) -> str:
         Overlay.remove;
         close();
         selectWindow(sourceTitle);
+        // Validate every planned rectangle before replacement archiving or the
+        // first output write. A bad calibration therefore leaves prior crops
+        // and the source image untouched.
+        getDimensions(sourceW, sourceH, sourceC, sourceZ, sourceT);
+        boundsTopFactor = 0.375;
+        boundsLowFactor = 1.375;
+        for (boundsI = 0; boundsI < nWanted; boundsI++) {
+            boundsCol = columns[boundsI];
+            boundsU = (boundsCol - 1) / (gridCols - 1);
+
+            boundsLeftX = R1LX + boundsTopFactor * (R5LX - R1LX);
+            boundsLeftY = R1LY + boundsTopFactor * (R5LY - R1LY);
+            boundsRightX = R1RX + boundsTopFactor * (R5RX - R1RX);
+            boundsRightY = R1RY + boundsTopFactor * (R5RY - R1RY);
+            boundsCX = boundsLeftX + boundsU * (boundsRightX - boundsLeftX);
+            boundsCY = boundsLeftY + boundsU * (boundsRightY - boundsLeftY);
+            requireCropFits(
+                boundsCX, boundsCY, CROP_W, CROP_H,
+                sourceW, sourceH, sourceTitle, boundsCol, "Top"
+            );
+
+            boundsLeftX = R1LX + boundsLowFactor * (R5LX - R1LX);
+            boundsLeftY = R1LY + boundsLowFactor * (R5LY - R1LY);
+            boundsRightX = R1RX + boundsLowFactor * (R5RX - R1RX);
+            boundsRightY = R1RY + boundsLowFactor * (R5RY - R1RY);
+            boundsCX = boundsLeftX + boundsU * (boundsRightX - boundsLeftX);
+            boundsCY = boundsLeftY + boundsU * (boundsRightY - boundsLeftY);
+            requireCropFits(
+                boundsCX, boundsCY, CROP_W, CROP_H,
+                sourceW, sourceH, sourceTitle, boundsCol, "Low"
+            );
+        }
+
         archiveReplacementCrops(cleanFolderName, fileName);
 
 '''
@@ -539,17 +568,24 @@ def run_fiji_batch(fiji: Path, macro: Path, session_state: Path) -> None:
             # Escape can close Fiji before the polling loop observes X. Read the
             # persisted request once more before deciding whether to restart.
             final_request = control_request()
-            if final_request == "restart":
-                restart = True
+            if final_request == "restart" or restart:
+                RESUME_MARKER_FILE.write_text("resume\n", encoding="utf-8")
+                try:
+                    CONTROL_REQUEST_FILE.unlink()
+                except FileNotFoundError:
+                    pass
+                continue
             if final_request == "complete":
                 return
-            try:
-                CONTROL_REQUEST_FILE.unlink()
-            except FileNotFoundError:
-                pass
-            if restart:
-                continue
-            return
+            if final_request == "cancel":
+                return
+            returncode = process.returncode
+            if returncode != 0:
+                raise SystemExit(f"Fiji exited with code {returncode} before four-point completion; crops may be incomplete.")
+            raise SystemExit(
+                "Fiji launcher exited before the four-point completion sentinel; no success was recorded. "
+                "This can indicate unsupported existing-instance forwarding or an interrupted macro."
+            )
     finally:
         for path in (CONTROL_REQUEST_FILE, RESUME_MARKER_FILE, ACTIVE_BATCH_FILE, session_state):
             try:

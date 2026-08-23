@@ -174,7 +174,6 @@ def patch_roi_click_tools(path: Path) -> Path | None:
         raise ValueError("This does not look like the expected ROI 1-Click Tools macro source.")
 
     changed = False
-    original = text
 
     if "function restoreSavedRoiClickSettings()" not in text:
         text = text.replace(HELPER_MARKER, HELPER_MARKER + "\n\n" + PREFS_FUNCTION, 1)

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import csv
 import json
-import math
 import os
 import subprocess
 import sys
@@ -25,12 +24,8 @@ DEFAULTS = {
     "grid_csv": "",
     "images_csv": "",
     "condition_order_csv": "",
-    "alignment_tolerance": "0.08",
     "crop_width": "130",
     "crop_height": "546",
-    "visibility_band": "50",
-    "visibility_black_offset": "3",
-    "visibility_high_percentile": "99.5",
     "preview_standard_outputs": "1",
     "replace_existing_crops": "0",
     "skip_done": "1",
@@ -53,12 +48,8 @@ PILLOW_JOBS = {
 }
 
 PROCESSING_SETTINGS = [
-    ("Alignment peak tolerance", "alignment_tolerance"),
     ("Crop width", "crop_width"),
     ("Crop height", "crop_height"),
-    ("Visibility outside band", "visibility_band"),
-    ("Visibility black offset", "visibility_black_offset"),
-    ("Visibility high percentile", "visibility_high_percentile"),
 ]
 
 
@@ -254,31 +245,10 @@ class Controller(tk.Tk):
 
         def save_and_close() -> None:
             try:
-                alignment_tolerance = float(self.vars["alignment_tolerance"].get())
                 crop_width = int(self.vars["crop_width"].get())
                 crop_height = int(self.vars["crop_height"].get())
-                visibility_band = float(self.vars["visibility_band"].get())
-                visibility_black_offset = float(self.vars["visibility_black_offset"].get())
-                percentile = float(self.vars["visibility_high_percentile"].get())
-
-                if not all(
-                    math.isfinite(value)
-                    for value in (
-                        alignment_tolerance,
-                        visibility_band,
-                        visibility_black_offset,
-                        percentile,
-                    )
-                ):
-                    raise ValueError("Processing settings must be finite numbers.")
-                if alignment_tolerance <= 0:
-                    raise ValueError("Alignment tolerance must be positive.")
                 if crop_width <= 0 or crop_height <= 0:
                     raise ValueError("Crop dimensions must be positive integers.")
-                if visibility_band < 1:
-                    raise ValueError("Visibility band must be at least 1.")
-                if percentile <= 0 or percentile > 100:
-                    raise ValueError("Visibility percentile must be >0 and <=100.")
             except ValueError as exc:
                 messagebox.showerror("Processing settings", str(exc), parent=dialog)
                 return

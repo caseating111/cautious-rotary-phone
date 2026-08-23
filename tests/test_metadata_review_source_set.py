@@ -65,5 +65,10 @@ class MetadataReviewSourceSetTests(unittest.TestCase):
             self.assertIn("setB/old_plate.jpg", message)
 
 
+    def test_windows_case_only_source_spelling_change_does_not_stale_review(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            image_root = self.make_sources(root, [("SetA", "Plate.JPG")])
+            validate_review_source_set(self.review([("seta", "plate.jpg")]), image_root)
 if __name__ == "__main__":
     unittest.main()

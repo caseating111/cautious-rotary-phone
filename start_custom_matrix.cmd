@@ -3,30 +3,40 @@ setlocal
 cd /d "%~dp0"
 
 rem Prefer the same Miniforge workflow-c Python 3.11 as the controller.
+set "WORKFLOW_PY=%USERPROFILE%\miniforge3\envs\workflow-c\python.exe"
+call :direct_available
+if not errorlevel 1 goto :run_direct
 set "WORKFLOW_PY=%USERPROFILE%\.conda\envs\workflow-c\python.exe"
-if exist "%WORKFLOW_PY%" goto :run_direct
+call :direct_available
+if not errorlevel 1 goto :run_direct
 set "WORKFLOW_PY=C:\ProgramData\miniforge3\envs\workflow-c\python.exe"
-if exist "%WORKFLOW_PY%" goto :run_direct
+call :direct_available
+if not errorlevel 1 goto :run_direct
 where conda >nul 2>nul
 if not errorlevel 1 (
-    call conda run --no-capture-output -n workflow-c python -c "import PIL, tkinter" >nul 2>nul
+    call conda run --no-capture-output -n workflow-c python -c "import PIL, tkinter, sys; raise SystemExit(sys.version_info[:2] != (3, 11))" >nul 2>nul
     if not errorlevel 1 goto :run_conda
 )
 where py >nul 2>nul
 if not errorlevel 1 (
-    py -3.11 -c "import PIL, tkinter" >nul 2>nul
+    py -3.11 -c "import PIL, tkinter, sys; raise SystemExit(sys.version_info[:2] != (3, 11))" >nul 2>nul
     if not errorlevel 1 goto :run_py311
 )
 where python >nul 2>nul
 if not errorlevel 1 (
-    python -c "import PIL, tkinter" >nul 2>nul
+    python -c "import PIL, tkinter, sys; raise SystemExit(sys.version_info[:2] != (3, 11))" >nul 2>nul
     if not errorlevel 1 goto :run_path
 )
 
 echo.
-echo No compatible Python with Pillow and Tkinter was found for Custom matrices.
+echo No compatible Python 3.11 with Pillow and Tkinter was found for Custom matrices.
 pause
 exit /b 1
+
+:direct_available
+if not exist "%WORKFLOW_PY%" exit /b 1
+"%WORKFLOW_PY%" -c "import PIL, tkinter, sys; raise SystemExit(sys.version_info[:2] != (3, 11))" >nul 2>nul
+exit /b %ERRORLEVEL%
 
 :run_direct
 "%WORKFLOW_PY%" tools\custom_matrix_gui_recorded.py

@@ -125,7 +125,7 @@ def validate_source_readiness_if_configured(config: dict) -> None:
         return
     lines, problems, pending_rows = build_batch_report(
         config,
-        require_full_column_geometry=False,
+        require_alignment_geometry=False,
         require_fiji_handoff_paths=False,
     )
     if problems:
@@ -234,7 +234,6 @@ def validate_unique_crop_matches(
     root: Path,
     grid_path: Path,
     images_path: Path,
-    allow_missing: bool = False,
 ) -> list[Path]:
     if not root.is_dir():
         raise SystemExit(f"Crop output folder not found: {root}")
@@ -292,19 +291,16 @@ def validate_unique_crop_matches(
             lines.append(f"... plus {len(stale_only) - 20} more stale filename mismatches")
         raise SystemExit("\n".join(lines))
 
-    if missing and not allow_missing:
+    if missing:
         lines = [
             f"Incomplete crop inputs: {len(missing)} expected logical crop(s) are missing.",
             "Complete/rerun crop generation before producing final Pillow outputs.",
-            "For an intentionally partial output, run this wrapper manually with --allow-missing.",
         ]
         lines.extend(f"  - {prefix}*" for prefix in missing[:20])
         if len(missing) > 20:
             lines.append(f"... plus {len(missing) - 20} more missing logical crops")
         raise SystemExit("\n".join(lines))
 
-    if missing:
-        print(f"Allowing intentional partial Pillow output with {len(missing)} missing logical crop(s).")
     if ignored_stale:
         print(
             f"Ignoring {len(set(ignored_stale))} stale prefix-compatible crop file(s); "
@@ -439,13 +435,9 @@ def open_output(path: Path) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("script", choices=sorted(SCRIPTS))
+    public_scripts = sorted(name for name in SCRIPTS if name != "all-strains-dedup")
+    parser.add_argument("script", choices=public_scripts)
     parser.add_argument("--no-open-output", action="store_true")
-    parser.add_argument(
-        "--allow-missing",
-        action="store_true",
-        help="allow intentionally partial Pillow outputs instead of requiring every metadata-defined crop",
-    )
     args = parser.parse_args()
 
     config = load_config()
@@ -457,7 +449,6 @@ def main() -> None:
         crop_root,
         Path(config["grid_csv"]),
         Path(config["images_csv"]),
-        allow_missing=args.allow_missing,
     )
 
     APP_DIR.mkdir(parents=True, exist_ok=True)
