@@ -63,7 +63,7 @@ class RecordedCustomMatrixBuilder(CustomMatrixBuilder):
         wt_frame.pack(fill="x", padx=4, pady=5)
         ttk.Checkbutton(
             wt_frame,
-            text="Normalize WT separators (WT-X, WT_X and WT X are equivalent)",
+            text="Normalize WT separators (for example WT-A, WT_A and WT A are equivalent)",
             variable=self.normalize_wt_names,
             command=self.output_selection_changed,
         ).grid(row=0, column=0, columnspan=2, sticky="w", padx=8, pady=(4, 2))

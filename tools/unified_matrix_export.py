@@ -151,7 +151,12 @@ def _control_name(name: str, normalize_separators: bool) -> str | None:
     if normalize_separators:
         compare = compare.replace("-", " ").replace("_", " ")
     compare = " ".join(compare.split())
-    return compare if compare in {"WT X", "WT Y"} else None
+    if compare == "WT":
+        return compare
+    if not compare.startswith("WT") or len(compare) < 3:
+        return None
+    suffix = compare[2:]
+    return compare if suffix[0] in {" ", "-", "_"} or suffix[0].isdigit() else None
 
 
 def control_groups_for_selection(
@@ -240,7 +245,7 @@ def _patch_wt_normalization(configured: Path, normalize: bool) -> None:
     text = configured.read_text(encoding="utf-8")
     pattern = re.compile(r'(?m)^(?P<indent>\s*)\.replace\("-", " "\)\s*$')
     matches = list(pattern.finditer(text))
-    if len(matches) != 2:
+    if len(matches) != 1:
         raise SystemExit("Deduplicated renderer no longer has the expected WT normalizer.")
     if normalize:
         text = pattern.sub(
@@ -378,10 +383,9 @@ def _retained_wt_rows(config: dict, request: dict) -> list[dict[str, str]]:
     candidates = _selected_wt_rows(config, request)
     preferred = request["preferred_wt"]
     retained = []
-    for canonical in ("WTY", "WTX"):
+    canonical_names = list(dict.fromkeys(row["_canonical"] for row in candidates))
+    for canonical in canonical_names:
         matches = [row for row in candidates if row["_canonical"] == canonical]
-        if not matches:
-            continue
         chosen = next(
             (
                 row for row in matches

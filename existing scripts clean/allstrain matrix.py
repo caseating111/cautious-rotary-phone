@@ -151,11 +151,15 @@ def is_wt_strain(name):
         name.strip()
         .upper()
         .replace("-", " ")
+        .replace("_", " ")
     )
 
     compare = " ".join(compare.split())
-
-    return compare in {"WT X", "WT Y"}
+    if compare == "WT":
+        return True
+    if not compare.startswith("WT") or len(compare) < 3:
+        return False
+    return compare[2] == " " or compare[2].isdigit()
 # ============================================================
 # OPTIONAL ROTATION
 # ============================================================

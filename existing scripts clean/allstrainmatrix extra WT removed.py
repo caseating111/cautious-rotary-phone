@@ -1,5 +1,6 @@
 from pathlib import Path
 import csv
+import re
 from PIL import Image, ImageDraw, ImageFont
 
 
@@ -144,7 +145,7 @@ def draw_centered(draw, text, x, y, w, h, font, colour=None):
         font=font
     )
     
-def is_wt_strain(name):
+def canonical_wt_name(name):
     compare = (
         name.strip()
         .upper()
@@ -152,9 +153,26 @@ def is_wt_strain(name):
     )
 
     compare = " ".join(compare.split())
+    if compare == "WT":
+        return compare
+    if not compare.startswith("WT") or len(compare) < 3:
+        return None
+    suffix = compare[2:]
+    return compare if suffix[0] in {" ", "-", "_"} or suffix[0].isdigit() else None
 
-    return compare in {"WT X", "WT Y"}
+
+def is_wt_strain(name):
+    return canonical_wt_name(name) is not None
 # ============================================================
+
+def natural_key(value):
+    return tuple(
+        (0, int(part)) if part.isdigit() else (1, part.casefold())
+        for part in re.split(r"(\d+)", value)
+        if part
+    )
+
+
 # OPTIONAL ROTATION
 # ============================================================
 
@@ -285,44 +303,22 @@ def read_all_strains():
 
     strain_rows.sort(
         key=lambda x: (
-            x["experiment"],
-            x["set"],
+            natural_key(x["experiment"]),
+            natural_key(x["set"]),
             x["column"]
         )
     )
 
-        # ========================================================
+    # ========================================================
     # NORMALISE, DEDUPLICATE, AND MOVE WT CONTROLS TO TOP
     # ========================================================
 
-    # ========================================================
-    # NORMALISE, DEDUPLICATE, AND PREFER E2/B WT CONTROLS
-    # ========================================================
-
     def canonical_control_name(name):
-
-        compare = (
-            name.strip()
-            .upper()
-            .replace("-", " ")
-        )
-
-        compare = " ".join(compare.split())
-
-        if compare == "WT Y":
-            return "WT Y"
-
-        if compare == "WT X":
-            return "WT X"
-
-        return None
+        return canonical_wt_name(name)
 
 
     normal_rows = []
-    control_candidates = {
-        "WT Y": [],
-        "WT X": []
-    }
+    control_candidates = {}
 
 
     for row in strain_rows:
@@ -335,15 +331,14 @@ def read_all_strains():
             normal_rows.append(row)
         else:
             row["strain"] = canonical
-            control_candidates[canonical].append(row)
+            control_candidates.setdefault(canonical, []).append(row)
 
 
-    # Prefer E2 / B for both WT controls.
+    # Prefer the configured Experiment/Set independently for every WT identity.
     control_rows = []
 
-    for control_name in ("WT Y", "WT X"):
+    for control_name, candidates in control_candidates.items():
 
-        candidates = control_candidates[control_name]
 
         if not candidates:
             continue
@@ -352,8 +347,8 @@ def read_all_strains():
 
         for row in candidates:
             if (
-                row["experiment"] == "E2"
-                and row["set"] == "A"
+                row["experiment"].casefold() == "E2".casefold()
+                and row["set"].casefold() == "A".casefold()
             ):
                 preferred = row
                 break

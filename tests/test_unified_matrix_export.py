@@ -36,10 +36,12 @@ class UnifiedMatrixExportTests(unittest.TestCase):
 
         self.grid.write_text(
             "Experiment,Set,GridCols,Column,Strain\n"
-            "E1,0,2,1,WT-X\n"
-            "E1,0,2,2,mut_one\n"
-            "E2,A,2,1,WT_Y\n"
-            "E2,A,2,2,mut_two\n",
+            "E1,0,3,1,WT-A\n"
+            "E1,0,3,2,WT-C\n"
+            "E1,0,3,3,mut_one\n"
+            "E2,A,3,1,WT_A\n"
+            "E2,A,3,2,WT-B\n"
+            "E2,A,3,3,mut_two\n",
             encoding="utf-8",
         )
         self.images.write_text(
@@ -56,10 +58,12 @@ class UnifiedMatrixExportTests(unittest.TestCase):
             source_times[folder] = source.stat().st_mtime_ns
 
         for exp, set_name, strain, column in (
-            ("E1", "0", "WT-X", 1),
-            ("E1", "0", "mut_one", 2),
-            ("E2", "A", "WT_Y", 1),
-            ("E2", "A", "mut_two", 2),
+            ("E1", "0", "WT-A", 1),
+            ("E1", "0", "WT-C", 2),
+            ("E1", "0", "mut_one", 3),
+            ("E2", "A", "WT_A", 1),
+            ("E2", "A", "WT-B", 2),
+            ("E2", "A", "mut_two", 3),
         ):
             for state in ("Top", "Low"):
                 crop = self.crops / f"{exp}_{set_name}_COND_1_{column:02d}_{state}_{strain}.png"
@@ -81,14 +85,14 @@ class UnifiedMatrixExportTests(unittest.TestCase):
         self.request = {
             "selection": {
                 "groups": [
-                    {"experiment": "E1", "set": "0", "columns": [1, 2]},
-                    {"experiment": "E2", "set": "A", "columns": [1, 2]},
+                    {"experiment": "E1", "set": "0", "columns": [1, 2, 3]},
+                    {"experiment": "E2", "set": "A", "columns": [1, 2, 3]},
                 ],
                 "conditions": ["COND_1"],
                 "states": ["Top", "Low"],
             },
             "outputs": list(unified.OUTPUT_TYPES),
-            "preferred_wt": {"experiment": "E2", "set": "A"},
+            "preferred_wt": {"experiment": "e2", "set": "a"},
             "normalize_wt_names": True,
         }
 
@@ -116,7 +120,7 @@ class UnifiedMatrixExportTests(unittest.TestCase):
                 original_sizes[path.name] = image.size
         first = self.run_export()
         self.assertEqual(first["run_id"], "Run001")
-        self.assertEqual(len(first["published_paths"]), 24)
+        self.assertEqual(len(first["published_paths"]), 28)
         date = datetime.now().strftime("%d.%m.%y")
 
         aggregate = self.matrices / "!All Matrix Exports"
@@ -125,10 +129,21 @@ class UnifiedMatrixExportTests(unittest.TestCase):
         self.assertTrue(any(f"Run001_{date}_ALLmatrix_Top.png" == name for name in aggregate_names))
         self.assertTrue(
             any(
-                f"Run001_{date}_E1.0-WTX_E2.A-WTY_Unique_WT_ALLmatrix_Low.png" == name
+                f"Run001_{date}_E1.0-WTC_E2.A-WTAWTB_Unique_WT_ALLmatrix_Low.png" == name
                 for name in aggregate_names
             )
         )
+        all_matrix = (
+            self.matrices / "1. All Strain Matrices"
+            / f"Run001_{date}_ALLmatrix_Low.png"
+        )
+        dedup_matrix = (
+            self.matrices / "2. All Strain Matrices -- No WT Dupe"
+            / f"Run001_{date}_E1.0-WTC_E2.A-WTAWTB_Unique_WT_ALLmatrix_Low.png"
+        )
+        with Image.open(all_matrix) as all_image, Image.open(dedup_matrix) as dedup_image:
+            self.assertLess(dedup_image.height, all_image.height)
+
         self.assertTrue((self.matrices / "3. Per Experiment Matrices" / "Run001_E1_0_Top_Matrix.png").is_file())
         self.assertTrue(
             (
@@ -136,7 +151,7 @@ class UnifiedMatrixExportTests(unittest.TestCase):
                 / "4. Individual Labelled Crops"
                 / "E2"
                 / "mut_two"
-                / "Run001_E2_A_COND_1_02_Low_mut_two.png"
+                / "Run001_E2_A_COND_1_03_Low_mut_two.png"
             ).is_file()
         )
         self.assertFalse(any("COND_1" in path.name for path in aggregate.glob("*")))
@@ -166,8 +181,30 @@ class UnifiedMatrixExportTests(unittest.TestCase):
                 "Run001_E1_0_Top_Matrix.png",
                 "Run001_E2_A_Top_Matrix.png",
                 "Run001_E2_A_Top_Matrix.png",
+
             ],
         )
+    def test_normalization_off_keeps_separator_variants_as_distinct_wts(self) -> None:
+        self.request["outputs"] = ["all-strains", "all-strains-dedup"]
+        self.request["normalize_wt_names"] = False
+        result = self.run_export()
+        self.assertEqual(result["run_id"], "Run001")
+        date = datetime.now().strftime("%d.%m.%y")
+        all_matrix = (
+            self.matrices / "1. All Strain Matrices"
+            / f"Run001_{date}_ALLmatrix_Top.png"
+        )
+        dedup_matrix = (
+            self.matrices / "2. All Strain Matrices -- No WT Dupe"
+            / (
+                f"Run001_{date}_E1.0-WT-AWT-C_E2.A-WT_AWT-B_"
+                "Unique_WT_ALLmatrix_Top.png"
+            )
+        )
+        self.assertTrue(dedup_matrix.is_file())
+        with Image.open(all_matrix) as all_image, Image.open(dedup_matrix) as dedup_image:
+            self.assertEqual(dedup_image.height, all_image.height)
+
 
     def test_dataset_presets_and_casefold_collision(self) -> None:
         saved = unified.save_preset(self.config, "My selection", self.request)
@@ -199,7 +236,38 @@ class UnifiedMatrixExportTests(unittest.TestCase):
             unified.control_groups_for_selection(self.config, selection, True),
             [("E1", "2"), ("E1", "A")],
         )
-        self.assertEqual(unified.control_groups_for_selection(self.config, selection, False), [])
+        self.assertEqual(
+            unified.control_groups_for_selection(self.config, selection, False),
+            [("E1", "2"), ("E1", "A")],
+        )
+        self.assertEqual(unified._control_name("wt-a", True), "WT A")
+        self.assertEqual(unified._control_name("WT_A", True), "WT A")
+        self.assertNotEqual(unified._control_name("WT-A", False), unified._control_name("WT_A", False))
+        self.assertEqual(unified._control_name("wt12", True), "WT12")
+
+    def test_configured_renderer_honours_both_separator_toggle_states(self) -> None:
+        enabled = pillow_adapter.configured_copy(
+            "all-strains-dedup",
+            self.config,
+            configured_dir=self.root / "configured-on",
+        )
+        unified._patch_wt_normalization(enabled, True)
+        enabled_text = enabled.read_text(encoding="utf-8")
+        self.assertIn('.replace("-", " ")', enabled_text)
+        self.assertIn('.replace("_", " ")', enabled_text)
+        self.assertIn("control_candidates = {}", enabled_text)
+
+        disabled = pillow_adapter.configured_copy(
+            "all-strains-dedup",
+            self.config,
+            configured_dir=self.root / "configured-off",
+        )
+        unified._patch_wt_normalization(disabled, False)
+        disabled_text = disabled.read_text(encoding="utf-8")
+        self.assertNotIn('.replace("-", " ")', disabled_text)
+        self.assertNotIn('.replace("_", " ")', disabled_text)
+        self.assertIn('suffix[0] in {" ", "-", "_"}', disabled_text)
+
 
 
 if __name__ == "__main__":

@@ -6,12 +6,12 @@ One run can build any checked combination of:
 
 - per-experiment matrices;
 - all selected strains across experiments;
-- all selected strains with duplicate WT X/WT Y controls removed;
+- all selected strains with duplicate WT controls removed, for any recognised WT identifier;
 - individually labelled crops.
 
 Experiment/Set strain columns, conditions, and Top/Low are independent selectors. Top and Low checked together create separate state outputs in the same numbered run; either can be selected alone. Only metadata and exact current crops in the chosen subset/state are staged and required. The applet retains All, None, Only this set, availability checking, optional per-experiment preview, legacy-recipe import, and last-selection restore.
 
-Preferred WT source and case-insensitive WT matching live in this applet. **Normalize WT separators** additionally treats spaces, hyphens, and underscores as equivalent; it defaults on to preserve established hyphen behavior. Presets store the complete request beside dataset metadata at `Metadata/_workflow/matrix-presets`.
+Preferred WT source and case-insensitive WT matching live in this applet. Plain `WT`, separated identifiers such as `WT-A`/`WT_A`/`WT A`, and numeric identifiers such as `WT12` are recognised; unrelated names that merely begin with the letters `WT` are not. **Normalize WT separators** additionally treats spaces, hyphens, and underscores as equivalent for every recognised WT identifier; it defaults on to preserve established hyphen behavior. Presets store the complete request beside dataset metadata at `Metadata/_workflow/matrix-presets`.
 
 Published files never use timestamp subfolders and never overwrite earlier runs:
 
