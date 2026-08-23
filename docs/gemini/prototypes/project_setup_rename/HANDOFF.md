@@ -3,7 +3,7 @@
 Status: READY FOR INTEGRATION
 Endpoint: Prepare project directory tree, reconcile physical raw files to V10 metadata/UIDs, and create optional UID-safe renamed working copies and human conversion audit logs.
 Branch: `gemini-project-setup-rename`
-Commit: pending
+Commit: `3fd3c55`
 
 ## What was proven
 
