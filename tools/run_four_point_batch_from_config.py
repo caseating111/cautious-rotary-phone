@@ -13,15 +13,12 @@ APP_DIR = Path.home() / ".cautious-rotary-phone"
 CONFIG_FILE = APP_DIR / "config.json"
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SOURCE_MACRO = REPO_ROOT / "existing scripts clean" / "roibox RUN ALL IN PARENT.ijm"
-ALIGNMENT_MACRO = REPO_ROOT / "fiji" / "full_column_alignment.ijm"
-CROP_HELPER = REPO_ROOT / "fiji" / "export_crops_from_alignment.ijm"
 VALIDATOR = REPO_ROOT / "tools" / "validate_project_csvs.py"
 PREFLIGHT = REPO_ROOT / "tools" / "preflight_batch.py"
 PREFLIGHT_REPORT = APP_DIR / "last_preflight.txt"
 PENDING_IMAGES_CSV = APP_DIR / "pending_images.csv"
-CONFIGURED_MACRO = APP_DIR / "batch_full_column.configured.ijm"
-CONFIGURED_LEGACY_MACRO = APP_DIR / "batch_four_point_fallback.configured.ijm"
-LEGACY_STATE_FILE = APP_DIR / "four_point_fallback.state.txt"
+CONFIGURED_FOUR_POINT_MACRO = APP_DIR / "four_point_batch.configured.ijm"
+FOUR_POINT_STATE_FILE = APP_DIR / "four_point_run.state.txt"
 
 START_MARKER = "        // ====================================================\n        // IDENTIFY CURRENT PLATE"
 END_MARKER = "        setBatchMode(false);"
@@ -74,10 +71,8 @@ def load_config(
     return data
 
 
-def validate_runtime_files(config: dict, require_fiji: bool, legacy: bool = False) -> None:
+def validate_runtime_files(config: dict, require_fiji: bool) -> None:
     required_files = [SOURCE_MACRO, VALIDATOR, PREFLIGHT]
-    if not legacy:
-        required_files.extend([ALIGNMENT_MACRO, CROP_HELPER])
     missing = [path for path in required_files if not path.is_file()]
     if missing:
         raise SystemExit("Required workflow file(s) missing:\n" + "\n".join(str(path) for path in missing))
@@ -106,7 +101,7 @@ def validate_csvs(config: dict) -> None:
         raise SystemExit(output or "CSV validation failed.")
 
 
-def validate_legacy_grid_widths(config: dict) -> None:
+def validate_four_point_grid_widths(config: dict) -> None:
     path = Path(config["grid_csv"])
     with path.open("r", encoding="utf-8-sig", newline="") as handle:
         rows = list(csv.DictReader(handle))
@@ -119,12 +114,8 @@ def validate_legacy_grid_widths(config: dict) -> None:
         )
 
 
-def run_preflight(
-    legacy: bool = False,
-    require_fiji_handoff_paths: bool | None = None,
-) -> int:
-    if require_fiji_handoff_paths is None:
-        require_fiji_handoff_paths = not legacy
+def run_preflight() -> int:
+    require_fiji_handoff_paths = False
 
     args = [
         sys.executable,
@@ -150,7 +141,7 @@ def run_preflight(
 
 def restrict_pending_to_subfolder(config: dict, subfolder: str | None) -> int:
     """Keep the normal pending-only contract, optionally scoped to one direct folder."""
-    pending = run_preflight(legacy=True)
+    pending = run_preflight()
     if not subfolder:
         return pending
     try:
@@ -208,7 +199,7 @@ def configure_source_settings(source: str, config: dict) -> str:
     replacements = {
         'gridFile   = "path here";': f'gridFile   = "{macro_path(config["grid_csv"])}";',
         'imagesFile = "path here";': f'imagesFile = "{macro_path(PENDING_IMAGES_CSV)}";',
-        'stateFile  = "path here";': f'stateFile  = "{macro_path(LEGACY_STATE_FILE)}";',
+        'stateFile  = "path here";': f'stateFile  = "{macro_path(FOUR_POINT_STATE_FILE)}";',
         'replacementManifest = "path here";': 'replacementManifest = "";',
         'inputRoot  = "path here";': f'inputRoot  = "{macro_path(config["image_root"])}";',
         'outputRoot = "path here";': f'outputRoot = "{macro_path(config["crop_output"])}";',
@@ -409,63 +400,12 @@ def enhance_four_point_macro(source: str) -> str:
     return source[:start] + block + source[export:]
 
 
-def build_legacy_macro(config: dict) -> Path:
+def build_four_point_macro(config: dict) -> Path:
     source = configure_source_settings(SOURCE_MACRO.read_text(encoding="utf-8"), config)
     source = enhance_four_point_macro(source)
     APP_DIR.mkdir(parents=True, exist_ok=True)
-    CONFIGURED_LEGACY_MACRO.write_text(source, encoding="utf-8")
-    return CONFIGURED_LEGACY_MACRO
-
-
-def build_macro(config: dict) -> Path:
-    source = configure_source_settings(SOURCE_MACRO.read_text(encoding="utf-8"), config)
-
-    source = replace_once(
-        source,
-        "        if (gridCols != 10 && gridCols != 12) {",
-        "        if (gridCols < 2) {",
-    )
-
-    if source.count(START_MARKER) != 1 or source.count(END_MARKER) != 1:
-        raise SystemExit("Production macro calibration markers changed; refusing to guess where to patch.")
-
-    start = source.index(START_MARKER)
-    end = source.index(END_MARKER, start) + len(END_MARKER)
-
-    composed = f'''        // ====================================================
-        // FULL-COLUMN COMPOSED ROUTE
-        // Existing folder/CSV lookup above and close/logging below are preserved.
-        // Completed images were removed from the temporary metadata preflight.
-        // ====================================================
-
-        showStatus(
-            cleanFolderName + " | " + sourceTitle + " | " +
-            experiment + "/" + setName + "/" + typeName +
-            " | grid 8x" + gridCols + " | exports " + (nWanted * 2)
-        );
-
-        alignmentResult = runMacro(
-            "{macro_path(ALIGNMENT_MACRO)}",
-            "cols=" + gridCols + ";rows=8;tolerance={config['alignment_tolerance']};" +
-            "context=" + experiment + "/" + setName + "/" + typeName
-        );
-        if (alignmentResult != "accepted")
-            exit("Full-column alignment did not complete successfully; crop export was not started.");
-
-        runMacro(
-            "{macro_path(CROP_HELPER)}",
-            "grid_csv={macro_path(config['grid_csv'])};" +
-            "output_dir=" + outDir + ";" +
-            "experiment=" + experiment + ";" +
-            "set=" + setName + ";" +
-            "type=" + typeName + ";" +
-            "crop_w=" + CROP_W + ";crop_h=" + CROP_H
-        );'''
-
-    source = source[:start] + composed + source[end:]
-    APP_DIR.mkdir(parents=True, exist_ok=True)
-    CONFIGURED_MACRO.write_text(source, encoding="utf-8")
-    return CONFIGURED_MACRO
+    CONFIGURED_FOUR_POINT_MACRO.write_text(source, encoding="utf-8")
+    return CONFIGURED_FOUR_POINT_MACRO
 
 
 def main() -> None:
@@ -476,30 +416,21 @@ def main() -> None:
         help="validate/preflight and build the configured Fiji macro without requiring or launching Fiji",
     )
     parser.add_argument("--subfolder", help="process only this immediate image-root subfolder")
-    parser.add_argument(
-        "--legacy",
-        action="store_true",
-        help="use the established four-point centre-click geometry with mathematical full-grid QC",
-    )
     args = parser.parse_args()
 
     config = load_config(
         require_fiji=not args.prepare_only,
-        require_fiji_handoff_paths=not args.legacy,
+        require_fiji_handoff_paths=False,
     )
-    validate_runtime_files(config, require_fiji=not args.prepare_only, legacy=args.legacy)
+    validate_runtime_files(config, require_fiji=not args.prepare_only)
     validate_csvs(config)
-    if args.legacy:
-        validate_legacy_grid_widths(config)
-    pending = restrict_pending_to_subfolder(config, args.subfolder) if args.legacy else run_preflight(legacy=False)
+    validate_four_point_grid_widths(config)
+    pending = restrict_pending_to_subfolder(config, args.subfolder)
     ensure_crop_output_root(config)
-    macro = build_legacy_macro(config) if args.legacy else build_macro(config)
+    macro = build_four_point_macro(config)
 
     if args.prepare_only:
-        if args.legacy:
-            print(f"Prepared four-point batch for {pending} pending image(s): {macro}")
-        else:
-            print(f"Prepared composed batch for {pending} pending image(s): {macro}")
+        print(f"Prepared four-point batch for {pending} pending image(s): {macro}")
         return
 
     fiji = Path(config["fiji_executable"])

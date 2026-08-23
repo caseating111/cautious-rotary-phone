@@ -350,7 +350,7 @@ class Controller(tk.Tk):
             return
         exe_raw = self.vars["ahk_executable"].get().strip()
         exe = Path(exe_raw) if exe_raw else None
-        script = REPO_ROOT / "ahk" / "full_column_alignment_hotkeys.ah2"
+        script = REPO_ROOT / "ahk" / "four_point_alignment_hotkeys.ah2"
         if not exe or not exe.is_file():
             messagebox.showerror("AutoHotkey", "Select the AutoHotkey v2 executable first.")
             return

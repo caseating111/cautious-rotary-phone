@@ -13,7 +13,7 @@ from tools.workflow_controller import (
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CONTROLLER = REPO_ROOT / "tools" / "workflow_controller.py"
-AHK_HELPER = REPO_ROOT / "ahk" / "full_column_alignment_hotkeys.ah2"
+AHK_HELPER = REPO_ROOT / "ahk" / "four_point_alignment_hotkeys.ah2"
 
 
 class ControllerContractTests(unittest.TestCase):

@@ -141,7 +141,7 @@ class ExtendedController(Controller):
             )
             return
         script = Path(one_plate_validation.batch.__file__).resolve()
-        args = [sys.executable, str(script), "--legacy"]
+        args = [sys.executable, str(script)]
         if subfolder:
             args.extend(["--subfolder", subfolder])
         try:
@@ -321,7 +321,6 @@ class ExtendedController(Controller):
         try:
             selected = one_plate_validation.run(
                 filename,
-                legacy=True,
                 rerun_done=rerun_done,
                 replace_existing=self.replace_existing_crops.get(),
             )
