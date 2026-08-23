@@ -4,6 +4,7 @@
 SetTitleMatchMode(2)
 
 WorkflowWindowWatchDeadline := 0
+LauncherCloseNotBefore := 0
 
 PlacementDialogTitle(title)
 {
@@ -65,16 +66,23 @@ MoveFijiToolbarOnce()
     }
 }
 
-HideFijiLauncherOverlayWindows()
+FijiMainWindowExists()
 {
+    return WinExist("(Fiji Is Just) ImageJ ahk_class SunAwtFrame ahk_exe fiji-windows-x64.exe") != 0
+}
+
+CloseExtraFijiLauncherWindows()
+{
+    global LauncherCloseNotBefore
+    if (A_TickCount < LauncherCloseNotBefore) || !FijiMainWindowExists()
+        return
+
     for hwnd in WinGetList("ahk_class SunAwtWindow ahk_exe fiji-windows-x64.exe")
     {
         ; Window Spy identifies the separate Jaunch overlay by this class and
-        ; executable. Its title and PID vary, so do not use either. Repeatedly
-        ; make it non-topmost, lower it, and hide it without closing a process.
-        try WinSetAlwaysOnTop(0, "ahk_id " hwnd)
-        try WinMoveBottom("ahk_id " hwnd)
-        try WinHide("ahk_id " hwnd)
+        ; executable. Close only that window after the real Fiji frame exists;
+        ; never identify either process by its variable PID or window ID.
+        try WinClose("ahk_id " hwnd)
     }
 }
 
@@ -88,12 +96,13 @@ MoveKnownWorkflowWindowsOnce()
         }
     }
     MoveFijiToolbarOnce()
-    HideFijiLauncherOverlayWindows()
+    CloseExtraFijiLauncherWindows()
 }
 
 StartWorkflowWindowWatch()
 {
-    global WorkflowWindowWatchDeadline := A_TickCount + 15000
+    global WorkflowWindowWatchDeadline := A_TickCount + 10000
+    global LauncherCloseNotBefore := A_TickCount + 750
     SetTimer(CatchUpWorkflowWindows, 100)
 }
 
