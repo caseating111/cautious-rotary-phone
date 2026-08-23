@@ -3,7 +3,6 @@ from __future__ import annotations
 import csv
 import subprocess
 import sys
-import uuid
 from pathlib import Path
 
 try:
@@ -22,7 +21,6 @@ APP_DIR = batch.APP_DIR
 PROOF_IMAGES_CSV = APP_DIR / "one_plate_validation_images.csv"
 FOUR_POINT_PLATE_MACRO = APP_DIR / "one_plate_four_point.configured.ijm"
 REPLACEMENT_MANIFEST = APP_DIR / "one_plate_crop_replacements.tsv"
-ONE_PLATE_INVOCATION_FILE = APP_DIR / "one_plate_invocation.token"
 
 
 def open_window_titles() -> list[str]:
@@ -105,7 +103,6 @@ def patch_prepared_macro(
     proof_csv: Path,
     replacement_manifest: Path | None = None,
     source_folder: str | None = None,
-    invocation_token: str | None = None,
 ) -> str:
     import re
 
@@ -128,24 +125,6 @@ def patch_prepared_macro(
         if source.count(old_manifest) != 1:
             raise SystemExit("Prepared macro has no unambiguous replacement-manifest setting.")
         source = source.replace(old_manifest, new_manifest, 1)
-    if invocation_token is not None:
-        folder_loop = new_folders if source_folder is not None else "folders = getFileList(inputRoot);"
-        if source.count(folder_loop) != 1:
-            raise SystemExit("Prepared macro has no unambiguous source-folder loop for its invocation guard.")
-        invocation_file = batch.macro_path(ONE_PLATE_INVOCATION_FILE)
-        guard = (
-            f'onePlateInvocationFile = "{invocation_file}";\n'
-            f'onePlateInvocationToken = "{invocation_token}";\n'
-            'onePlateInvocationReady = onePlateInvocationToken + "\\tREADY";\n'
-            'if (!File.exists(onePlateInvocationFile))\n'
-            '    exit();\n'
-            'if (File.openAsString(onePlateInvocationFile) != onePlateInvocationReady)\n'
-            '    exit();\n'
-            'File.saveString(onePlateInvocationToken + "\\tRUNNING", onePlateInvocationFile);\n'
-            'print("=== ONE-PLATE RUN " + onePlateInvocationToken + " | selected source-folder status ===");\n\n'
-        )
-        source = source.replace(folder_loop, guard + folder_loop, 1)
-
     # A one-plate proof narrows the metadata file to the selected plate, but it
     # must finish the immediate source-folder loop so Fiji logs every other
     # plate's current state. Remove an old early-stop patch if present.
@@ -231,15 +210,11 @@ def prepare(filename: str | None = None, *, rerun_done: bool = False, replace_ex
     if replace_existing:
         crop_replacement_manifest.write_manifest(config, selected, REPLACEMENT_MANIFEST)
         manifest = REPLACEMENT_MANIFEST
-    invocation_token = uuid.uuid4().hex
-    APP_DIR.mkdir(parents=True, exist_ok=True)
-    ONE_PLATE_INVOCATION_FILE.write_text(f"{invocation_token}\tREADY", encoding="utf-8")
     proof_text = patch_prepared_macro(
         configured.read_text(encoding="utf-8"),
         PROOF_IMAGES_CSV,
         manifest,
         matching_sources[0].parent.name,
-        invocation_token,
     )
     proof_macro.write_text(proof_text, encoding="utf-8")
     return proof_macro, selected
