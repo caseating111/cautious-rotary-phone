@@ -219,6 +219,7 @@ def run_selection(selection: dict, no_open_output: bool = False) -> Path:
         selected_crops = pillow_adapter.validate_unique_crop_matches(
             Path(config["crop_output"]),
             filtered["grid_csv"], filtered["images_csv"],
+            states=selection["states"],
         )
         staged_root = temp_root / "crops"
         staged_crops = pillow_adapter.stage_selected_crops(selected_crops, staged_root)

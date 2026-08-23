@@ -139,7 +139,12 @@ def validate_source_readiness_if_configured(config: dict) -> None:
         )
 
 
-def configured_copy(alias: str, config: dict, image_root: str | Path | None = None) -> Path:
+def configured_copy(
+    alias: str,
+    config: dict,
+    image_root: str | Path | None = None,
+    configured_dir: str | Path | None = None,
+) -> Path:
     source_path = SCRIPT_DIR / SCRIPTS[alias]
     source = source_path.read_text(encoding="utf-8")
     effective_image_root = Path(image_root) if image_root is not None else Path(config["crop_output"])
@@ -164,8 +169,9 @@ def configured_copy(alias: str, config: dict, image_root: str | Path | None = No
     elif source.count(legacy_false) != 1:
         raise SystemExit(f"{source_path.name}: expected one legacy rotation setting")
 
-    APP_DIR.mkdir(parents=True, exist_ok=True)
-    out = APP_DIR / f"{source_path.stem}.configured.py"
+    target_dir = Path(configured_dir) if configured_dir is not None else APP_DIR
+    target_dir.mkdir(parents=True, exist_ok=True)
+    out = target_dir / f"{source_path.stem}.configured.py"
     out.write_text(source, encoding="utf-8")
     return out
 
@@ -197,7 +203,11 @@ def safe_name(value: str) -> str:
     return value
 
 
-def expected_crop_contract(grid_path: Path, images_path: Path) -> dict[str, str]:
+def expected_crop_contract(
+    grid_path: Path,
+    images_path: Path,
+    states: tuple[str, ...] | list[str] | None = None,
+) -> dict[str, str]:
     grid = read_csv_rows(grid_path)
     images = read_csv_rows(images_path)
     columns_by_grid: dict[tuple[str, str], dict[int, str]] = defaultdict(dict)
@@ -208,6 +218,10 @@ def expected_crop_contract(grid_path: Path, images_path: Path) -> dict[str, str]
             raise SystemExit(f"Invalid grid column in {grid_path}: {row.get('Column', '')!r}") from exc
         columns_by_grid[(row.get("Experiment", ""), row.get("Set", ""))][column] = row.get("Strain", "")
 
+    selected_states = tuple(states) if states is not None else ("Top", "Low")
+    if not selected_states or any(state not in {"Top", "Low"} for state in selected_states):
+        raise SystemExit("Crop contract states must contain Top and/or Low.")
+
     contract: dict[str, str] = {}
     contract_source: dict[str, str] = {}
     for row in images:
@@ -216,7 +230,7 @@ def expected_crop_contract(grid_path: Path, images_path: Path) -> dict[str, str]
         type_name = row.get("Type", "")
         source_name = row.get("Filename", "")
         for column, strain in columns_by_grid.get((exp, set_name), {}).items():
-            for state in ("Top", "Low"):
+            for state in selected_states:
                 prefix = f"{exp}_{set_name}_{type_name}_{column:02d}_{state}_".lower()
                 exact_name = f"{exp}_{set_name}_{type_name}_{column:02d}_{state}_{safe_name(strain)}.png"
                 if prefix in contract:
@@ -234,6 +248,7 @@ def validate_unique_crop_matches(
     root: Path,
     grid_path: Path,
     images_path: Path,
+    states: tuple[str, ...] | list[str] | None = None,
 ) -> list[Path]:
     if not root.is_dir():
         raise SystemExit(f"Crop output folder not found: {root}")
@@ -243,7 +258,7 @@ def validate_unique_crop_matches(
         for path in root.rglob("*")
         if path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS
     )
-    contract = expected_crop_contract(grid_path, images_path)
+    contract = expected_crop_contract(grid_path, images_path, states=states)
     duplicate_exact: list[tuple[str, list[Path]]] = []
     stale_only: list[tuple[str, str, list[Path]]] = []
     ignored_stale: list[Path] = []

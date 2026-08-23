@@ -20,6 +20,7 @@ class BatchPrepareEndToEndTests(unittest.TestCase):
         app_dir = home / ".cautious-rotary-phone"
         source_folder = root / "images" / "setA"
         crop_root = root / "derived" / "crops"
+        matrix_root = root / "derived" / "matrices"
         app_dir.mkdir(parents=True)
         source_folder.mkdir(parents=True)
         (source_folder / "plate1.jpg").write_bytes(b"synthetic source placeholder")
@@ -39,6 +40,7 @@ class BatchPrepareEndToEndTests(unittest.TestCase):
                 {
                     "image_root": str(root / "images"),
                     "crop_output": str(crop_root),
+                    "matrix_output": str(matrix_root),
                     "grid_csv": str(grid),
                     "images_csv": str(images),
                     "condition_order_csv": str(conditions),
@@ -85,6 +87,12 @@ class BatchPrepareEndToEndTests(unittest.TestCase):
             self.assertIn("CROP_H = 48;", text)
             self.assertIn("requireCropFits(", text)
             self.assertIn(r'File.saveString("complete\n", controlFile);', text)
+            self.assertIn('runLabel = "Batch All";', text)
+            self.assertIn('runSequence = "001";', text)
+            self.assertIn("function workflowLog(message)", text)
+            self.assertIn("function completeWorkflowRun(processed, notListed, skipped)", text)
+            self.assertNotIn("print(", text)
+            self.assertIn("Processing Logs/Four-Point Alignment Runs.txt", text)
             self.assertNotIn("FULL-COLUMN COMPOSED ROUTE", text)
 
 

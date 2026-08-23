@@ -40,6 +40,28 @@ class FourPointMathematicalQCTests(unittest.TestCase):
         self.assertNotIn("Array.findMaxima", text)
         self.assertNotIn("getProfile()", text)
 
+    def test_qc_retry_marker_overrides_awt_default_accept(self) -> None:
+        text = batch.enhance_four_point_macro(self.source)
+        choice = text.index("qcAction = Dialog.getChoice();")
+        accept = text.index('if (qcAction == "ACCEPT")', choice)
+        retry_override = text.index('if (hotkeyAction == "retry")', choice)
+        self.assertLess(retry_override, accept)
+        self.assertIn("String.trim(File.openAsString(controlFile))", text)
+        self.assertIn('qcAction = "RETRY";', text[retry_override:accept])
+        self.assertIn("File.delete(controlFile);", text[retry_override:accept])
+
+    def test_ahk_persists_qc_retry_before_driving_awt_choice(self) -> None:
+        ahk = (
+            batch.REPO_ROOT / "ahk" / "four_point_alignment_hotkeys.ah2"
+        ).read_text(encoding="utf-8")
+        handler = ahk[
+            ahk.index('#HotIf FijiWorkflowDialog("Alignment QC")') :
+        ]
+        write = handler.index('WriteBatchControl("retry")')
+        send = handler.index('Send("{Home}{Down}{Enter}")')
+        self.assertLess(write, send)
+        self.assertIn('FileAppend(action, controlPath, "UTF-8-RAW")', ahk)
+
 
 if __name__ == "__main__":
     unittest.main()

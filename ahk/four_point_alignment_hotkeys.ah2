@@ -50,7 +50,7 @@ WriteBatchControl(action)
     } catch {
     }
     try {
-        FileAppend(action, controlPath, "UTF-8")
+        FileAppend(action, controlPath, "UTF-8-RAW")
     } catch {
     }
 }
@@ -328,7 +328,8 @@ x::
 }
 #HotIf
 ; X selects Retry on either QC dialog. Both dialogs default to Accept;
-; Down selects Retry, Enter confirms.
+; persist the intent before driving the Java choice. The persisted request is
+; authoritative if AWT briefly loses choice focus and Enter confirms ACCEPT.
 #HotIf FijiWorkflowDialog("Alignment QC") || FijiWorkflowDialog("Full-grid QC")
 x::
 {
@@ -336,6 +337,7 @@ x::
     {
         if hwnd := FijiWorkflowDialog(title)
         {
+            WriteBatchControl("retry")
             WinActivate(hwnd)
             if WinWaitActive(hwnd, , 0.5)
                 Send("{Home}{Down}{Enter}")

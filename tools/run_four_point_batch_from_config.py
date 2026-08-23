@@ -4,6 +4,7 @@ import argparse
 import csv
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -33,6 +34,7 @@ CONTROL_REQUEST_FILE = APP_DIR / "four_point_control.request"
 RESUME_MARKER_FILE = APP_DIR / "four_point_resume.marker"
 ACTIVE_BATCH_FILE = APP_DIR / "four_point_batch.active"
 OWNED_FIJI_PIDS_FILE = APP_DIR / "four_point_owned_fiji_pids.txt"
+ALIGNMENT_LOG_NAME = "Four-Point Alignment Runs.txt"
 
 START_MARKER = "        // ====================================================\n        // IDENTIFY CURRENT PLATE"
 END_MARKER = "        setBatchMode(false);"
@@ -249,6 +251,86 @@ def configure_source_settings(source: str, config: dict, replacement_manifest: P
         source = replace_once(source, old, new)
     return source
 
+
+def alignment_log_path(config: dict) -> Path:
+    raw = str(config.get("matrix_output", "")).strip()
+    if not raw:
+        raise SystemExit("Missing config value required for the shared Fiji run log: matrix_output")
+    folder = Path(raw) / "Processing Logs"
+    try:
+        folder.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise SystemExit(f"Could not create Fiji processing-log folder {folder}: {exc}") from exc
+    return folder / ALIGNMENT_LOG_NAME
+
+
+def next_alignment_run_number(log_path: Path) -> int:
+    try:
+        text = log_path.read_text(encoding="utf-8-sig")
+    except FileNotFoundError:
+        return 1
+    except OSError as exc:
+        raise SystemExit(f"Could not read existing Fiji processing log {log_path}: {exc}") from exc
+    numbers = [int(value) for value in re.findall(r"^===== .+ \| Run (\d+) \| COMPLETED =====$", text, re.MULTILINE)]
+    return max(numbers, default=0) + 1
+
+
+def configure_run_logging(source: str, config: dict, run_label: str) -> str:
+    allowed_labels = {"Batch All", "Batch Folder", "Single", "Single Rerun"}
+    if run_label not in allowed_labels:
+        raise SystemExit(f"Unsupported four-point run label: {run_label}")
+
+    log_path = alignment_log_path(config)
+    run_number = next_alignment_run_number(log_path)
+    session_log = APP_DIR / f"four_point_run_{uuid.uuid4().hex}.pending.log"
+    header = (
+        f'datasetLog = "{macro_path(log_path)}";\n'
+        f'runSessionLog = "{macro_path(session_log)}";\n'
+        f'runLabel = "{run_label}";\n'
+        f'runSequence = "{run_number:03d}";\n'
+    )
+    source, input_substitutions = re.subn(
+        r"(?m)^(inputRoot  = [^\r\n]+;)$",
+        lambda match: header + match.group(1),
+        source,
+        count=1,
+    )
+    if input_substitutions != 1:
+        raise SystemExit("Generated four-point macro has no unambiguous configured input-root setting.")
+    source = source.replace("print(", "workflowLog(")
+    if "print(" in source:
+        raise SystemExit("Generated four-point macro still contains ImageJ Log-window output.")
+
+    completion = "// ============================================================\n// FINISHED\n// ============================================================\n"
+    source = replace_once(
+        source,
+        completion,
+        completion + "completeWorkflowRun(processedImages, notListedImages, skippedImages);\n\n",
+    )
+    functions = "// ============================================================\n// FUNCTIONS\n// ============================================================\n"
+    logging_functions = r'''function workflowLog(message) {
+    File.append(message + "\n", runSessionLog);
+}
+
+function completeWorkflowRun(processed, notListed, skipped) {
+    divider = "===== " + runLabel + " | Run " + runSequence + " | COMPLETED =====\n";
+    File.append(divider, datasetLog);
+    if (File.exists(runSessionLog)) {
+        File.append(File.openAsString(runSessionLog), datasetLog);
+        File.delete(runSessionLog);
+    }
+    File.append(
+        "SUMMARY - processed: " + processed +
+        "; not listed / not pending: " + notListed +
+        "; skipped after metadata match: " + skipped + "\n\n",
+        datasetLog
+    );
+}
+
+'''
+    return replace_once(source, functions, functions + logging_functions)
+
+
 def enhance_metadata_lookup(source: str) -> str:
     """Bind batch metadata to folder + filename, never just a basename."""
     start_marker = "        // LOOK UP IMAGE IN images.csv BEFORE OPENING IT"
@@ -448,6 +530,16 @@ def enhance_four_point_macro(source: str) -> str:
                 );
                 Dialog.show();
                 qcAction = Dialog.getChoice();
+                // X writes the retry intent before asking Java AWT to select
+                // RETRY. Honour that marker even if the choice lost focus and
+                // AWT returned its default ACCEPT during a late-batch redraw.
+                if (File.exists(controlFile)) {
+                    hotkeyAction = String.trim(File.openAsString(controlFile));
+                    if (hotkeyAction == "retry") {
+                        qcAction = "RETRY";
+                        File.delete(controlFile);
+                    }
+                }
                 if (qcAction == "ACCEPT")
                     accepted = 1;
                 else
@@ -511,10 +603,17 @@ def enhance_four_point_macro(source: str) -> str:
     return source[:start] + block + source[export:]
 
 
-def build_four_point_macro(config: dict, replacement_manifest: Path | None = None, state_file: Path | None = None) -> Path:
+def build_four_point_macro(
+    config: dict,
+    replacement_manifest: Path | None = None,
+    state_file: Path | None = None,
+    *,
+    run_label: str = "Batch All",
+) -> Path:
     source = configure_source_settings(SOURCE_MACRO.read_text(encoding="utf-8"), config, replacement_manifest, state_file)
     source = enhance_metadata_lookup(source)
     source = enhance_four_point_macro(source)
+    source = configure_run_logging(source, config, run_label)
     APP_DIR.mkdir(parents=True, exist_ok=True)
     CONFIGURED_FOUR_POINT_MACRO.write_text(source, encoding="utf-8")
     return CONFIGURED_FOUR_POINT_MACRO
@@ -618,7 +717,8 @@ def main() -> None:
         crop_replacement_manifest.write_manifests(config, rows, REPLACEMENT_MANIFEST)
         replacement_manifest = REPLACEMENT_MANIFEST
     session_state = APP_DIR / f"four_point_session_{uuid.uuid4().hex}.state.txt"
-    macro = build_four_point_macro(config, replacement_manifest, session_state)
+    run_label = "Batch Folder" if args.subfolder else "Batch All"
+    macro = build_four_point_macro(config, replacement_manifest, session_state, run_label=run_label)
 
     if args.prepare_only:
         action = "replacement-ready" if args.replace_existing_crops else "pending"

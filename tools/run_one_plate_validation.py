@@ -85,13 +85,13 @@ def choose_pending_row(rows: list[dict[str, str]], filename: str | None = None) 
     return matches[0]
 
 
-def _prepare_completed_plate_macro() -> Path:
+def _prepare_completed_plate_macro(*, run_label: str = "Single Rerun") -> Path:
     config = batch.load_config(require_fiji=False, require_fiji_handoff_paths=False)
     batch.validate_runtime_files(config, require_fiji=False)
     batch.validate_csvs(config)
     batch.validate_four_point_grid_widths(config)
     batch.ensure_crop_output_root(config)
-    return batch.build_four_point_macro(config)
+    return batch.build_four_point_macro(config, run_label=run_label)
 
 
 def write_one_row_tsv(path: Path, row: dict[str, str]) -> None:
@@ -110,6 +110,7 @@ def patch_prepared_macro(
     proof_tsv: Path,
     replacement_manifest: Path | None = None,
     source_folder: str | None = None,
+    run_label: str | None = None,
 ) -> str:
     import re
 
@@ -132,6 +133,15 @@ def patch_prepared_macro(
         if source.count(old_manifest) != 1:
             raise SystemExit("Prepared macro has no unambiguous replacement-manifest setting.")
         source = source.replace(old_manifest, new_manifest, 1)
+    if run_label is not None:
+        source, label_substitutions = re.subn(
+            r'runLabel = "(?:Batch All|Batch Folder|Single|Single Rerun)";',
+            f'runLabel = "{run_label}";',
+            source,
+            count=1,
+        )
+        if label_substitutions != 1:
+            raise SystemExit("Prepared one-plate macro has no unambiguous run-mode label.")
     # A one-plate proof narrows the metadata file to the selected plate, but it
     # must finish the immediate source-folder loop so Fiji logs every other
     # plate's current state. Remove an old early-stop patch if present.
@@ -225,6 +235,7 @@ def prepare(filename: str | None = None, *, rerun_done: bool = False, replace_ex
         PROOF_IMAGES_TSV,
         manifest,
         matching_sources[0].parent.name,
+        "Single Rerun" if rerun_done else "Single",
     )
     proof_macro.write_text(proof_text, encoding="utf-8")
     return proof_macro, selected

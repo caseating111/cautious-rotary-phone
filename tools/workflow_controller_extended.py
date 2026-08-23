@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ntpath
 import os
 import tkinter as tk
 import subprocess
@@ -11,19 +12,13 @@ from tkinter import filedialog, messagebox, ttk
 try:
     from tools import project_csv_discovery
     from tools import project_layout
-    from tools import run_existing_pillow_from_config as pillow_adapter
     from tools import run_one_plate_validation as one_plate_validation
-    from tools import standard_pillow_preview
-    from tools.output_processing_records import write_output_records
-    from tools.workflow_controller import Controller, PILLOW_JOBS, PROJECT_CSV_FILES, REPO_ROOT
+    from tools.workflow_controller import Controller, PROJECT_CSV_FILES, REPO_ROOT
 except ModuleNotFoundError:
     import project_csv_discovery
     import project_layout
-    import run_existing_pillow_from_config as pillow_adapter
     import run_one_plate_validation as one_plate_validation
-    import standard_pillow_preview
-    from output_processing_records import write_output_records
-    from workflow_controller import Controller, PILLOW_JOBS, PROJECT_CSV_FILES, REPO_ROOT
+    from workflow_controller import Controller, PROJECT_CSV_FILES, REPO_ROOT
 
 
 APP_RUNTIME_DIR = Path.home() / ".cautious-rotary-phone"
@@ -32,6 +27,16 @@ CONTROL_REQUEST_FILE = APP_RUNTIME_DIR / "four_point_control.request"
 RESUME_MARKER_FILE = APP_RUNTIME_DIR / "four_point_resume.marker"
 OWNED_FIJI_PIDS_FILE = APP_RUNTIME_DIR / "four_point_owned_fiji_pids.txt"
 CLOSE_REQUEST_FILE = APP_RUNTIME_DIR / "controller_close.request"
+
+def path_is_within_windows_root(path: str | Path, root: str | Path) -> bool:
+    """Compare resolved Windows paths case-insensitively without Path.relative_to."""
+    path_key = ntpath.normcase(str(Path(path).resolve()))
+    root_key = ntpath.normcase(str(Path(root).resolve()))
+    try:
+        return ntpath.commonpath((path_key, root_key)) == root_key
+    except ValueError:
+        return False
+
 
 
 def process_is_running(pid: int) -> bool:
@@ -107,12 +112,6 @@ def cleanup_stale_owned_fiji_processes() -> None:
         terminate_owned_fiji(pid)
     OWNED_FIJI_PIDS_FILE.unlink(missing_ok=True)
 
-STANDARD_OUTPUT_TYPES = {
-    "matrices": "matrices",
-    "all-strains": "all strains",
-    "label-individual": "labelled individual crops",
-}
-
 
 class ExtendedController(Controller):
     def __init__(self) -> None:
@@ -120,7 +119,6 @@ class ExtendedController(Controller):
         if not active_batch_marker():
             cleanup_stale_owned_fiji_processes()
         self.protocol("WM_DELETE_WINDOW", self.close_controller)
-        self.preview_standard_outputs = tk.BooleanVar(value=self.config_bool("preview_standard_outputs", True))
         self.replace_existing_crops = tk.BooleanVar(value=self.config_bool("replace_existing_crops", False))
         self.skip_done = tk.BooleanVar(value=self.config_bool("skip_done", True))
         self.clear_fiji_on_cancel = tk.BooleanVar(value=self.config_bool("clear_fiji_on_cancel", True))
@@ -129,7 +127,7 @@ class ExtendedController(Controller):
         self.batch_subfolder = tk.StringVar()
         self.project_prefix = tk.StringVar(value=project_layout.default_prefix())
         self.fiji_processes: list[subprocess.Popen] = []
-        for variable in (self.preview_standard_outputs, self.replace_existing_crops, self.skip_done, self.clear_fiji_on_cancel, self.batch_grid_qc, self.hide_source_during_alignment):
+        for variable in (self.replace_existing_crops, self.skip_done, self.clear_fiji_on_cancel, self.batch_grid_qc, self.hide_source_during_alignment):
             variable.trace_add("write", self.save_toggle_settings)
 
 
@@ -239,15 +237,12 @@ class ExtendedController(Controller):
         ttk.Checkbutton(options, text="Hide source image while aligning (batch + single)", variable=self.hide_source_during_alignment).grid(row=3, column=0, sticky="w", padx=5, pady=2)
         ttk.Checkbutton(options, text="Clear Fiji source/alignment windows on C cancellation", variable=self.clear_fiji_on_cancel).grid(row=4, column=0, sticky="w", padx=5, pady=(2, 5))
 
-        ttk.Label(self.outputs_tab, text="Run after crop export").grid(row=0, column=0, columnspan=3, sticky="w", **pad)
-        ttk.Checkbutton(self.outputs_tab, text="Preview first when a standard Pillow job will create multiple images", variable=self.preview_standard_outputs).grid(row=1, column=0, columnspan=3, sticky="w", **pad)
-        ttk.Label(self.outputs_tab, text="Pillow output").grid(row=2, column=0, sticky="w", **pad)
-        ttk.Combobox(self.outputs_tab, textvariable=self.pillow_job, values=list(PILLOW_JOBS), state="readonly", width=34).grid(row=2, column=1, sticky="w", **pad)
-        button(self.outputs_tab, text="Run", command=self.run_pillow_job).grid(row=2, column=2, sticky="ew", **pad)
-        output_actions = ttk.Frame(self.outputs_tab)
-        output_actions.grid(row=3, column=0, columnspan=3, sticky="w", **pad)
-        button(output_actions, text="Custom matrices", command=lambda: self.launch_python("tools/custom_matrix_gui_recorded.py")).pack(side="left")
-        button(output_actions, text="Preferred WT source", command=lambda: self.launch_python("tools/dedup_control_gui.py")).pack(side="left", padx=(5, 0))
+        ttk.Label(self.outputs_tab, text="Build matrices and labelled crops from the selected dataset subset").grid(row=0, column=0, columnspan=3, sticky="w", **pad)
+        button(
+            self.outputs_tab,
+            text="Build matrices and labelled crops",
+            command=lambda: self.launch_python("tools/custom_matrix_gui_recorded.py"),
+        ).grid(row=1, column=0, columnspan=3, sticky="ew", **pad)
         button(self.outputs_tab, text="Open crop output", command=lambda: self.open_path_from_config("crop_output")).grid(row=4, column=0, sticky="ew", **pad)
         button(self.outputs_tab, text="Open matrix output", command=lambda: self.open_path_from_config("matrix_output")).grid(row=4, column=1, sticky="ew", **pad)
         button(self.outputs_tab, text="Open image root", command=lambda: self.open_path_from_config("image_root")).grid(row=4, column=2, sticky="ew", **pad)
@@ -307,7 +302,6 @@ class ExtendedController(Controller):
         self.save()
 
     def save(self, explicit: bool = False) -> bool:
-        self.vars["preview_standard_outputs"].set("1" if self.preview_standard_outputs.get() else "0")
         self.vars["replace_existing_crops"].set("1" if self.replace_existing_crops.get() else "0")
         self.vars["skip_done"].set("1" if self.skip_done.get() else "0")
         self.vars["clear_fiji_on_cancel"].set("1" if self.clear_fiji_on_cancel.get() else "0")
@@ -590,9 +584,7 @@ class ExtendedController(Controller):
             return
 
         chosen_path = Path(chosen).resolve()
-        try:
-            chosen_path.relative_to(Path(image_root).resolve())
-        except ValueError:
+        if not path_is_within_windows_root(chosen_path, image_root):
             messagebox.showerror("One-plate validation", "Choose a plate inside the configured raw-image folder.")
             self.status.set("One-plate proof was not launched because the selected file was outside the configured image root.")
             return
@@ -632,109 +624,6 @@ class ExtendedController(Controller):
             if value
         )
         self.status.set(f"One-plate 4-point proof launched: {filename} | {context}")
-
-    def standard_output_count(self, alias: str, config: dict) -> int:
-        crop_count = None
-        if alias == "label-individual":
-            selected = pillow_adapter.validate_unique_crop_matches(
-                Path(config["crop_output"]),
-                Path(config["grid_csv"]),
-                Path(config["images_csv"]),
-            )
-            crop_count = len(selected)
-        return standard_pillow_preview.estimated_output_count(alias, config, crop_count=crop_count)
-
-    def last_output_text(self) -> str | None:
-        if not pillow_adapter.LAST_OUTPUT_FILE.is_file():
-            return None
-        try:
-            value = pillow_adapter.LAST_OUTPUT_FILE.read_text(encoding="utf-8").strip()
-        except OSError:
-            return None
-        return value or None
-
-    def record_standard_output(self, alias: str, previous_output: str | None) -> None:
-        current = self.last_output_text()
-        if not current or current == previous_output:
-            return
-        output = Path(current)
-        if not output.is_dir():
-            return
-        try:
-            config = pillow_adapter.load_config()
-            selection = standard_pillow_preview.full_matrix_selection(config)
-            required = len(
-                pillow_adapter.expected_crop_contract(Path(config["grid_csv"]), Path(config["images_csv"]))
-            )
-            available = len(
-                pillow_adapter.validate_unique_crop_matches(
-                    Path(config["crop_output"]),
-                    Path(config["grid_csv"]),
-                    Path(config["images_csv"]),
-                )
-            )
-            human_log, _machine_recipe = write_output_records(
-                Path(config["matrix_output"]),
-                output,
-                output_type=STANDARD_OUTPUT_TYPES[alias],
-                selection=selection,
-                required_crops=required,
-                available_crops=available,
-                used_crops=available,
-                display_mode="raw",
-            )
-        except (OSError, SystemExit) as exc:
-            self.status.set(f"Output created, but its processing record could not be written: {exc}")
-            return
-        self.status.set(f"Pillow output complete: {output} | Processing Log: {human_log}")
-
-    def run_standard_output(self, alias: str) -> None:
-        previous = self.last_output_text()
-        super().run_pillow_job()
-        self.record_standard_output(alias, previous)
-
-    def run_pillow_job(self) -> None:
-        alias = PILLOW_JOBS[self.pillow_job.get()]
-        if alias == "all-strains-dedup":
-            self.launch_python("tools/dedup_control_gui.py")
-            self.status.set("Choose the preferred WT source; that dialog previews before Top + Low output by default.")
-            return
-
-        if not self.preview_standard_outputs.get():
-            self.run_standard_output(alias)
-            return
-
-        if not self.save():
-            return
-        preview = None
-        try:
-            config = pillow_adapter.load_config()
-            count = self.standard_output_count(alias, config)
-            if count <= 1:
-                self.run_standard_output(alias)
-                return
-
-            self.status.set(f"Building one representative preview for {self.pillow_job.get()}…")
-            self.update_idletasks()
-            preview = standard_pillow_preview.build_preview(alias)
-            self.open_existing_path(preview.image, "Pillow preview")
-            accepted = messagebox.askyesno(
-                "Pillow preview",
-                f"One representative image has been opened.\n\n"
-                f"The full job will create approximately {count} images. Generate the full output now?",
-            )
-        except SystemExit as exc:
-            messagebox.showerror("Pillow preview", str(exc))
-            self.status.set("Pillow output stopped during representative preview/check.")
-            return
-        finally:
-            if preview is not None:
-                preview.cleanup()
-
-        if not accepted:
-            self.status.set("Preview rejected. Full Pillow output was not generated.")
-            return
-        self.run_standard_output(alias)
 
 
 def main() -> None:

@@ -13,13 +13,12 @@ AHK_HELPER = REPO_ROOT / "ahk" / "four_point_alignment_hotkeys.ah2"
 
 
 class ControllerContractTests(unittest.TestCase):
-    def test_pillow_failures_are_surfaced(self) -> None:
+    def test_pillow_outputs_are_centralized_in_the_matrix_applet(self) -> None:
         text = CONTROLLER.read_text(encoding="utf-8")
-        block = text[text.index("def run_pillow_job"):text.index("def start_ahk")]
-        self.assertIn("subprocess.run(", block)
-        self.assertIn("capture_output=True", block)
-        self.assertIn("messagebox.showerror", block)
-
+        self.assertIn('text="Build matrices and labelled crops"', text)
+        self.assertIn('self.launch_python("tools/custom_matrix_gui_recorded.py")', text)
+        self.assertNotIn("PILLOW_JOBS", text)
+        self.assertNotIn("def run_pillow_job", text)
     def test_processing_settings_are_current_crop_dimensions_only(self) -> None:
         text = CONTROLLER.read_text(encoding="utf-8")
         settings = text[text.index("PROCESSING_SETTINGS"):text.index("def load_config_state")]

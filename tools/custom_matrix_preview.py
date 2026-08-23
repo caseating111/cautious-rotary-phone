@@ -55,7 +55,8 @@ def build_preview(selection: dict) -> PreviewResult:
         preview_config["matrix_output"] = str(preview_output)
 
         selected_crops = pillow_adapter.validate_unique_crop_matches(
-            Path(config["crop_output"]), filtered["grid_csv"], filtered["images_csv"]
+            Path(config["crop_output"]), filtered["grid_csv"], filtered["images_csv"],
+            states=preview_selection["states"],
         )
         validate_selected_freshness(config, filtered, selected_crops)
         staged_root = root / "crops"

@@ -26,7 +26,6 @@ DEFAULTS = {
     "condition_order_csv": "",
     "crop_width": "130",
     "crop_height": "546",
-    "preview_standard_outputs": "1",
     "replace_existing_crops": "0",
     "skip_done": "1",
     "clear_fiji_on_cancel": "1",
@@ -38,13 +37,6 @@ PROJECT_CSV_FILES = {
     "grid_csv": "grid.csv",
     "images_csv": "images.csv",
     "condition_order_csv": "condition_order.csv",
-}
-
-PILLOW_JOBS = {
-    "Matrices": "matrices",
-    "All strains": "all-strains",
-    "All strains (extra WT removed)": "all-strains-dedup",
-    "Label individual crops": "label-individual",
 }
 
 PROCESSING_SETTINGS = [
@@ -113,7 +105,6 @@ class Controller(tk.Tk):
         self.resizable(False, False)
         loaded, self.config_load_error = load_config_state(CONFIG_FILE)
         self.vars = {key: tk.StringVar(value=value) for key, value in loaded.items()}
-        self.pillow_job = tk.StringVar(value="Matrices")
         self.ahk_process: subprocess.Popen | None = None
         self.status = tk.StringVar(value=self.config_load_error or self.environment_text())
         self.build_ui()
@@ -152,7 +143,7 @@ class Controller(tk.Tk):
         for row, (label, key, kind) in enumerate(rows):
             ttk.Label(self, text=label).grid(row=row, column=0, sticky="w", **pad)
             ttk.Entry(self, textvariable=self.vars[key], width=60).grid(row=row, column=1, **pad)
-            ttk.Button(self, text="…", width=3, command=lambda k=key, t=kind: self.browse(k, t)).grid(row=row, column=2, **pad)
+            ttk.Button(self, text="Browse", width=7, command=lambda k=key, t=kind: self.browse(k, t)).grid(row=row, column=2, **pad)
 
         r = len(rows)
         ttk.Button(self, text="Save config", command=lambda: self.save(explicit=True)).grid(row=r, column=0, sticky="ew", **pad)
@@ -172,9 +163,11 @@ class Controller(tk.Tk):
         ).grid(row=r, column=0, columnspan=3, sticky="ew", **pad)
 
         r += 1
-        ttk.Label(self, text="Pillow output").grid(row=r, column=0, sticky="w", **pad)
-        ttk.Combobox(self, textvariable=self.pillow_job, values=list(PILLOW_JOBS), state="readonly", width=34).grid(row=r, column=1, sticky="w", **pad)
-        ttk.Button(self, text="Run", command=self.run_pillow_job).grid(row=r, column=2, sticky="ew", **pad)
+        ttk.Button(
+            self,
+            text="Build matrices and labelled crops",
+            command=lambda: self.launch_python("tools/custom_matrix_gui_recorded.py"),
+        ).grid(row=r, column=0, columnspan=3, sticky="ew", **pad)
 
         r += 1
         ttk.Button(self, text="Open last preflight report", command=self.open_preflight_report).grid(row=r, column=0, columnspan=2, sticky="ew", **pad)
@@ -292,33 +285,6 @@ class Controller(tk.Tk):
             messagebox.showerror("Python helper", str(exc))
             return
         self.status.set(f"Launched: {script.name}")
-
-    def run_pillow_job(self) -> None:
-        alias = PILLOW_JOBS[self.pillow_job.get()]
-        script = REPO_ROOT / "tools" / "run_existing_pillow_from_config.py"
-        if not script.is_file():
-            messagebox.showerror("Pillow output", f"Pillow helper not found:\n{script}")
-            self.status.set("Pillow output not started: helper missing.")
-            return
-
-        if not self.save():
-            return
-        self.status.set(f"Running Pillow output: {self.pillow_job.get()}…")
-        self.update_idletasks()
-        result = subprocess.run(
-            [sys.executable, str(script), alias],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        output = (result.stdout + result.stderr).strip()
-        if result.returncode != 0:
-            messagebox.showerror("Pillow output", output or "Pillow output failed without a message.")
-            self.status.set("Pillow output failed; see the error message.")
-            return
-
-        last_line = output.splitlines()[-1] if output else "Output complete."
-        self.status.set(f"Pillow output complete: {last_line}")
 
     def start_ahk(self) -> None:
         if self.ahk_process and self.ahk_process.poll() is None:

@@ -3,6 +3,8 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 
+from tools.workflow_controller_extended import path_is_within_windows_root
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 EXTENDED = REPO_ROOT / "tools" / "workflow_controller_extended.py"
@@ -16,23 +18,33 @@ class ControllerExtensionContractTests(unittest.TestCase):
             "Run subfolder",
             "Run single image",
             "Rerun single image",
-            "Custom matrices",
-            "Preferred WT source",
+            "Build matrices and labelled crops",
             "Reconcile / validate CSV workflow",
         ):
             self.assertIn(f'text="{label}"', text)
-        for retired in ("Global visibility", "Run full-column batch", "Run 4-point fallback"):
+        for retired in (
+            "Custom matrices",
+            "Preferred WT source",
+            "Pillow output",
+            "Global visibility",
+            "Run full-column batch",
+            "Run 4-point fallback",
+        ):
             self.assertNotIn(f'text="{retired}"', text)
 
     def test_single_selection_is_root_scoped_and_rerun_forces_replacement(self) -> None:
         text = EXTENDED.read_text(encoding="utf-8")
         start = text.index("def run_one_plate_validation")
-        end = text.index("def standard_output_count", start)
+        end = text.index("\ndef main()", start)
         block = text[start:end]
-        self.assertIn("chosen_path.relative_to(Path(image_root).resolve())", block)
+        self.assertIn("path_is_within_windows_root(chosen_path, image_root)", block)
         self.assertIn("one_plate_validation.run_with_process(", block)
         self.assertIn("replace_existing=rerun_done or self.replace_existing_crops.get()", block)
         self.assertIn("authoritative prepare-only results remain available", block)
+
+    def test_single_selection_containment_is_windows_case_insensitive(self) -> None:
+        self.assertTrue(path_is_within_windows_root(r"C:\Data\Raw\Set\plate.jpg", r"c:\data\raw"))
+        self.assertFalse(path_is_within_windows_root(r"C:\Data\Outside\plate.jpg", r"c:\data\raw"))
 
     def test_batch_checks_roi_patch_and_monitors_wrapper_result(self) -> None:
         text = EXTENDED.read_text(encoding="utf-8")
@@ -44,21 +56,13 @@ class ControllerExtensionContractTests(unittest.TestCase):
         self.assertIn("process exit alone", block)
         self.assertNotIn("Pillow output complete", block)
 
-    def test_dedup_routes_to_explicit_control_selection_before_preview_opt_out(self) -> None:
+    def test_outputs_have_one_unified_applet_route(self) -> None:
         text = EXTENDED.read_text(encoding="utf-8")
-        start = text.index("def run_pillow_job")
-        block = text[start:]
-        dedup = block.index('if alias == "all-strains-dedup":')
-        opt_out = block.index("if not self.preview_standard_outputs.get():")
-        self.assertLess(dedup, opt_out)
-        self.assertIn('self.launch_python("tools/dedup_control_gui.py")', block[dedup:opt_out])
-
-    def test_standard_outputs_keep_preview_and_processing_records(self) -> None:
-        text = EXTENDED.read_text(encoding="utf-8")
-        self.assertIn('self.config_bool("preview_standard_outputs", True)', text)
-        self.assertIn("standard_pillow_preview.build_preview(alias)", text)
-        self.assertIn("write_output_records(", text)
-        self.assertIn('display_mode="raw"', text)
+        self.assertEqual(text.count('self.launch_python("tools/custom_matrix_gui_recorded.py")'), 1)
+        self.assertNotIn("PILLOW_JOBS", text)
+        self.assertNotIn("def run_pillow_job", text)
+        self.assertNotIn("dedup_control_gui.py", text)
+        self.assertNotIn("preview_standard_outputs", text)
         self.assertIn('Path(raw) / "Processing Logs"', text)
 
 

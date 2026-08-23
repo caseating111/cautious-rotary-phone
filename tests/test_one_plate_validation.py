@@ -106,6 +106,7 @@ class OnePlateValidationTests(unittest.TestCase):
             f'imagesFile = "{pending}";\n'
             'folders = getFileList(inputRoot);\n'
             'replacementManifest = "";\n'
+            'runLabel = "Batch All";\n'
             'processedImages++;\n        print("done");\n'
         )
         patched = proof.patch_prepared_macro(
@@ -113,10 +114,12 @@ class OnePlateValidationTests(unittest.TestCase):
             Path("C:/proof.tsv"),
             Path("C:/replace.tsv"),
             "FolderA",
+            "Single Rerun",
         )
         self.assertIn('imagesFile = "C:/proof.tsv";', patched)
         self.assertIn('folders = newArray("FolderA/");', patched)
         self.assertIn('replacementManifest = "C:/replace.tsv";', patched)
+        self.assertIn('runLabel = "Single Rerun";', patched)
 
 
 if __name__ == "__main__":

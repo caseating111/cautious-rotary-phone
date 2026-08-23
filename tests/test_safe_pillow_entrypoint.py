@@ -15,13 +15,11 @@ class SafePillowEntrypointTests(unittest.TestCase):
         self.assertFalse(OBSOLETE_DIRECT_LAUNCHER.exists())
         self.assertTrue(SAFE_WRAPPER.is_file())
 
-    def test_controller_routes_pillow_jobs_through_staging_wrapper(self) -> None:
+    def test_controller_routes_outputs_to_the_unified_recorded_applet(self) -> None:
         text = CONTROLLER.read_text(encoding="utf-8")
-        pillow_at = text.index("def run_pillow_job")
-        pillow_block = text[pillow_at : text.index("def start_ahk", pillow_at)]
-
-        self.assertIn('"run_existing_pillow_from_config.py"', pillow_block)
+        self.assertIn('self.launch_python("tools/custom_matrix_gui_recorded.py")', text)
         self.assertNotIn("run_matrices_from_config.py", text)
+        self.assertNotIn("def run_pillow_job", text)
 
 
 if __name__ == "__main__":
