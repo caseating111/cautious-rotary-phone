@@ -3,7 +3,7 @@
 Status: READY FOR INTEGRATION
 Endpoint: Derive canonical PlateLayout v1 from normalized V10 project metadata or specification dictionaries without image pixels or Fiji dependencies.
 Branch: `gemini-layout`
-Commit: pending
+Commit: `2717b23`
 
 ## What was proven
 
