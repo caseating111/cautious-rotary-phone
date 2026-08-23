@@ -81,6 +81,12 @@ Shared project state and durable geometry—especially accepted grid coordinates
 
 Keep Fiji/ImageJ functionality in mature Fiji/ImageJ facilities when that is the best route, but do not prohibit Python-hosted or other officially supported integration modes merely because older architecture placed Fiji in a separate process. Architecture is subordinate to the endpoint.
 
+## Model-cost discipline
+
+Use the least expensive capable model. **Reasoning budget should scale with architectural uncertainty, not code length or file count.** Follow `docs/development/AGENT_MODEL_ROUTING.md` where present.
+
+A failed implementation does not itself authorize a premium model. Prefer bounded research, decomposition, a changed architecture, or a discriminating micro-proof first. Any model/effort tier marked as requiring user approval in the routing document must never be invoked automatically.
+
 ## Development behavior
 
 - inspect the actual active implementation before changing behavior;
