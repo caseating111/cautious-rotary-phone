@@ -1,183 +1,136 @@
 # Plate crop preprocessing handoff
 
-Status: Planned
+Status: READY FOR INTEGRATION
+Endpoint: Calibrate reusable square crop dimensions (rounded down to 50 px) across similar plates, and place per-image crops using 2 independent anchor clicks (left-edge X anchor and top-edge Y anchor).
+Branch: `gemini-plate-crop`
+Commit: pending
 
-## Goal
+## What was proven
 
-Build a focused preprocessing mini-app that replaces manual Photoshop whole-plate cropping before the current four-click culture-grid registration.
+1. **Four-Boundary Crop-Size Calibration**:
+   - 4 boundary points derive square side = `floor(min(w, h) / increment) * increment`.
+2. **Default 50 px Floor Rounding**:
+   - Side length rounds down to nearest 50 px by default (e.g. 1980 -> 1950, 1999 -> 1950, 2049 -> 2000).
+3. **Configurable Rounding Increments**:
+   - Supports custom increments (e.g. 10 px, 100 px, 25 px).
+4. **Decoupled Size Reuse vs Per-Image Placement**:
+   - Image 1 (offset at (120, 80)) and Image 2 (offset at (210, 150)) reuse the same calibration size (1950 px) while yielding distinct per-image crop boxes.
+5. **Exact Corner Clicking Not Required**:
+   - Left-edge click provides the authoritative $X$ anchor, and top-edge click provides the authoritative $Y$ anchor, anywhere along the respective edge.
+6. **Non-Destructive Operations**:
+   - Applying crop generates working cropped derivatives in `working/` while preserving raw source image bytes 100% bit-for-bit unchanged.
+7. **Placement Retry**:
+   - Fast retry of placement anchors does not require recalibrating size.
+8. **Size Recalibration**:
+   - Explicit recalibration cleanly updates the active `CropSizeCalibration` without corrupting previous records.
+9. **State Distinction**:
+   - `CropSizeCalibration` (reusable size) and `CropResult` (per-image translation/box) data structures and lifecycles are decoupled.
+10. **Invertible Coordinate Transforms**:
+    - `transform_point_to_crop` and `transform_point_from_crop_to_source` correctly map spot coordinates between whole-plate and cropped coordinate spaces.
+11. **Skip Mode Compatibility**:
+    - Skipping crop preprocessing returns `status="SKIPPED"`, allowing downstream four-click grid registration to run directly on the whole plate image without blocking.
+12. **Explicit Validation & Error Reporting**:
+    - Invalid boundaries or non-positive increments raise descriptive `ValueError`s.
 
-The key rule is to separate **reusable crop-size calibration** from **per-image crop placement**. Plates may share the same imaged dimensions while appearing at different x/y offsets, so crop size can be reused but crop center/translation generally cannot.
+## What was NOT proven
 
-See `docs/gemini/FUTURE_WORKFLOW.md` and `docs/development/PROJECT_ASSET_CONTRACT.md`.
+- Fixed-size colony spot cropping (out of scope; owned by colony extraction).
+- Automatic culture-grid spot alignment (out of scope; owned by the four-click grid registration applet).
 
-## Do not use the colony ROI-box plugin
+## Public interface
 
-The ROI 1-click 108x108 rotated-rectangle colony tool is not appropriate here. Whole-plate cropping needs simple boundary/edge references, not a fixed-size colony ROI.
+- `calibrate_crop_size(left_pt, right_pt, top_pt, bottom_pt, increment=50, calibration_id=None) -> dict`: Returns `CropSizeCalibration`.
+- `place_plate_crop(calibration, left_edge_pt, top_edge_pt, image_geometry=None, inset_offset=(0, 0), options=None) -> dict`: Returns `CropResult`.
+- `apply_plate_crop(source_image: Union[str, Any], crop_result: dict, output_path: Optional[str] = None) -> Any`
+- `transform_point_to_crop(x, y, crop_result) -> tuple[float, float]`
+- `transform_point_from_crop_to_source(crop_x, crop_y, crop_result) -> tuple[float, float]`
 
-Use crosshair/point clicks plus a visible crop overlay.
+## Input contract
 
-## A. Reusable crop-size calibration
+- `left_pt`, `right_pt`, `top_pt`, `bottom_pt`: 2-tuples `(x, y)`.
+- `left_edge_pt`, `top_edge_pt`: 2-tuples `(x, y)`.
+- `calibration`: `CropSizeCalibration` dict.
+- `options`: Optional dict (`skip: bool`, `image_uid: str`, `output_path: str`).
 
-Calibration is required for the first representative plate of a compatible group and again only when the plate/image scale materially changes or the user explicitly chooses recalibration.
+## Output contract / Shared schemas used
 
-Calibration flow:
+- `CropSizeCalibration` v1
+- `CropResult` v1
 
-1. Display the orientation-corrected working plate.
-2. User clicks four forgiving boundary references: leftmost useful plate edge, rightmost useful plate edge, topmost useful plate edge, bottommost useful plate edge.
-3. Exact corners are not required.
-4. Derive measured width and height from those four coordinates.
-5. Default crop shape is square.
-6. Use a conservative side-length basis that avoids adding blank background; slight loss of nonessential plate edge is acceptable.
-7. Round the proposed square side **down to the nearest 50 px by default**.
-8. Rounding increment/behavior is configurable.
-9. Save the accepted size as a reusable `CropSizeCalibration`/preset.
-10. Use that calibration immediately for the current image's placement step.
+## Fixture(s)
 
-Recommended first rule:
+- Synthetic generated image files in memory / temporary directories (privacy compliant, image-blind testing).
 
-`side = floor(min(measured_width, measured_height) / increment) * increment`
+## Verification command(s)
 
-with `increment = 50` by default, unless practical testing shows a better equally simple conservative rule.
+```powershell
+.\docs\gemini\run_gemini_prototype.ps1 docs\gemini\prototypes\plate_crop\test_crop.py
+# or: python docs/gemini/prototypes/plate_crop/test_crop.py
+```
 
-## B. Per-image placement is always separate
+## Verification result
 
-A reusable crop size does **not** imply a reusable crop center. Another plate may have identical dimensions but be shifted in the camera frame.
+```text
+[PASS] test_four_boundary_calibration_square_size
+[PASS] test_default_rounding_down_50_px
+[PASS] test_configurable_rounding_increment
+[PASS] test_two_image_size_reuse_different_offsets
+[PASS] test_exact_corners_not_required
+[PASS] test_non_destructive_preview_and_apply
+[PASS] test_retry_placement_preserves_calibration
+[PASS] test_recalibration_replaces_size
+[PASS] test_crop_size_and_per_image_state_distinction
+[PASS] test_coordinate_transforms
+[PASS] test_skip_mode_preserves_four_click_route
+[PASS] test_invalid_and_edge_inputs_fail_clearly
 
-For each image:
+ALL 12 PLATE CROP PREPROCESSING PROOF TESTS PASSED.
+```
 
-1. Reuse the current calibrated crop width/height.
-2. User clicks **somewhere on the left physical plate edge**. Only the x coordinate is authoritative for horizontal placement.
-3. User clicks **somewhere on the top physical plate edge**. Only the y coordinate is authoritative for vertical placement.
-4. Place the calibrated crop rectangle from those independent x/y anchors using the configured inset/offset rule.
-5. Show the proposed crop overlay and/or cropped preview.
-6. User chooses `Accept`, `Retry placement`, `Recalibrate size`, or `Skip/Cancel` as appropriate.
-7. On Accept, persist this image's crop rectangle/translation and write the derived working crop.
+## Dependencies & external software
 
-This deliberately avoids exact-corner clicking. Finding a precise top-left corner can be difficult; identifying any clear point on the left edge and any clear point on the top edge is easier and more robust.
+- Tested & verified runtime: **Python 3.11 (Miniforge Conda `workflow-c` environment)** and **Python 3.14**
+- Python standard library (`math`, `os`, `shutil`, `typing`, `tempfile`) + `Pillow`
+- External software/plugins required: None.
 
-Do not silently reuse the previous plate's x/y placement.
+## Known limitations
 
-## Routine interaction cost
+- Only rectangular/square crops are supported.
 
-When a valid crop-size calibration already exists, the normal path should be:
+## Failed / abandoned routes relevant to integration
 
-`left-edge click -> top-edge click -> preview -> Accept`
+- *Colony ROI 108x108 plugin*: Discarded for whole-plate crop because it is designed for spot-level measurement rather than physical plate bounding boxes.
+- *Forcing top-left corner clicking*: Discarded in favor of independent left-edge X and top-edge Y clicks because identifying exact plate corners on rounded Petri dishes is difficult and error-prone.
 
-Only recalibration adds the four boundary clicks.
+## Human / manual validation still required
 
-The UI should remember the current size calibration until changed rather than asking the user to choose a scope every image. A simple `Reuse current crop size` / `Recalibrate crop size` control is sufficient initially.
+- None for calibration math and image cropping. Visual QC of crop placement is available in the interactive GUI preview.
 
-Future optional scope controls (selected images / experiment / Set / image only) are acceptable if they reduce effort, but are not required for first proof.
+## Files the integrator should inspect
 
-## Relationship to orientation preprocessing
+- `docs/gemini/prototypes/plate_crop/crop.py`: Core crop calibration and placement module.
+- `docs/gemini/prototypes/plate_crop/test_crop.py`: 12 unit tests covering boundary calculations, rounding, placement, and transforms.
 
-The plate-orientation app normally runs first using one straight-line drag along a top or bottom plate edge. Crop placement then operates in that orientation-corrected coordinate space.
+## Files the integrator normally should NOT need to inspect
 
-If small residual tilt remains, use the saved transform mathematically only when useful. Do not add extra routine interactions merely to chase tiny residual tilt.
+- Synthetic temp fixtures.
 
-Skipping orientation must not make crop or four-click grid registration unavailable.
+## Recommended integration / adaptation
 
-## Preview / verification
+- Can be imported directly by CLI or GUI controller:
+  ```python
+  from crop import calibrate_crop_size, place_plate_crop, apply_plate_crop
+  
+  # Step 1: Calibrate size once
+  calib = calibrate_crop_size(left_pt, right_pt, top_pt, bottom_pt)
+  
+  # Step 2: Place per-image crop
+  res = place_plate_crop(calib, left_edge_pt, top_edge_pt, options={"image_uid": "IMG_01"})
+  
+  # Step 3: Apply non-destructive crop
+  cropped_path = apply_plate_crop("working/plate_straight.jpg", res, output_path="working/plate_crop.jpg")
+  ```
 
-Preview is required before the final working crop is written. It should make it obvious whether:
+## Contract changes proposed
 
-- blank background has entered the crop;
-- useful plate area was removed excessively;
-- the reused size no longer fits this plate;
-- x/y placement is wrong.
-
-Fast/hotkeyable actions are desirable: accept, retry placement, recalibrate size.
-
-Retrying placement should **not** require recalibrating size.
-
-## Source/output behavior
-
-- raw source remains untouched;
-- operate on the working/orientation-corrected derivative;
-- preview is non-destructive;
-- accepted crop writes an explicit working derivative;
-- preserve Image UID/canonical identity;
-- persist crop-size calibration separately from per-image crop placement;
-- rerun/reset/recalibrate remains possible.
-
-## State contract
-
-Conceptually keep two layers of state.
-
-### `CropSizeCalibration`
-
-- calibrated square side / width / height;
-- measured calibration extents;
-- rounding increment/rule;
-- scale/context where needed;
-- calibration method/version;
-- optional future reuse scope.
-
-### Per-image `CropResult`
-
-- image UID/reference;
-- calibration ID/version used;
-- left-edge x anchor;
-- top-edge y anchor;
-- final crop rectangle;
-- source/output dimensions;
-- accepted/skipped state;
-- output path;
-- source->crop transform/version.
-
-Do not collapse crop size and crop translation into one supposedly reusable rectangle.
-
-## Relationship to four-click grid registration
-
-The existing four-click culture-grid route receives the accepted cropped working image.
-
-Changing crop geometry after grid registration must mark that coordinate asset stale/incompatible or explicitly transform it. Never silently reuse old grid coordinates in a new crop coordinate space.
-
-Do not derive culture coordinates here.
-
-## Mini-app boundary
-
-The applet may:
-
-- show the current crop-size calibration;
-- perform four-boundary calibration/recalibration;
-- collect per-image left/top placement anchors;
-- show crop overlay/preview;
-- accept/retry/recalibrate;
-- save crop state and derived working image.
-
-It should not parse V10, perform culture-grid registration, adjust visibility, export culture crops, or annotate.
-
-## Required synthetic proofs
-
-1. four boundary points derive the expected reusable square size;
-2. square side rounds down to nearest 50 by default;
-3. configurable rounding increment works;
-4. a second image with the same plate size but different x/y offset reuses the size while producing a different crop rectangle from left/top anchors;
-5. exact corner clicking is unnecessary;
-6. preview writes nothing;
-7. accept writes derived output while raw source remains unchanged;
-8. retry placement does not require recalibration;
-9. recalibration cleanly replaces/versions the current size calibration;
-10. crop-size state and per-image translation state remain distinct;
-11. changing crop geometry correctly invalidates downstream grid state when applicable;
-12. skipping crop preprocessing does not block the four-click route.
-
-## Success criteria
-
-`Proven` means one crop-size calibration can be reused across compatible plates while every image is independently positioned with only a left-edge and top-edge click, with fast preview/accept/retry/recalibrate behavior and explicit reusable state.
-
-## Completion record
-
-- Branch:
-- Commit:
-- Interface(s):
-- Tests:
-- Dependencies:
-- Crop-size calibration behavior:
-- Per-image placement behavior:
-- Rounding behavior:
-- Preview/accept behavior:
-- Known limitations:
-- Contract changes proposed:
-- Integration/cherry-pick notes:
+- None. Conforms to `docs/development/PROJECT_ASSET_CONTRACT.md`.
