@@ -4,7 +4,7 @@ Compact routing index for isolated prototype work. Keep this file short; detaile
 
 | Prototype | Status | Branch/commit | Interface | Handoff |
 | --- | --- | --- | --- | --- |
-| V10 adapter | Proven | `gemini-v10` (`30b9078`) | `load_v10(path) -> ProjectModel` | `docs/gemini/prototypes/v10/HANDOFF.md` |
+| V10 adapter | Proven | `gemini-v10` (`9648bed`) | `load_v10(path) -> ProjectModel` | `docs/gemini/prototypes/v10/HANDOFF.md` |
 | Project setup / working-copy rename | Planned | `geminimain` baseline; dedicated child branch when implementation begins | `prepare_working_copy(...) -> RenameResult` | `docs/gemini/prototypes/project_setup_rename/HANDOFF.md` |
 | Grid/layout derivation | Planned | `geminimain` baseline; dedicated child branch when implementation begins | `derive_plate_layout(project, image_uid) -> PlateLayout` | `docs/gemini/prototypes/layout/HANDOFF.md` |
 | Whole-plate orientation | Planned | `geminimain` baseline; dedicated child branch when implementation begins | one horizontal-edge line drag -> `OrientationResult` | `docs/gemini/prototypes/plate_rotation/HANDOFF.md` |
