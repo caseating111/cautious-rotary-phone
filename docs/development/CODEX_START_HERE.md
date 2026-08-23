@@ -8,15 +8,16 @@ Before implementation, read only:
 
 1. root `AGENTS.md`;
 2. `docs/development/IMPLEMENTATION_DECISION_POLICY.md`;
-3. `docs/development/AUTONOMY_SCOPE.md`;
-4. `docs/development/IMAGE_BLIND_TESTING.md`;
-5. `docs/development/CURRENT_STATE.md`;
-6. `docs/development/MANUAL_VALIDATION_BACKLOG.md` when desktop/manual checks are relevant;
-7. this file;
-8. `docs/development/WORKFLOW_ROADMAP.md` when selecting/confirming a feature stage;
-9. `docs/development/V10_WORKBOOK_CONTRACT.md` when working on V10 integration;
-10. `docs/development/MULTI_AGENT_CONTRACT.md` and `contracts/README.md` when consuming, reviewing, or integrating work from another agent/prototype branch;
-11. the matching `docs/research/INDEX.md` topic before researching or changing an endpoint with prior failure history.
+3. `docs/development/AGENT_MODEL_ROUTING.md`;
+4. `docs/development/AUTONOMY_SCOPE.md`;
+5. `docs/development/IMAGE_BLIND_TESTING.md`;
+6. `docs/development/CURRENT_STATE.md`;
+7. `docs/development/MANUAL_VALIDATION_BACKLOG.md` when desktop/manual checks are relevant;
+8. this file;
+9. `docs/development/WORKFLOW_ROADMAP.md` when selecting/confirming a feature stage;
+10. `docs/development/V10_WORKBOOK_CONTRACT.md` when working on V10 integration;
+11. `docs/development/MULTI_AGENT_CONTRACT.md`, `docs/development/PROTOTYPE_HANDOFF_STANDARD.md`, and `contracts/README.md` when consuming, reviewing, or integrating work from another agent/prototype branch;
+12. the matching `docs/research/INDEX.md` topic before researching or changing an endpoint with prior failure history.
 
 Do not reconstruct project history or read the whole repository by default.
 
@@ -43,6 +44,14 @@ After the first meaningful endpoint failure, do not search only for ways to repa
 
 Different errors blocking the same user-visible outcome remain one continuing endpoint failure. Existing custom code is sunk cost and may be deleted/replaced when a mature route is better.
 
+Two meaningful attempts relying on substantially the same architectural assumption trigger the stop-patching circuit breaker in `AGENT_MODEL_ROUTING.md`; another cosmetic variation is not justified without materially new evidence.
+
+## Model-cost boundary
+
+Use the least expensive capable model. Routine work should normally stay with Luna/Terra or comparable low-cost workhorse models; Sol Light is permitted when stronger reasoning is genuinely useful.
+
+**Do not invoke Sol Medium or higher, Claude Sonnet 4.6, Gemini 3.1 Pro High, Claude Opus 4.6, or another comparably expensive tier without explicit user approval.** Reaching an architectural escalation point does not authorize premium-model use. Prepare a compact escalation packet and ask first; continue other non-blocked useful work with permitted models where possible.
+
 ## Image-blind privacy contract
 
 `docs/development/IMAGE_BLIND_TESTING.md` is a hard local-testing rule.
@@ -63,9 +72,12 @@ Current model:
 - `geminimain` is the shared Gemini specification baseline.
 - Gemini may implement isolated components on dedicated branches such as `gemini-v10` or other feature-specific branches.
 - Gemini is **not limited to read-only review**: bounded standalone prototypes are valid parallel work when they do not touch the active `workflow-C` implementation surface.
+- Parallelize investigation and bounded independent artifacts; serialize mutation of the production integration surface.
 - No two agents should actively write the same branch/implementation surface at once.
 - Cross-agent components meet through explicit shared contracts under `contracts/` plus project-state contracts, not by copying controller internals.
-- Prototype completion does not automatically merge into production. Codex reviews the exact branch/commit and may cherry-pick, adapt, defer, reject, or reimplement around the proven contract.
+- Prototype completion does not automatically merge into production. Codex reviews the exact branch/commit and may cherry-pick, adapt, defer, reject, or reimplement around the shared contract.
+
+When evaluating a prototype, begin with its `HANDOFF.md` under `PROTOTYPE_HANDOFF_STANDARD.md`, then the referenced contracts, fixtures and targeted verification evidence. `PROOF PASSED` is not automatically `READY FOR INTEGRATION`.
 
 For narrow review-only tasks, Gemini/other agents may still receive a compact diff/generated-artifact/error packet, but that is one use case rather than the entire multi-agent architecture.
 
