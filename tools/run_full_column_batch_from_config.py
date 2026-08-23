@@ -292,10 +292,9 @@ def enhance_four_point_macro(source: str) -> str:
         while (accepted == 0) {
             Overlay.remove;
 
-            eval("script", "ij.gui.WaitForUserDialog.setNextLocation(10, 10);");
             waitForUser(
-                "1 / 4 - R1C1 - " + sourceTitle,
-                "Click the R1C1 colony centre, then OK."
+                "1 / 4 - R1C1",
+                sourceTitle + " | Row 1, Colony 1 | centre ROI box, then OK."
             );
             getSelectionBounds(x, y, w, h);
             if (w <= 0 || h <= 0)
@@ -303,10 +302,9 @@ def enhance_four_point_macro(source: str) -> str:
             R1LX = x + w / 2;
             R1LY = y + h / 2;
 
-            eval("script", "ij.gui.WaitForUserDialog.setNextLocation(10, 10);");
             waitForUser(
-                "2 / 4 - R1C" + gridCols + " - " + sourceTitle,
-                "Click the R1C" + gridCols + " colony centre, then OK."
+                "2 / 4 - R1C" + gridCols,
+                sourceTitle + " | Row 1, Colony " + gridCols + " | centre ROI box, then OK."
             );
             getSelectionBounds(x, y, w, h);
             if (w <= 0 || h <= 0)
@@ -314,10 +312,9 @@ def enhance_four_point_macro(source: str) -> str:
             R1RX = x + w / 2;
             R1RY = y + h / 2;
 
-            eval("script", "ij.gui.WaitForUserDialog.setNextLocation(10, 10);");
             waitForUser(
-                "3 / 4 - R5C1 - " + sourceTitle,
-                "Click the R5C1 colony centre, then OK."
+                "3 / 4 - R5C1",
+                sourceTitle + " | Row 5, Colony 1 | centre ROI box, then OK."
             );
             getSelectionBounds(x, y, w, h);
             if (w <= 0 || h <= 0)
@@ -325,10 +322,9 @@ def enhance_four_point_macro(source: str) -> str:
             R5LX = x + w / 2;
             R5LY = y + h / 2;
 
-            eval("script", "ij.gui.WaitForUserDialog.setNextLocation(10, 10);");
             waitForUser(
-                "4 / 4 - R5C" + gridCols + " - " + sourceTitle,
-                "Click the R5C" + gridCols + " colony centre, then OK."
+                "4 / 4 - R5C" + gridCols,
+                sourceTitle + " | Row 5, Colony " + gridCols + " | centre ROI box, then OK."
             );
             getSelectionBounds(x, y, w, h);
             if (w <= 0 || h <= 0)
@@ -391,10 +387,8 @@ def enhance_four_point_macro(source: str) -> str:
             Overlay.show;
 
             Dialog.create("Full-grid QC");
-            Dialog.setLocation(10, 10);
             Dialog.addMessage(
-                "Inspect the 8 x " + gridCols + " grid.\n\n" +
-                "Accept exports crops. Retry repeats the four clicks."
+                "Inspect 8 x " + gridCols + " grid | Accept: export crops | Retry: repeat four points."
             );
             Dialog.addChoice("Action", newArray("Accept", "Retry"), "Accept");
             Dialog.show();

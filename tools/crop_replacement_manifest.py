@@ -30,22 +30,32 @@ def write_manifest(config: dict, row: dict[str, str], path: Path) -> int:
             crop = crop_root / source.parent.name / f"{prefix}_{state}_{strain}.png"
             if crop.is_file():
                 by_strain[strain].append(crop)
-    planned: list[dict[str, str]] = []
+    planned_files: list[tuple[str, str, Path]] = []
     for strain, files in sorted(by_strain.items()):
         stamp = datetime.fromtimestamp(median(item.stat().st_ctime for item in files)).strftime("%d.%m.%y_%H.%M")
-        target_dir = crop_root.parent / "Discards" / "Discarded_Crops" / f"{row['Experiment']}_{row['Set']}" / f"{stamp}_{strain}"
         for crop in files:
-            target = target_dir / crop.name
-            if target.exists():
-                raise SystemExit(f"Refusing to overwrite an archived crop: {target}")
-            planned.append(
-                {
-                    "folder": source.parent.name,
-                    "filename": row["Filename"],
-                    "source": crop.as_posix(),
-                    "target": target.as_posix(),
-                }
-            )
+            planned_files.append((f"{stamp}_{strain}", strain, crop))
+
+    batch_root = crop_root.parent / "Discards" / "Discarded_Crops" / f"{row['Experiment']}_{row['Set']}"
+    batch_number = 1
+    while True:
+        batch_dir = batch_root / f"DiscardBatch_{batch_number:03d}"
+        targets = [batch_dir / group / crop.name for group, _strain, crop in planned_files]
+        if not any(target.exists() for target in targets):
+            break
+        batch_number += 1
+
+    planned: list[dict[str, str]] = []
+    for group, _strain, crop in planned_files:
+        target = batch_dir / group / crop.name
+        planned.append(
+            {
+                "folder": source.parent.name,
+                "filename": row["Filename"],
+                "source": crop.as_posix(),
+                "target": target.as_posix(),
+            }
+        )
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=["folder", "filename", "source", "target"], delimiter="\t")

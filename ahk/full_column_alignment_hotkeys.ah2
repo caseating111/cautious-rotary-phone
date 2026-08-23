@@ -5,6 +5,11 @@ SetTitleMatchMode(2)
 
 WorkflowWindowWatchDeadline := 0
 
+PlacementDialogTitle(title)
+{
+    return InStr(title, "1 / 4") || InStr(title, "2 / 4") || InStr(title, "3 / 4") || InStr(title, "4 / 4")
+}
+
 MoveFijiToolbarOnce()
 {
     bestHwnd := 0
@@ -64,6 +69,18 @@ DemoteFijiUtilityWindows()
     }
 }
 
+PinWorkflowDialogs()
+{
+    for title in ["Next plate", "ROI 1-click", "1 / 4", "2 / 4", "3 / 4", "4 / 4", "Full-grid QC"]
+    {
+        if hwnd := WinExist(title)
+        {
+            try WinMove(10, 10, , , hwnd)
+            try WinSetAlwaysOnTop(1, "ahk_id " hwnd)
+        }
+    }
+}
+
 PlaceAlignmentPreviewBelowDialogs()
 {
     if !(preview := WinExist("__alignment_view__ ahk_class SunAwtFrame ahk_exe fiji-windows-x64.exe"))
@@ -91,6 +108,7 @@ PlaceAlignmentPreviewBelowDialogs()
 
 MoveKnownWorkflowWindowsOnce()
 {
+    PinWorkflowDialogs()
     PlaceAlignmentPreviewBelowDialogs()
     MoveFijiToolbarOnce()
     DemoteFijiUtilityWindows()
@@ -108,6 +126,24 @@ CatchUpWorkflowWindows()
     MoveKnownWorkflowWindowsOnce()
     if (A_TickCount >= WorkflowWindowWatchDeadline)
         SetTimer(CatchUpWorkflowWindows, 0)
+}
+
+; Java assigns some titles after creation, so position immediately and keep the
+; bounded watcher for delayed title assignment and the launcher overlay.
+DllCall("RegisterShellHookWindow", "ptr", A_ScriptHwnd)
+SHELLHOOK := DllCall("RegisterWindowMessage", "str", "SHELLHOOK")
+OnMessage(SHELLHOOK, ShellMessage)
+
+ShellMessage(wParam, lParam, msg, hwnd)
+{
+    if (wParam != 1)
+        return
+    try title := WinGetTitle("ahk_id " lParam)
+    catch
+        title := ""
+    if PlacementDialogTitle(title)
+        try WinMove(10, 10, , , "ahk_id " lParam)
+    StartWorkflowWindowWatch()
 }
 
 ; Position an already-visible Fiji toolbar when this helper starts.

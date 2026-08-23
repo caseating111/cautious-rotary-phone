@@ -613,7 +613,7 @@ function archiveReplacementCrops(folderName, fileName) {
         if (!File.exists(sourceCrop))
             exit("Expected crop disappeared before replacement: " + sourceCrop);
         targetDir = substring(targetCrop, 0, lastIndexOf(targetCrop, "/"));
-        eval("script", "new java.io.File('" + escapeJavaScript(targetDir) + "').mkdirs();");
+        eval("script", "var f=new java.io.File('" + escapeJavaScript(targetDir) + "'); f.mkdirs(); '';");
         if (!File.rename(sourceCrop, targetCrop))
             exit("Could not archive existing crop before replacement: " + sourceCrop);
     }

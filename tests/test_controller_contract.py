@@ -80,11 +80,11 @@ class ControllerContractTests(unittest.TestCase):
         self.assertIn('#HotIf WinExist("Alignment QC") || WinExist("Full-grid QC")', text)
         self.assertIn("Esc::ExitApp", text)
 
-    def test_hotkey_uses_native_fiji_dialog_positioning(self) -> None:
+    def test_hotkey_restores_fiji_dialog_positioning_hook(self) -> None:
         text = AHK_HELPER.read_text(encoding="utf-8")
-        self.assertNotIn("PlacementDialogTitle", text)
-        self.assertNotIn("ShellMessage(", text)
-        self.assertNotIn('WinMove(10, 10', text)
+        self.assertIn("PlacementDialogTitle", text)
+        self.assertIn("ShellMessage(", text)
+        self.assertIn('WinMove(10, 10', text)
 
     def test_hotkey_uses_bounded_catchup_and_suppresses_launcher_overlay(self) -> None:
         text = AHK_HELPER.read_text(encoding="utf-8")
@@ -109,7 +109,7 @@ class ControllerContractTests(unittest.TestCase):
         self.assertIn("MonitorGetWorkArea", text)
         self.assertIn("right - w - 10", text)
         self.assertIn("WinMove(x, top + 10, , , bestHwnd)", text)
-        self.assertNotIn("WinMove(10, 10", text)
+        self.assertIn("WinMove(10, 10", text)
 
     def test_project_csv_sibling_discovery_uses_only_exact_existing_names(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
