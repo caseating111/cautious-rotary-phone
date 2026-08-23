@@ -3,7 +3,7 @@
 Status: READY FOR INTEGRATION
 Endpoint: Calibrate reusable square crop dimensions (rounded down to 50 px) across similar plates, and place per-image crops using 2 independent anchor clicks (left-edge X anchor and top-edge Y anchor).
 Branch: `gemini-plate-crop`
-Commit: pending
+Commit: `83d8354`
 
 ## What was proven
 
