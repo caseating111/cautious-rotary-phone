@@ -31,17 +31,43 @@ A prototype branch should:
 6. update its handoff/index with exact branch/commit, interface, prerequisites, tests, limitations, and any proposed contract change;
 7. stop at a coherent proof rather than merging itself into `workflow-C`.
 
-Codex/integration work should then review the proven branch/commit and choose whether to cherry-pick, adapt, reimplement around the shared contract, defer, or reject it. Prototype completion does not automatically authorize production integration.
+`docs/development/PROTOTYPE_HANDOFF_STANDARD.md` defines the integration-facing status vocabulary and minimum handoff evidence. `HANDOFF.md` is the mandatory entry point for evaluating a prototype; referenced contracts, fixtures, tests, and executable behavior remain authoritative evidence.
 
-## Parallel-work rule
+Codex/integration work should then review the exact branch/commit and choose whether to cherry-pick, adapt, reimplement around the shared contract, defer, or reject it. Prototype completion does not automatically authorize production integration.
+
+## Parallelize investigation; serialize production mutation
+
+Parallel work is encouraged for **investigation and bounded independent artifacts** when ownership does not overlap. Good parallel work includes:
+
+- official/current documentation research;
+- independent architecture comparisons;
+- micro-prototypes with explicit contracts;
+- synthetic fixture/test generation;
+- review of a compact architecture/evidence packet;
+- separate feature branches whose implementation surfaces do not overlap.
+
+Production/integration mutation is serialized. Only **one active writer** should modify a given production integration surface at a time, especially `workflow-C` controller/runtime files.
+
+Parallel reasoning is not permission for parallel mutation. Multiple agents may investigate alternatives simultaneously, but their evidence should converge into one chosen route before one writer changes the integrated implementation.
+
+Avoid patterns where several agents/subagents independently rewrite the same controller, launcher, macro, or shared contract. That multiplies merge conflict and architectural drift rather than useful parallelism.
+
+## Parallel-work examples
 
 Parallel work is useful when components have narrow, non-overlapping ownership. Examples:
 
 - Codex stabilizes the current Fiji/grid runtime while Gemini explores the V10 adapter;
-- one Gemini branch proves plate preprocessing while another proves annotation from synthetic contracts;
+- one prototype branch proves plate preprocessing while another proves annotation from synthetic contracts;
+- several permitted subagents independently inspect PyImageJ/Jaunch/Appose evidence while the parent/integrator makes one architecture decision;
 - the integration branch consumes a completed prototype only after the active runtime checkpoint is coherent.
 
 Do not create parallel branches for routine tiny fixes. Use them when independent agents can genuinely work without touching the same files/endpoint.
+
+## Model-cost and escalation coordination
+
+Model selection follows `docs/development/AGENT_MODEL_ROUTING.md` where present. Use the least expensive capable model; model cost should scale with architectural uncertainty, not file count or code length.
+
+A stop-patching/endpoint circuit breaker does **not** authorize automatic premium-model escalation. If the routing policy requires user approval for a model/effort tier, request that approval before invoking it and continue other non-blocked useful work with permitted models when possible.
 
 ## Main-controller versus standalone applets
 
