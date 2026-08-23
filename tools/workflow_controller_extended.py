@@ -35,6 +35,7 @@ class ExtendedController(Controller):
     def __init__(self) -> None:
         super().__init__()
         self.preview_standard_outputs = tk.BooleanVar(value=True)
+        self.replace_existing_crops = tk.BooleanVar(value=False)
         self.skip_done = tk.BooleanVar(value=True)
         self.batch_subfolder = tk.StringVar()
         self.project_prefix = tk.StringVar(value=project_layout.default_prefix())
@@ -96,17 +97,22 @@ class ExtendedController(Controller):
         subfolders.pack(side="left", padx=(8, 0))
         subfolders.configure(postcommand=lambda: self.refresh_subfolders(subfolders))
         ttk.Checkbutton(batch_frame, text="Skip done", variable=self.skip_done).pack(side="left", padx=(8, 0))
+        ttk.Checkbutton(
+            self,
+            text="Replace existing crops after accepted grid",
+            variable=self.replace_existing_crops,
+        ).grid(row=24, column=0, columnspan=3, sticky="w", padx=5, pady=(0, 3))
 
         ttk.Button(
             self,
             text="Run one-plate 4-point proof (choose plate)",
             command=lambda: self.run_one_plate_validation(rerun_done=False),
-        ).grid(row=24, column=0, columnspan=3, sticky="ew", padx=5, pady=(0, 6))
+        ).grid(row=25, column=0, columnspan=3, sticky="ew", padx=5, pady=(0, 6))
         ttk.Button(
             self,
             text="Reset / re-run selected DONE plate",
             command=lambda: self.run_one_plate_validation(rerun_done=True),
-        ).grid(row=25, column=0, columnspan=3, sticky="ew", padx=5, pady=(0, 6))
+        ).grid(row=26, column=0, columnspan=3, sticky="ew", padx=5, pady=(0, 6))
 
     def refresh_subfolders(self, widget: ttk.Combobox) -> None:
         root = Path(self.vars["image_root"].get().strip())
@@ -317,6 +323,7 @@ class ExtendedController(Controller):
                 filename,
                 legacy=True,
                 rerun_done=rerun_done,
+                replace_existing=self.replace_existing_crops.get(),
             )
         except SystemExit as exc:
             if started_ahk_here:

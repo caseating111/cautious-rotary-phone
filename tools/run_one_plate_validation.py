@@ -7,9 +7,11 @@ from pathlib import Path
 
 try:
     from tools import roi_preset_gui
+    from tools import crop_replacement_manifest
     from tools import run_full_column_batch_from_config as batch
 except ModuleNotFoundError:
     import roi_preset_gui
+    import crop_replacement_manifest
     import run_full_column_batch_from_config as batch
 
 
@@ -17,6 +19,7 @@ APP_DIR = batch.APP_DIR
 PROOF_IMAGES_CSV = APP_DIR / "one_plate_validation_images.csv"
 PROOF_MACRO = APP_DIR / "one_plate_validation.configured.ijm"
 PROOF_LEGACY_MACRO = APP_DIR / "one_plate_four_point_validation.configured.ijm"
+REPLACEMENT_MANIFEST = APP_DIR / "one_plate_crop_replacements.tsv"
 
 
 def open_window_titles() -> list[str]:
@@ -95,7 +98,7 @@ def write_one_row_csv(path: Path, fieldnames: list[str], row: dict[str, str]) ->
         writer.writerow({key: row.get(key, "") for key in fieldnames})
 
 
-def patch_prepared_macro(source: str, proof_csv: Path) -> str:
+def patch_prepared_macro(source: str, proof_csv: Path, replacement_manifest: Path | None = None) -> str:
     import re
 
     old = f'imagesFile = "{batch.macro_path(batch.PENDING_IMAGES_CSV)}";'
@@ -105,6 +108,12 @@ def patch_prepared_macro(source: str, proof_csv: Path) -> str:
             "Prepared macro no longer contains exactly one pending-images path; refusing to guess where to patch."
         )
     source = source.replace(old, new, 1)
+    if replacement_manifest is not None:
+        old_manifest = 'replacementManifest = "";'
+        new_manifest = f'replacementManifest = "{batch.macro_path(replacement_manifest)}";'
+        if source.count(old_manifest) != 1:
+            raise SystemExit("Prepared macro has no unambiguous replacement-manifest setting.")
+        source = source.replace(old_manifest, new_manifest, 1)
 
     # Stop this one-plate macro after the selected plate. ImageJ's exit() ends
     # the macro; it does not close the persistent Fiji application.
@@ -140,7 +149,7 @@ def ensure_roi_click_patch(fiji: Path) -> bool:
         raise SystemExit(f"Could not patch ROI 1-click Tools safely: {exc}") from exc
 
 
-def prepare(filename: str | None = None, *, legacy: bool = False, rerun_done: bool = False) -> tuple[Path, dict[str, str]]:
+def prepare(filename: str | None = None, *, legacy: bool = False, rerun_done: bool = False, replace_existing: bool = False) -> tuple[Path, dict[str, str]]:
     args = [sys.executable, str(Path(batch.__file__).resolve()), "--prepare-only"]
     configured = batch.CONFIGURED_MACRO
     proof_macro = PROOF_MACRO
@@ -158,7 +167,7 @@ def prepare(filename: str | None = None, *, legacy: bool = False, rerun_done: bo
             raise SystemExit(output or "Batch preparation failed before one-plate validation.")
 
     fieldnames, rows = read_pending_rows(batch.PENDING_IMAGES_CSV)
-    if rerun_done:
+    if rerun_done or replace_existing:
         config = batch.load_config(require_fiji=False, require_fiji_handoff_paths=not legacy)
         fieldnames, authoritative_rows = read_pending_rows(Path(config["images_csv"]))
         selected = choose_pending_row(authoritative_rows, filename)
@@ -171,12 +180,17 @@ def prepare(filename: str | None = None, *, legacy: bool = False, rerun_done: bo
         raise SystemExit(f"Prepared macro not found: {configured}")
     # build_legacy_macro() is the source of truth for the complete current
     # four-point interaction. The proof only narrows its metadata input.
-    proof_text = patch_prepared_macro(configured.read_text(encoding="utf-8"), PROOF_IMAGES_CSV)
+    manifest = None
+    if replace_existing:
+        config = batch.load_config(require_fiji=False, require_fiji_handoff_paths=not legacy)
+        crop_replacement_manifest.write_manifest(config, selected, REPLACEMENT_MANIFEST)
+        manifest = REPLACEMENT_MANIFEST
+    proof_text = patch_prepared_macro(configured.read_text(encoding="utf-8"), PROOF_IMAGES_CSV, manifest)
     proof_macro.write_text(proof_text, encoding="utf-8")
     return proof_macro, selected
 
 
-def run(filename: str | None = None, *, legacy: bool = False, rerun_done: bool = False) -> dict[str, str]:
+def run(filename: str | None = None, *, legacy: bool = False, rerun_done: bool = False, replace_existing: bool = False) -> dict[str, str]:
     if filename and proof_plate_is_open(filename):
         raise SystemExit(
             f"The selected proof plate is already open in Fiji: {Path(filename).name}. "
@@ -194,7 +208,7 @@ def run(filename: str | None = None, *, legacy: bool = False, rerun_done: bool =
             "Close/restart Fiji once so it reloads the patched toolset, then run the proof again."
         )
 
-    macro, selected = prepare(filename, legacy=legacy, rerun_done=rerun_done)
+    macro, selected = prepare(filename, legacy=legacy, rerun_done=rerun_done, replace_existing=replace_existing)
     command = [str(fiji), "--no-splash", "-macro", str(macro)]
     try:
         subprocess.Popen(command, cwd=fiji.parent)

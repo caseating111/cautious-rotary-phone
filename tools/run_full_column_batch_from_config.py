@@ -209,6 +209,7 @@ def configure_source_settings(source: str, config: dict) -> str:
         'gridFile   = "path here";': f'gridFile   = "{macro_path(config["grid_csv"])}";',
         'imagesFile = "path here";': f'imagesFile = "{macro_path(PENDING_IMAGES_CSV)}";',
         'stateFile  = "path here";': f'stateFile  = "{macro_path(LEGACY_STATE_FILE)}";',
+        'replacementManifest = "path here";': 'replacementManifest = "";',
         'inputRoot  = "path here";': f'inputRoot  = "{macro_path(config["image_root"])}";',
         'outputRoot = "path here";': f'outputRoot = "{macro_path(config["crop_output"])}";',
         "CROP_W = 130;": f'CROP_W = {config["crop_width"]};',
@@ -291,6 +292,7 @@ def enhance_four_point_macro(source: str) -> str:
         while (accepted == 0) {
             Overlay.remove;
 
+            eval("script", "ij.gui.WaitForUserDialog.setNextLocation(10, 10);");
             waitForUser(
                 "1 / 4 - R1C1 - " + sourceTitle,
                 "Click the R1C1 colony centre, then OK."
@@ -301,6 +303,7 @@ def enhance_four_point_macro(source: str) -> str:
             R1LX = x + w / 2;
             R1LY = y + h / 2;
 
+            eval("script", "ij.gui.WaitForUserDialog.setNextLocation(10, 10);");
             waitForUser(
                 "2 / 4 - R1C" + gridCols + " - " + sourceTitle,
                 "Click the R1C" + gridCols + " colony centre, then OK."
@@ -311,6 +314,7 @@ def enhance_four_point_macro(source: str) -> str:
             R1RX = x + w / 2;
             R1RY = y + h / 2;
 
+            eval("script", "ij.gui.WaitForUserDialog.setNextLocation(10, 10);");
             waitForUser(
                 "3 / 4 - R5C1 - " + sourceTitle,
                 "Click the R5C1 colony centre, then OK."
@@ -321,6 +325,7 @@ def enhance_four_point_macro(source: str) -> str:
             R5LX = x + w / 2;
             R5LY = y + h / 2;
 
+            eval("script", "ij.gui.WaitForUserDialog.setNextLocation(10, 10);");
             waitForUser(
                 "4 / 4 - R5C" + gridCols + " - " + sourceTitle,
                 "Click the R5C" + gridCols + " colony centre, then OK."
@@ -386,6 +391,7 @@ def enhance_four_point_macro(source: str) -> str:
             Overlay.show;
 
             Dialog.create("Full-grid QC");
+            Dialog.setLocation(10, 10);
             Dialog.addMessage(
                 "Inspect the 8 x " + gridCols + " grid.\n\n" +
                 "Accept exports crops. Retry repeats the four clicks."
@@ -403,6 +409,7 @@ def enhance_four_point_macro(source: str) -> str:
         Overlay.remove;
         close();
         selectWindow(sourceTitle);
+        archiveReplacementCrops(cleanFolderName, fileName);
 
 '''
     return source[:start] + block + source[export:]

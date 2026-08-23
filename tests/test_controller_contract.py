@@ -80,17 +80,11 @@ class ControllerContractTests(unittest.TestCase):
         self.assertIn('#HotIf WinExist("Alignment QC") || WinExist("Full-grid QC")', text)
         self.assertIn("Esc::ExitApp", text)
 
-    def test_hotkey_shell_hook_only_moves_new_placement_dialogs(self) -> None:
+    def test_hotkey_uses_native_fiji_dialog_positioning(self) -> None:
         text = AHK_HELPER.read_text(encoding="utf-8")
-        shell_at = text.index("ShellMessage(")
-        timer_at = text.index("StartWorkflowWindowWatch()", shell_at)
-        shell_block = text[shell_at:timer_at]
-
-        self.assertIn("HSHELL_WINDOWCREATED = 1", shell_block)
-        self.assertIn("PlacementDialogTitle(title)", shell_block)
-        self.assertIn("WinMove(10, 10", shell_block)
-        self.assertNotIn("Send(", shell_block)
-        self.assertNotIn("WinActivate", shell_block)
+        self.assertNotIn("PlacementDialogTitle", text)
+        self.assertNotIn("ShellMessage(", text)
+        self.assertNotIn('WinMove(10, 10', text)
 
     def test_hotkey_uses_bounded_catchup_and_suppresses_launcher_overlay(self) -> None:
         text = AHK_HELPER.read_text(encoding="utf-8")
@@ -101,7 +95,6 @@ class ControllerContractTests(unittest.TestCase):
         self.assertIn('ahk_class SunAwtFrame ahk_exe fiji-windows-x64.exe', text)
         self.assertIn('WinSetAlwaysOnTop(0, "ahk_id " hwnd)', text)
         self.assertIn('WinMoveBottom("ahk_id " hwnd)', text)
-        self.assertIn('WinSetAlwaysOnTop(1, "ahk_id " hwnd)', text)
         self.assertIn('__alignment_view__ ahk_class SunAwtFrame ahk_exe fiji-windows-x64.exe', text)
         self.assertIn("targetY := top + 230", text)
         self.assertNotIn("WinHide(", text)
@@ -116,7 +109,7 @@ class ControllerContractTests(unittest.TestCase):
         self.assertIn("MonitorGetWorkArea", text)
         self.assertIn("right - w - 10", text)
         self.assertIn("WinMove(x, top + 10, , , bestHwnd)", text)
-        self.assertIn("WinMove(10, 10", text)
+        self.assertNotIn("WinMove(10, 10", text)
 
     def test_project_csv_sibling_discovery_uses_only_exact_existing_names(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

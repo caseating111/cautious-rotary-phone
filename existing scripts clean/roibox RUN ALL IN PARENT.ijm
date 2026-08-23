@@ -33,6 +33,7 @@
 gridFile   = "path here";
 imagesFile = "path here";
 stateFile  = "path here";
+replacementManifest = "path here";
  
 
 inputRoot  = "path here";
@@ -596,6 +597,32 @@ function recordedRun(key) {
             return parseInt(substring(entry, lengthOf(prefix)));
     }
     return 0;
+}
+
+
+function archiveReplacementCrops(folderName, fileName) {
+    if (replacementManifest == "" || !File.exists(replacementManifest))
+        return;
+    entries = split(File.openAsString(replacementManifest), "\n");
+    for (entryIndex = 1; entryIndex < entries.length; entryIndex++) {
+        fields = split(replace(entries[entryIndex], "\r", ""), "\t");
+        if (fields.length != 4 || fields[0] != folderName || fields[1] != fileName)
+            continue;
+        sourceCrop = fields[2];
+        targetCrop = fields[3];
+        if (!File.exists(sourceCrop))
+            exit("Expected crop disappeared before replacement: " + sourceCrop);
+        targetDir = substring(targetCrop, 0, lastIndexOf(targetCrop, "/"));
+        eval("script", "new java.io.File('" + escapeJavaScript(targetDir) + "').mkdirs();");
+        if (!File.rename(sourceCrop, targetCrop))
+            exit("Could not archive existing crop before replacement: " + sourceCrop);
+    }
+}
+
+
+function escapeJavaScript(value) {
+    value = replace(value, "\\", "\\\\");
+    return replace(value, "'", "\\'");
 }
 
 

@@ -5,18 +5,6 @@ SetTitleMatchMode(2)
 
 WorkflowWindowWatchDeadline := 0
 
-PlacementDialogTitle(title)
-{
-    return (
-        InStr(title, "1 / 2") ||
-        InStr(title, "2 / 2") ||
-        InStr(title, "1 / 4") ||
-        InStr(title, "2 / 4") ||
-        InStr(title, "3 / 4") ||
-        InStr(title, "4 / 4")
-    )
-}
-
 MoveFijiToolbarOnce()
 {
     bestHwnd := 0
@@ -76,18 +64,6 @@ DemoteFijiUtilityWindows()
     }
 }
 
-PinWorkflowDialogs()
-{
-    for title in ["Next plate", "ROI 1-click", "1 / 4", "2 / 4", "3 / 4", "4 / 4", "Full-grid QC"]
-    {
-        if hwnd := WinExist(title)
-        {
-            try WinMove(10, 10, , , hwnd)
-            try WinSetAlwaysOnTop(1, "ahk_id " hwnd)
-        }
-    }
-}
-
 PlaceAlignmentPreviewBelowDialogs()
 {
     if !(preview := WinExist("__alignment_view__ ahk_class SunAwtFrame ahk_exe fiji-windows-x64.exe"))
@@ -115,7 +91,6 @@ PlaceAlignmentPreviewBelowDialogs()
 
 MoveKnownWorkflowWindowsOnce()
 {
-    PinWorkflowDialogs()
     PlaceAlignmentPreviewBelowDialogs()
     MoveFijiToolbarOnce()
     DemoteFijiUtilityWindows()
@@ -138,36 +113,6 @@ CatchUpWorkflowWindows()
 ; Position an already-visible Fiji toolbar when this helper starts.
 MoveKnownWorkflowWindowsOnce()
 StartWorkflowWindowWatch()
-
-; Reuse the original four-point helper's shell-hook behavior: move a placement
-; dialog immediately when Windows creates it. Java can assign the final title a
-; fraction later, so each creation event also schedules one small delayed retry.
-DllCall("RegisterShellHookWindow", "ptr", A_ScriptHwnd)
-SHELLHOOK := DllCall("RegisterWindowMessage", "str", "SHELLHOOK")
-OnMessage(SHELLHOOK, ShellMessage)
-
-ShellMessage(wParam, lParam, msg, hwnd)
-{
-    ; HSHELL_WINDOWCREATED = 1
-    if (wParam != 1)
-        return
-
-    try
-        title := WinGetTitle("ahk_id " lParam)
-    catch
-    {
-        title := ""
-    }
-
-    if PlacementDialogTitle(title)
-    {
-        try WinMove(10, 10, , , "ahk_id " lParam)
-    }
-
-    ; AWT can create a window before assigning its final title. Re-scan long
-    ; enough for delayed dialogs and the separate Jaunch overlay to settle.
-    StartWorkflowWindowWatch()
-}
 
 AlignmentDialogExists()
 {
