@@ -203,8 +203,7 @@ def enhance_four_point_macro(source: str) -> str:
         roiBoxW = parseFloat(call("ij.Prefs.get", "rect.width", 108));
         roiBoxH = parseFloat(call("ij.Prefs.get", "rect.height", 108));
         roiBoxSize = maxOf(roiBoxW, roiBoxH);
-        claheBlock = round(roiBoxSize * 3.3);
-        if (claheBlock < 1) claheBlock = 356;
+        claheBlock = maxOf(400, round(roiBoxSize * 4));
         claheOptions = "blocksize=" + claheBlock + " histogram=256 maximum=1000 mask=*None* fast_(less_accurate)";
         run("Enhance Local Contrast (CLAHE)", claheOptions);
         run("Enhance Local Contrast (CLAHE)", claheOptions);

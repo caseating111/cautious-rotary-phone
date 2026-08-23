@@ -3,7 +3,8 @@
 
 SetTitleMatchMode(2)
 
-PlacementCatchupDeadline := 0
+WorkflowWindowWatchDeadline := 0
+LauncherCloseNotBefore := 0
 
 PlacementDialogTitle(title)
 {
@@ -63,23 +64,23 @@ MoveFijiToolbarOnce()
     }
 }
 
-SuppressFijiLauncherOnce()
+FijiMainWindowExists()
 {
-    for hwnd in WinGetList()
-    {
-        title := ""
-        try title := WinGetTitle(hwnd)
-        catch
-            continue
-        if !InStr(title, "Launching Fiji") && !InStr(title, "Launching ImageJ")
-            continue
+    return WinExist("(Fiji Is Just) ImageJ ahk_class SunAwtFrame ahk_exe fiji-windows-x64.exe") != 0
+}
 
-        ; Jaunch exposes no supported option for suppressing this separate
-        ; status window. Keep it non-topmost, send it behind normal windows,
-        ; then hide it without activating or closing the launcher process.
-        try WinSetAlwaysOnTop(0, hwnd)
-        try WinMoveBottom(hwnd)
-        try WinHide(hwnd)
+CloseExtraFijiLauncherWindows()
+{
+    global LauncherCloseNotBefore
+    if (A_TickCount < LauncherCloseNotBefore) || !FijiMainWindowExists()
+        return
+
+    for hwnd in WinGetList("ahk_class SunAwtWindow ahk_exe fiji-windows-x64.exe")
+    {
+        ; Window Spy identifies the separate Jaunch overlay by this class and
+        ; executable. Close only that window after the real Fiji frame exists;
+        ; never identify either process by its variable PID or window ID.
+        try WinClose("ahk_id " hwnd)
     }
 }
 
@@ -93,25 +94,27 @@ MoveKnownWorkflowWindowsOnce()
         }
     }
     MoveFijiToolbarOnce()
-    SuppressFijiLauncherOnce()
+    CloseExtraFijiLauncherWindows()
 }
 
-StartPlacementCatchup()
+StartWorkflowWindowWatch()
 {
-    global PlacementCatchupDeadline := A_TickCount + 3000
-    SetTimer(CatchUpWorkflowWindows, 120)
+    global WorkflowWindowWatchDeadline := A_TickCount + 10000
+    global LauncherCloseNotBefore := A_TickCount + 750
+    SetTimer(CatchUpWorkflowWindows, 100)
 }
 
 CatchUpWorkflowWindows()
 {
-    global PlacementCatchupDeadline
+    global WorkflowWindowWatchDeadline
     MoveKnownWorkflowWindowsOnce()
-    if (A_TickCount >= PlacementCatchupDeadline)
+    if (A_TickCount >= WorkflowWindowWatchDeadline)
         SetTimer(CatchUpWorkflowWindows, 0)
 }
 
 ; Position an already-visible Fiji toolbar when this helper starts.
 MoveKnownWorkflowWindowsOnce()
+StartWorkflowWindowWatch()
 
 ; Reuse the original four-point helper's shell-hook behavior: move a placement
 ; dialog immediately when Windows creates it. Java can assign the final title a
@@ -138,9 +141,9 @@ ShellMessage(wParam, lParam, msg, hwnd)
         try WinMove(10, 10, , , "ahk_id " lParam)
     }
 
-    ; AWT can create a window before assigning its final title. Re-scan for a
-    ; bounded three seconds so slow Java dialog creation cannot defeat placement.
-    StartPlacementCatchup()
+    ; AWT can create a window before assigning its final title. Re-scan long
+    ; enough for delayed dialogs and the separate Jaunch overlay to settle.
+    StartWorkflowWindowWatch()
 }
 
 AlignmentDialogExists()

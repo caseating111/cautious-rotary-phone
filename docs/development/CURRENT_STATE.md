@@ -17,7 +17,7 @@ The four-click -> grid -> Accept -> export -> DONE/reset flow has now worked man
 
 For the current route, the mature ROI 1-click toolset supplies the click ROI. The workflow uses the plugin's custom **Rotated Rectangle Click Tool**, not ImageJ's built-in rotated-rectangle tool, and must not create its own 108x108 click box. Saved ROI 1-click dimensions remain authoritative for click convenience. The local ROI 1-click patch restores saved rectangle/shared click preferences on fresh Fiji sessions and optional workflow presets may override only width/height/angle.
 
-The temporary alignment view is a disposable duplicate. **There is no central sampling ROI anymore.** The current visibility aid applies CLAHE to the **whole disposable image twice**, using block size approximately `3.3 * max(rect.width, rect.height)`, histogram bins 256 and maximum slope 1000. Source pixels remain unchanged and crops are exported from the original source image.
+The temporary alignment view is a disposable duplicate. **There is no central sampling ROI anymore.** The current visibility aid applies CLAHE to the **whole disposable image twice**, using `max(400, round(4 * max(rect.width, rect.height)))` as block size, histogram bins 256 and maximum slope 1000. Source pixels remain unchanged and crops are exported from the original source image.
 
 The four-point generator now emits that ROI 1-click/CLAHE/rotated-QC interaction directly. The former second-stage string-replacement adapter and its dead `Enhance Contrast` intermediate block have been removed.
 
@@ -41,9 +41,9 @@ The Fiji toolbar should retain its native/default useful dimensions. Window-mana
 ## AHK v2
 **Hard runtime contract: AutoHotkey v2 only. AutoHotkey v1 compatibility is not required or desired.** Every repository AHK helper must use valid v2 syntax and must run under an AutoHotkey v2 executable. Do not copy v1 syntax, do not write v1/v2 hybrid code, and do not spend time preserving v1 behavior.
 
-Keep the helper thin: Z advances/accepts recognized alignment dialogs, X selects Retry on either `Alignment QC` or `Full-grid QC`, Esc exits, placement dialogs go upper-left, and the visible Fiji toolbar is positioned upper-right. A bounded three-second catch-up scan handles delayed Java dialog titles. The same helper hides and lowers the Jaunch `Launching Fiji...` status window as a display workaround; this does not establish reliable Fiji ownership/control.
+Keep the helper thin: Z advances/accepts recognized four-point dialogs, X selects Retry on `Full-grid QC`, Esc exits, placement dialogs go upper-left, and the visible Fiji toolbar is positioned upper-right. A bounded ten-second watch handles delayed Java dialog titles. Once `(Fiji Is Just) ImageJ` is present, it closes any separate `SunAwtWindow` from `fiji-windows-x64.exe`; that Window-Spy-verified rule removes the launcher overlay without relying on variable PID/window IDs. It does not establish reliable Fiji ownership/control.
 
-Recent v2 mistakes that must not recur include using v1-style catch/try shorthand such as `catch title := ""`, using a one-line `try` before `else if`, and omitting `&` on `WinGetPos` output variables. Use explicit v2 `catch { ... }` blocks where assignment is needed. Dialog movement uses the normal shell-hook move plus one small delayed catch-up pass (~120 ms); do not reintroduce permanent polling unless concrete evidence requires it.
+Recent v2 mistakes that must not recur include using v1-style catch/try shorthand such as `catch title := ""`, using a one-line `try` before `else if`, and omitting `&` on `WinGetPos` output variables. Use explicit v2 `catch { ... }` blocks where assignment is needed. Dialog movement and overlay suppression use only a bounded watch started on relevant window creation; do not reintroduce permanent polling.
 
 ## Active workflow
 - **Fiji/ImageJ:** four centre clicks -> mathematical 8 x N grid -> rotated/skewed full-grid QC -> crop export from original image.

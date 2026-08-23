@@ -42,7 +42,7 @@ Do not repeat the older equivalent RMI/socket/legacy-launcher searches unless ne
 - Production macro generation is the intended single source of truth for ROI 1-click adaptation.
 - Exact generated artifacts matter more than generator-only checks: manual Fiji execution exposed deterministic IJM failures after synthetic/generator checks passed.
 - AutoHotkey contract is v2 only.
-- Intended preview CLAHE behavior is two applications using block size approximately 3.3x ROI dimension, histogram 256, maximum slope 1000, mask None, fast/less-accurate.
+- Intended preview CLAHE behavior is two applications using `max(400, round(4x ROI dimension))` as block size, histogram 256, maximum slope 1000, mask None, fast/less-accurate.
 - ImageJ's official macro reference states that `call()` returns a string and `parseFloat(string)` converts it to a numeric value. Saved ROI dimensions must therefore be converted where read, before CLAHE or QC arithmetic.
 - ImageJ legacy's `SingleInstance` source forwards `-macro <path>` to a running legacy instance, but that does **not** prove it is the right modern architecture for this application's current Fiji installation.
 - `WindowOrganizer.showAll()` unconditionally calls `IJ.getInstance().toFront()`. It is incompatible with the observed forwarded-macro state where `IJ.getInstance()` is null; main-frame placement should remain outside that macro command.
@@ -78,7 +78,7 @@ Do not select one merely because it sounds promising; inspect the current instal
 
 Current official PyImageJ guidance documents Python-hosted interactive initialization (`imagej.init(..., mode="interactive")`), explicit UI display (`ij.ui().showUI()`), and repeated macro/script execution through the same gateway. This is a materially different ownership model from repeatedly launching Fiji with `-macro` and is now the preferred next micro-proof.
 
-Jaunch/Fiji documents `--no-splash`, but no supported option was found for suppressing the separate observed `Launching Fiji...` status window. The bounded AHK hide/lower rule is therefore only a UI workaround. It must not be treated as evidence that launcher reuse or macro delivery is reliable.
+Jaunch/Fiji documents `--no-splash`, but no supported option was found for suppressing the separate observed `Launching Fiji...` status window. Window Spy identified it as `SunAwtWindow` from `fiji-windows-x64.exe`, distinct from the `SunAwtFrame` main Fiji UI and `SunAwtDialog` macro dialogs. The bounded AHK rule now closes only that overlay class after the real main frame exists. It remains a UI workaround, not evidence that launcher reuse or macro delivery is reliable.
 
 Current official route candidates worth proving first are now:
 - `imagej.init(mode="interactive")` plus `ij.ui().showUI()` for an interactive Python-hosted GUI;
