@@ -9,6 +9,7 @@ This branch is for isolated future-facing prototypes only. `workflow-C` remains 
 - Prefer new standalone modules, tests, focused applets, schemas and synthetic fixtures.
 - Completed prototype work is never merged automatically. The current `workflow-C` owner reviews and cherry-picks/adapts useful commits.
 - Keep each prototype independently runnable/testable where practical.
+- Parallelize investigation and bounded independent artifacts; serialize mutation of the production integration surface.
 
 ## Architecture posture
 
@@ -53,6 +54,8 @@ Prototype isolation is **not** permission to tunnel into the first architecture 
 - Consider replacing, bypassing, composing, or inverting the current design; prototype code is sunk cost and may be discarded.
 - Stop broad research once one candidate clearly looks viable and prove the smallest uncertain property with a targeted synthetic/public test.
 - Do not create another fallback chain merely because the prototype already contains code for the failed route.
+
+If **two meaningful implementation attempts relying on substantially the same architectural assumption** fail, stop patching that route. Do not attempt a third cosmetic variation unless materially new evidence changes the underlying assumption. This circuit breaker is intended to stop implementation-token waste; it does not automatically authorize a more expensive model. Follow `docs/development/AGENT_MODEL_ROUTING.md` for the cost/escalation boundary.
 
 A prototype is more useful when it proves a mature integration boundary cleanly than when it accumulates custom compatibility machinery.
 
@@ -100,20 +103,12 @@ The grid/coordinate result should be treated as reusable project state, not as s
 
 ## Prototype checkpoint output
 
-Each coherent successful prototype checkpoint must update:
+Follow `docs/development/PROTOTYPE_HANDOFF_STANDARD.md`. Each coherent prototype checkpoint must update:
 
-1. `docs/gemini/GEMINI_INDEX.md` with a 1-3 line entry.
-2. Its own `docs/gemini/prototypes/<name>/HANDOFF.md` with:
-   - exact branch and commit SHA;
-   - status and what is actually proven;
-   - narrow public/API interface;
-   - standalone launch/usage entry point where relevant;
-   - true prerequisites;
-   - tests run;
-   - dependencies added;
-   - known limitations;
-   - integration/cherry-pick notes;
-   - shared-contract changes, if any.
+1. `docs/gemini/GEMINI_INDEX.md` with a compact status entry.
+2. Its own `docs/gemini/prototypes/<name>/HANDOFF.md` with the exact branch/commit, endpoint, what was and was not proven, interface/contracts, fixtures/tests, dependencies, limitations, manual validation, integration notes, and any contract changes.
+
+Use the explicit status vocabulary: `EXPLORATORY`, `PROOF PASSED`, `READY FOR INTEGRATION`, `INTEGRATED`, or `ROUTE FAILED`. Do not use an unqualified `Proven` label.
 
 Do not keep a development diary or reasoning transcript. Handoffs should stay compact and evidence-based after implementation; specifications may be detailed enough to prevent rediscovery or semantic confusion.
 
@@ -131,4 +126,4 @@ Gemini prototypes should be designed so the overall controller can later orchest
 - `render_plate_annotation(...) -> AnnotationResult`
 - `compose_matrix(...) -> CompositionResult`
 
-Prototype `Proven` status means the isolated interface works with targeted evidence. It does not mean production integration is automatic or that the current `workflow-C` implementation should be rewritten around it.
+`PROOF PASSED` means the isolated interface works for the explicitly documented targeted proof. It does not mean current full requirements have been audited. `READY FOR INTEGRATION` is a separate status requiring an explicit audit against the current shared contracts and current component requirements; production integration remains a separate decision by the `workflow-C` owner.
