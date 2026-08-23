@@ -273,7 +273,7 @@ def enhance_four_point_macro(source: str) -> str:
 
             waitForUser(
                 "1 / 4 - R1C1",
-                sourceTitle + " | Row 1, Colony 1 | centre ROI box, then OK."
+                sourceTitle + "  ♦  Row 1, Column 1  ♦  Centre ROI box around target at R1C1, then click OK.  ♦  Info: " + experiment + ", " + setName + "  ♦  Grid: 8 x " + gridCols + "  ♦  Export count: " + (nWanted * 2)
             );
             getSelectionBounds(x, y, w, h);
             if (w <= 0 || h <= 0)
@@ -283,7 +283,7 @@ def enhance_four_point_macro(source: str) -> str:
 
             waitForUser(
                 "2 / 4 - R1C" + gridCols,
-                sourceTitle + " | Row 1, Colony " + gridCols + " | centre ROI box, then OK."
+                sourceTitle + "  ♦  Row 1, Column " + gridCols + "  ♦  Centre ROI box around target at R1C" + gridCols + ", then click OK.  ♦  Info: " + experiment + ", " + setName + "  ♦  Grid: 8 x " + gridCols + "  ♦  Export count: " + (nWanted * 2)
             );
             getSelectionBounds(x, y, w, h);
             if (w <= 0 || h <= 0)
@@ -293,7 +293,7 @@ def enhance_four_point_macro(source: str) -> str:
 
             waitForUser(
                 "3 / 4 - R5C1",
-                sourceTitle + " | Row 5, Colony 1 | centre ROI box, then OK."
+                sourceTitle + "  ♦  Row 5, Column 1  ♦  Centre ROI box around target at R5C1, then click OK.  ♦  Info: " + experiment + ", " + setName + "  ♦  Grid: 8 x " + gridCols + "  ♦  Export count: " + (nWanted * 2)
             );
             getSelectionBounds(x, y, w, h);
             if (w <= 0 || h <= 0)
@@ -303,7 +303,7 @@ def enhance_four_point_macro(source: str) -> str:
 
             waitForUser(
                 "4 / 4 - R5C" + gridCols,
-                sourceTitle + " | Row 5, Colony " + gridCols + " | centre ROI box, then OK."
+                sourceTitle + "  ♦  Row 5, Column " + gridCols + "  ♦  Centre ROI box around target at R5C" + gridCols + ", then click OK.  ♦  Info: " + experiment + ", " + setName + "  ♦  Grid: 8 x " + gridCols + "  ♦  Export count: " + (nWanted * 2)
             );
             getSelectionBounds(x, y, w, h);
             if (w <= 0 || h <= 0)
