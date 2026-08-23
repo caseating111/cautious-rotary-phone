@@ -272,8 +272,8 @@ def enhance_four_point_macro(source: str) -> str:
             Overlay.remove;
 
             waitForUser(
-                "1 / 4 -- R1C1 -- " + sourceTitle,
-                "Target: Row 1, Column 1  ::  Centre ROI box around target at R1C1, then click OK.  ::  Exp: " + experiment + ", Set: " + setName + "  ::  Grid: 8R x " + gridCols + "C  ::  Export count: " + (nWanted * 2)
+                "1 / 4 -- R1C1 -- " + sourceTitle + " -- Z=OK, C=CANCEL",
+                "Target: Row 1, Column 1  |+|  Centre ROI box around target at R1C1, then click OK.  |+|  Exp: " + experiment + ", Set: " + setName + "  |+|  Grid: 8R x " + gridCols + "C  |+|  Export count: " + (nWanted * 2)
             );
             getSelectionBounds(x, y, w, h);
             if (w <= 0 || h <= 0)
@@ -282,8 +282,8 @@ def enhance_four_point_macro(source: str) -> str:
             R1LY = y + h / 2;
 
             waitForUser(
-                "2 / 4 -- R1C" + gridCols + " -- " + sourceTitle,
-                "Target: Row 1, Column " + gridCols + "  ::  Centre ROI box around target at R1C" + gridCols + ", then click OK.  ::  Exp: " + experiment + ", Set: " + setName + "  ::  Grid: 8R x " + gridCols + "C  ::  Export count: " + (nWanted * 2)
+                "2 / 4 -- R1C" + gridCols + " -- " + sourceTitle + " -- Z=OK, C=CANCEL",
+                "Target: Row 1, Column " + gridCols + "  |+|  Centre ROI box around target at R1C" + gridCols + ", then click OK.  |+|  Exp: " + experiment + ", Set: " + setName + "  |+|  Grid: 8R x " + gridCols + "C  |+|  Export count: " + (nWanted * 2)
             );
             getSelectionBounds(x, y, w, h);
             if (w <= 0 || h <= 0)
@@ -292,8 +292,8 @@ def enhance_four_point_macro(source: str) -> str:
             R1RY = y + h / 2;
 
             waitForUser(
-                "3 / 4 -- R5C1 -- " + sourceTitle,
-                "Target: Row 5, Column 1  ::  Centre ROI box around target at R5C1, then click OK.  ::  Exp: " + experiment + ", Set: " + setName + "  ::  Grid: 8R x " + gridCols + "C  ::  Export count: " + (nWanted * 2)
+                "3 / 4 -- R5C1 -- " + sourceTitle + " -- Z=OK, C=CANCEL",
+                "Target: Row 5, Column 1  |+|  Centre ROI box around target at R5C1, then click OK.  |+|  Exp: " + experiment + ", Set: " + setName + "  |+|  Grid: 8R x " + gridCols + "C  |+|  Export count: " + (nWanted * 2)
             );
             getSelectionBounds(x, y, w, h);
             if (w <= 0 || h <= 0)
@@ -302,8 +302,8 @@ def enhance_four_point_macro(source: str) -> str:
             R5LY = y + h / 2;
 
             waitForUser(
-                "4 / 4 -- R5C" + gridCols + " -- " + sourceTitle,
-                "Target: Row 5, Column " + gridCols + "  ::  Centre ROI box around target at R5C" + gridCols + ", then click OK.  ::  Exp: " + experiment + ", Set: " + setName + "  ::  Grid: 8R x " + gridCols + "C  ::  Export count: " + (nWanted * 2)
+                "4 / 4 -- R5C" + gridCols + " -- " + sourceTitle + " -- Z=OK, C=CANCEL",
+                "Target: Row 5, Column " + gridCols + "  |+|  Centre ROI box around target at R5C" + gridCols + ", then click OK.  |+|  Exp: " + experiment + ", Set: " + setName + "  |+|  Grid: 8R x " + gridCols + "C  |+|  Export count: " + (nWanted * 2)
             );
             getSelectionBounds(x, y, w, h);
             if (w <= 0 || h <= 0)
@@ -368,15 +368,15 @@ def enhance_four_point_macro(source: str) -> str:
             // GenericDialog only places a choice beside its own label. Keep the
             // entire instruction on that single compact row rather than adding
             // a vertically separate message row.
-            Dialog.create("Full-grid QC  ::  Inspect 8R x " + gridCols + "C grid");
+            Dialog.create("Full-grid QC -- Inspect 8R x " + gridCols + "C grid -- Z=ACCEPT, X=RETRY, C=CANCEL");
             Dialog.addChoice(
-                "Action  ::  Accept: export crops  ::  Retry: repeat four points",
-                newArray("Accept", "Retry"),
-                "Accept"
+                "ACCEPT: Export crops and save grid coordinates.  |+|  RETRY: Repeat four-point calibration.",
+                newArray("ACCEPT", "RETRY"),
+                "ACCEPT"
             );
             Dialog.show();
             qcAction = Dialog.getChoice();
-            if (qcAction == "Accept") {
+            if (qcAction == "ACCEPT") {
                 accepted = 1;
             } else {
                 Overlay.remove;

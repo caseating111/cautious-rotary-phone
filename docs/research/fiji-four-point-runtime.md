@@ -80,6 +80,10 @@ Current official PyImageJ guidance documents Python-hosted interactive initializ
 
 Jaunch/Fiji documents `--no-splash`, but no supported option was found for suppressing the separate observed `Launching Fiji...` status window. The bounded AHK hide/lower rule is therefore only a UI workaround. It must not be treated as evidence that launcher reuse or macro delivery is reliable.
 
+### Bounded PyImageJ ownership proof — 2026-08-23
+
+The configured Miniforge Python 3.11 environment already contained PyImageJ. An image-blind proof started the configured Fiji directory in interactive mode, showed its UI, and ran two harmless macro markers in the same gateway. However, PyImageJ used Java 11 while installed Fiji extensions include Java-21 class files, causing plugin-discovery/class-version failures. Do not replace the production launcher with PyImageJ unless its JVM compatibility with the installed Fiji distribution is resolved first.
+
 ## Endpoint debugging / failure history
 
 ### Route 1 — ROI 1-click adapter applied in both production and proof preparation

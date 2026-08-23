@@ -35,12 +35,14 @@ class ExtendedController(Controller):
     def __init__(self) -> None:
         super().__init__()
         self.protocol("WM_DELETE_WINDOW", self.close_controller)
-        self.preview_standard_outputs = tk.BooleanVar(value=True)
-        self.replace_existing_crops = tk.BooleanVar(value=False)
-        self.skip_done = tk.BooleanVar(value=True)
+        self.preview_standard_outputs = tk.BooleanVar(value=self.config_bool("preview_standard_outputs", True))
+        self.replace_existing_crops = tk.BooleanVar(value=self.config_bool("replace_existing_crops", False))
+        self.skip_done = tk.BooleanVar(value=self.config_bool("skip_done", True))
         self.batch_subfolder = tk.StringVar()
         self.project_prefix = tk.StringVar(value=project_layout.default_prefix())
         self.fiji_processes: list[subprocess.Popen] = []
+        for variable in (self.preview_standard_outputs, self.replace_existing_crops, self.skip_done):
+            variable.trace_add("write", self.save_toggle_settings)
 
         project_frame = ttk.Frame(self)
         project_frame.grid(row=18, column=0, columnspan=3, sticky="ew", padx=5, pady=(6, 3))
@@ -123,6 +125,22 @@ class ExtendedController(Controller):
             if process.poll() is None:
                 process.terminate()
         self.destroy()
+
+    def config_bool(self, key: str, default: bool) -> bool:
+        value = self.vars.get(key)
+        if value is None:
+            return default
+        return value.get().strip().casefold() in {"1", "true", "yes", "on"}
+
+    def save_toggle_settings(self, *_args: object) -> None:
+        """Persist controller choices immediately, without waiting for a run button."""
+        self.save()
+
+    def save(self, explicit: bool = False) -> bool:
+        self.vars["preview_standard_outputs"].set("1" if self.preview_standard_outputs.get() else "0")
+        self.vars["replace_existing_crops"].set("1" if self.replace_existing_crops.get() else "0")
+        self.vars["skip_done"].set("1" if self.skip_done.get() else "0")
+        return super().save(explicit)
 
     def refresh_subfolders(self, widget: ttk.Combobox) -> None:
         root = Path(self.vars["image_root"].get().strip())

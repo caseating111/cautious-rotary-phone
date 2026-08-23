@@ -193,6 +193,27 @@ z::
 }
 #HotIf
 
+; C cancels the active Fiji workflow dialog. ImageJ's native wait-for-user and
+; GenericDialog implementations treat Escape as Cancel and abort the macro.
+#HotIf AlignmentDialogExists()
+c::
+{
+    for title in [
+        "Next plate", "ROI 1-click", "1 / 2", "2 / 2", "Alignment QC", "Full-grid QC",
+        "1 / 4", "2 / 4", "3 / 4", "4 / 4", "ALL DONE"
+    ]
+    {
+        if hwnd := FijiWorkflowDialog(title)
+        {
+            WinActivate(hwnd)
+            if WinWaitActive(hwnd, , 0.5)
+                Send("{Esc}")
+            ExitApp()
+        }
+    }
+}
+#HotIf
+
 ; X selects Retry on either QC dialog. Both dialogs default to Accept;
 ; Down selects Retry, Enter confirms.
 #HotIf FijiWorkflowDialog("Alignment QC") || FijiWorkflowDialog("Full-grid QC")

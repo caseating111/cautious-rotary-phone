@@ -31,6 +31,9 @@ DEFAULTS = {
     "visibility_band": "50",
     "visibility_black_offset": "3",
     "visibility_high_percentile": "99.5",
+    "preview_standard_outputs": "1",
+    "replace_existing_crops": "0",
+    "skip_done": "1",
 }
 
 PROJECT_CSV_FILES = {
