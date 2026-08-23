@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from tools import run_full_column_batch_from_config as batch
+from tools import run_four_point_batch_from_config as batch
 
 
 class FourPointMathematicalQCTests(unittest.TestCase):

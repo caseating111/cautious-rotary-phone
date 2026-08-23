@@ -14,7 +14,7 @@ from tools import run_one_plate_validation as proof
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-BATCH_WRAPPER = REPO_ROOT / "tools" / "run_full_column_batch_from_config.py"
+BATCH_WRAPPER = REPO_ROOT / "tools" / "run_four_point_batch_from_config.py"
 
 
 class BatchPrepareEndToEndTests(unittest.TestCase):
@@ -153,7 +153,7 @@ class BatchPrepareEndToEndTests(unittest.TestCase):
             self.assertEqual(proof_text.count('run("Enhance Local Contrast (CLAHE)", claheOptions)'), 2)
             self.assertIn(proof.batch.macro_path(proof_csv), proof_text)
 
-            ahk_text = (REPO_ROOT / "ahk" / "full_column_alignment_hotkeys.ah2").read_text(encoding="utf-8")
+            ahk_text = (REPO_ROOT / "ahk" / "four_point_alignment_hotkeys.ah2").read_text(encoding="utf-8")
             self.assertIn("#Requires AutoHotkey v2.0", ahk_text)
             for title in ("1 / 4", "2 / 4", "3 / 4", "4 / 4", "Full-grid QC"):
                 self.assertIn(f'"{title}"', ahk_text)

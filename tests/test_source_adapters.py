@@ -9,7 +9,7 @@ from unittest.mock import patch
 from PIL import Image
 
 from tools import run_existing_pillow_from_config as pillow_adapter
-from tools import run_full_column_batch_from_config as batch_adapter
+from tools import run_four_point_batch_from_config as batch_adapter
 
 
 class SourceAdapterTests(unittest.TestCase):

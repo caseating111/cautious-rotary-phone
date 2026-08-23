@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 from tools import preflight_batch
 from tools import run_existing_pillow_from_config as pillow_adapter
-from tools import run_full_column_batch_from_config as batch_adapter
+from tools import run_four_point_batch_from_config as batch_adapter
 from tools import workflow_controller
 
 

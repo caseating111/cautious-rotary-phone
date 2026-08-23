@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from tools import run_fiji_macro_from_config as fiji_adapter
-from tools import run_full_column_batch_from_config as batch_adapter
+from tools import run_four_point_batch_from_config as batch_adapter
 
 
 class NumericConfigGuardTests(unittest.TestCase):

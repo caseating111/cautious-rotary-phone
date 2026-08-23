@@ -110,7 +110,7 @@ class OnePlateValidationTests(unittest.TestCase):
                 (
                     "import shutil, tempfile\n"
                     "from pathlib import Path\n"
-                    "import run_full_column_batch_from_config as batch\n"
+                    "import run_four_point_batch_from_config as batch\n"
                     "target=Path(tempfile.mkdtemp())\n"
                     "source=batch.SOURCE_MACRO.read_text(encoding='utf-8')\n"
                     "batch.configure_source_settings=lambda _source,_config: source\n"

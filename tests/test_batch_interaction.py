@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from tools import run_full_column_batch_from_config as batch_adapter
+from tools import run_four_point_batch_from_config as batch_adapter
 
 
 class BatchInteractionTests(unittest.TestCase):
