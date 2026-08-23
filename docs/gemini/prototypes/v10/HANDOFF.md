@@ -3,7 +3,7 @@
 Status: READY FOR INTEGRATION
 Endpoint: Read-only V10 workbook adapter producing canonical ProjectModel v1, PlateLayout v1 derivation, file reconciliation and legacy projections.
 Branch: `gemini-v10`
-Commit: `0c654d1`
+Commit: `bbe8209`
 
 ## What was proven
 
