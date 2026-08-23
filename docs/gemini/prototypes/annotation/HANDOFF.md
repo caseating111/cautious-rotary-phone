@@ -3,7 +3,7 @@
 Status: READY FOR INTEGRATION
 Endpoint: Automatically position and render strain/vertical annotations onto whole plates using registered spot coordinates and PlateLayout, and compose multi-crop matrices with mixed crop-tier support headlessly without Photoshop.
 Branch: `gemini-annotation`
-Commit: pending
+Commit: `60df114`
 
 ## What was proven
 

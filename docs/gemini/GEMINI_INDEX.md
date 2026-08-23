@@ -10,7 +10,7 @@ Compact routing index for isolated prototype work. Keep this file short; detaile
 | Whole-plate orientation | EXPLORATORY / not started | dedicated child branch when implementation begins | one horizontal-edge line drag -> `OrientationResult` | `docs/gemini/prototypes/plate_rotation/HANDOFF.md` |
 | Plate crop preprocessing | EXPLORATORY / not started | dedicated child branch when implementation begins | reusable `CropSizeCalibration` + per-image `CropResult` | `docs/gemini/prototypes/plate_crop/HANDOFF.md` |
 | Visibility adjustment / review | EXPLORATORY / not started | dedicated child branch when implementation begins | `adjust_plate_visibility(...) -> AdjustmentResult` | `docs/gemini/prototypes/visibility_adjustment/HANDOFF.md` |
-| Annotation/composition | READY FOR INTEGRATION | `gemini-annotation` | saved grid + metadata/layout -> annotation/composition result | `docs/gemini/prototypes/annotation/HANDOFF.md` |
+| Annotation/composition | READY FOR INTEGRATION | `gemini-annotation` (`60df114`) | saved grid + metadata/layout -> annotation/composition result | `docs/gemini/prototypes/annotation/HANDOFF.md` |
 | Grid registration applet | Future divestment | production route currently lives on `workflow-C` | `register_plate_grid(...) -> GridCoordinateAsset` | extract only after current route remains proven |
 
 ## Index rules
