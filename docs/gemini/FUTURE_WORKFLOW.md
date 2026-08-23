@@ -8,9 +8,7 @@ See `docs/development/PROJECT_ASSET_CONTRACT.md` for the reusable-state contract
 
 ## Overall architecture
 
-Prefer a lightweight project/controller GUI that owns project selection, canonical identity/state and launch/status controls, while focused mini-apps perform coherent jobs such as orientation, plate cropping, grid registration, visibility adjustment, annotation and composition.
-
-Mini-apps should be independently runnable without the main controller. The controller is a convenience/orchestration layer, not a runtime dependency. Each applet should be able to receive/select a project root or project-state reference, check only its true prerequisites, and update only its own result state.
+Prefer a lightweight project/controller GUI that owns project selection, canonical identity/state and launch/status controls, while focused mini-apps perform coherent jobs such as orientation, plate cropping, visibility adjustment and annotation.
 
 A mini-app should:
 
@@ -18,14 +16,11 @@ A mini-app should:
 2. perform one coherent operation;
 3. preview/validate when visual judgement matters;
 4. persist a narrow result/state object;
-5. return control without rediscovering V10 or repeating previous clicks;
-6. use the same core callable path whether launched standalone or from the controller where practical.
+5. return control without rediscovering V10 or repeating previous clicks.
 
 The user should not be forced through a rigid wizard. Later actions should be callable whenever their actual prerequisites exist.
 
 Core reusable state should include canonical V10 identity, raw/working/processed/annotated file mappings, orientation transforms, crop-size calibration, per-image crop placement, logical `PlateLayout`, measured culture-grid/spot coordinates, visibility-adjustment state, annotation presets/results, and crop/matrix outputs.
-
-Grid registration should eventually be divestable into its own focused applet whose main output is `GridCoordinateAsset`; do not destabilize the current production route merely to extract it early.
 
 ---
 
@@ -358,4 +353,4 @@ Orientation and whole-plate crop are optional preprocessing conveniences. Skippi
 - Keep crop-size calibration separate from per-image placement.
 - Keep logical metadata/layout separate from measured pixel geometry.
 - Favor focused mini-apps with narrow contracts over one oversized GUI.
-- Mini-apps should remain independently runnable; the main controller should orchestrate them rather than become their execution dependency.
+- The main controller should orchestrate project state/status/prerequisites and launch tools rather than reimplement every tool internally.

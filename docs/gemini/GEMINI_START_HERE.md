@@ -1,6 +1,6 @@
 # Gemini start here
 
-This branch is an isolated Gemini implementation branch. It may make useful parallel progress without interfering with the active `workflow-C` writer.
+This branch exists to let Gemini make useful parallel progress without interfering with the active `workflow-C` writer.
 
 ## Read first
 
@@ -15,7 +15,7 @@ Read only:
 7. `contracts/README.md`
 8. `docs/gemini/GEMINI_INDEX.md`
 9. `docs/gemini/FUTURE_WORKFLOW.md` when the assigned prototype depends on or feeds another workflow stage
-10. `docs/development/PROJECT_ASSET_CONTRACT.md` when the assigned prototype creates/consumes reusable project state
+10. `docs/development/PROJECT_ASSET_CONTRACT.md` when the prototype creates/consumes/transforms reusable project state or geometry
 11. the HANDOFF for the prototype you are assigned
 12. only the narrow existing project docs/files actually needed for that prototype
 
@@ -23,7 +23,7 @@ Do not reconstruct the full repository history or ingest the current runtime bro
 
 Before online research, check `docs/research/INDEX.md`; if a matching endpoint/topic exists, read only that topic file first. **Avoid tunnel vision:** after a meaningful endpoint failure, reopen the solution space and research current official/mature end-to-end and architectural alternatives before repairing the failed mechanism.
 
-Two meaningful attempts relying on substantially the same architectural assumption trigger the stop-patching circuit breaker. Another cosmetic workaround is not justified without materially new evidence.
+Two meaningful attempts that rely on substantially the same architectural assumption trigger the stop-patching circuit breaker. Another cosmetic workaround is not justified without materially new evidence.
 
 ## Model-cost boundary
 
@@ -34,9 +34,9 @@ Use the least expensive capable model. Prefer Flash Low for reading/mechanical w
 ## Ownership
 
 - `workflow-C` is the integration/product branch and is normally owned by Codex/current integrator.
-- Do not write to or merge into `workflow-C` from this prototype task.
+- Do not write to or merge into `workflow-C` from a Gemini prototype task.
 - `geminimain` is the shared Gemini specification/baseline branch.
-- Preserve useful work on this dedicated child branch while periodically syncing only relevant shared documentation/contracts.
+- Use a dedicated child branch for each active implementation stream, for example `gemini-v10`, `prototype/annotation`, or `prototype/preprocessing`. Existing branch names are grandfathered; new branches should be named for the component/domain rather than the model when practical.
 - Do not have multiple agents actively edit the same branch/implementation surface.
 - Parallelize investigation and bounded independent artifacts; serialize mutation of the production integration surface.
 
@@ -56,6 +56,7 @@ Future mini-apps should be independently runnable without the main controller. T
 - Prefer mature packages/software and thin glue.
 - Use targeted tests; do not broadly regression-test the active application.
 - Do not repeatedly read large existing files when a narrow contract or bounded excerpt is enough.
+- Reuse already-proven project state rather than making another component rediscover it.
 - Keep checkpoint handoffs short so the eventual integrator can evaluate the prototype without consuming large context.
 - Do not duplicate premium-model review across several model families when one compact independent challenge is sufficient.
 
@@ -67,9 +68,9 @@ When a prototype reaches a coherent state:
 2. update its HANDOFF under `PROTOTYPE_HANDOFF_STANDARD.md`;
 3. use the explicit status vocabulary (`EXPLORATORY`, `PROOF PASSED`, `READY FOR INTEGRATION`, `INTEGRATED`, or `ROUTE FAILED`) rather than an unqualified `Proven` claim;
 4. update the one-line entry in `GEMINI_INDEX.md`;
-5. commit/push this prototype branch;
+5. commit/push that prototype branch;
 6. stop rather than automatically integrating it into `workflow-C`.
 
-`PROOF PASSED` means the documented narrow proof succeeded. `READY FOR INTEGRATION` requires an explicit audit against the current `geminimain` requirements and shared contracts.
+`PROOF PASSED` means the documented narrow proof succeeded. `READY FOR INTEGRATION` requires an explicit audit against the current shared contracts and current component requirements.
 
 The active `workflow-C` integrator later decides whether to cherry-pick, adapt, reimplement around the contract, defer, or reject it.

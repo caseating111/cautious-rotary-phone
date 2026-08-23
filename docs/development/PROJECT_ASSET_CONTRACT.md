@@ -29,108 +29,161 @@ Reusable group/project calibration state may additionally include a `CropSizeCal
 
 ## Shared machine-readable project state
 
-Standalone mini-apps and the eventual main controller need a small persistent interoperability layer. Use a machine-readable project manifest/state area that maps canonical image identity to relevant assets/results.
+Standalone mini-apps and the eventual main controller need a small persistent interoperability layer. Use a machine-readable project manifest/state area that maps canonical image identity to the relevant assets/results above.
 
-The exact representation can remain lightweight, but it should satisfy these rules:
+The exact file/database representation can remain lightweight (for example JSON plus small per-image result files, or another simple mature store), but it should satisfy these rules:
 
 - project state persists when no controller/app is open;
-- applets can launch directly with a project root/state reference;
-- one applet can discover needed assets without parsing another applet's human-readable logs;
-- paths are project-relative where practical;
-- Image UID remains canonical identity when V10 is available;
-- state includes format/method/version information sufficient to reject incompatible stale assets;
-- independent applets update only their owned result records rather than rewriting unrelated project state unnecessarily.
+- applets can be launched directly with a project root/state reference;
+- one applet can discover the assets it needs without parsing another applet's human-readable logs;
+- paths should be project-relative where practical;
+- Image UID remains the canonical identity when V10 is available;
+- state records include format/method/version information sufficient to reject incompatible stale assets;
+- concurrent/independent applets should update only their owned result records rather than rewriting unrelated project state unnecessarily.
 
 Human-readable conversion maps, summaries and logs are QC aids, not the machine API.
 
 ## Geometry has distinct reusable layers
 
+Do not collapse these into one generic alignment record.
+
 ### Per-image orientation
 
-Preferred first orientation interaction is one straight-line drag along a clear top or bottom plate edge. Persist line endpoints, observed/correction angle and resulting transform.
+The preferred first orientation interaction is one straight-line drag along a clear top or bottom physical plate edge. Persist the line endpoints, observed/correction angle and resulting transform.
+
+Orientation is per image. Similar plates can still have different tilt.
 
 ### Reusable crop-size calibration
 
-A representative plate can provide four boundary references (left/right/top/bottom) from which reusable crop size is calibrated. Default square size rounds down to nearest 50 px, with configurable rounding.
+A representative plate can provide four boundary references (left/right/top/bottom) from which a reusable crop side/width/height is calibrated. Default square size rounds **down to nearest 50 px**, with configurable rounding.
+
+This size calibration may be reused across compatible images.
 
 ### Per-image crop placement
 
-Crop position is not reusable merely because size is reusable. For each image:
+Crop translation/position is not reusable merely because size is reusable. Plates may have identical dimensions but different camera-frame offsets.
 
-- click somewhere on the left plate edge -> x anchor;
-- click somewhere on the top plate edge -> y anchor;
-- place current calibrated-size crop from those anchors;
+For each image, the intended fast placement route is:
+
+- click somewhere on the left plate edge -> authoritative x anchor;
+- click somewhere on the top plate edge -> authoritative y anchor;
+- place the current calibrated-size crop from those anchors;
 - preview/accept/retry.
 
 Do not require exact-corner clicking and do not silently reuse another image's crop center.
 
 ### Accepted culture-grid coordinates
 
-The four-click culture-grid result is measured in an explicit working coordinate space after accepted geometric preprocessing and becomes the reusable source for culture positions.
+The four-click culture-grid result is measured in one explicit working coordinate space after any accepted geometric preprocessing. It becomes the reusable source for culture positions.
 
 ## Grid coordinate asset
 
-Preserve enough information to reconstruct every culture position without alignment again, including:
+The accepted four-click result should expose enough information to reconstruct every culture position without asking for alignment again. Preserve at minimum:
 
 - Image UID/reference;
-- coordinate space/dimensions;
-- four authoritative reference points or equivalent transform;
+- image coordinate space/dimensions in which the grid was measured;
+- four authoritative reference points or equivalent accepted grid transform;
 - row/column counts;
-- basis vectors/affine or equivalent geometry;
-- center coordinate for every logical culture spot;
+- row/column basis vectors or equivalent affine/bilinear representation;
+- calculated center coordinate for every logical culture spot;
 - local strain-band/row mapping where relevant;
-- timestamp/version/method;
+- timestamp/version/method identifier;
 - accepted/reset status;
-- transform chain needed between compatible derivatives.
+- source transform chain needed to map between raw/working/cropped/processed/annotated derivatives where geometrically compatible.
+
+Do not bind this asset only to immediate crop export.
 
 ## Grid reuse requirements
 
-Once accepted, later operations should independently be able to use the grid asset for unprocessed crop export, whole-grid ROI statistics, processed crop export, automatic annotation placement, matrix crop resolution, QC overlays and selected-strain export without rerunning alignment.
+Once an accepted coordinate asset exists, later operations should independently be able to use it to:
+
+- export unprocessed culture crops immediately or later;
+- derive the whole-grid ROI for visibility statistics;
+- export processed culture crops after processed whole plates exist;
+- place strain and vertical annotations automatically using actual measured spot coordinates;
+- provide crop locations to matrix/composition tools;
+- draw QC overlays/previews;
+- support selected-strain exports without rerunning alignment.
+
+A later action should check for the state it actually needs rather than require the full workflow to be replayed in order.
 
 ## Applet prerequisite contract
 
-Standalone applets are prerequisite-driven, not wizard-driven. Examples:
+Standalone applets should be prerequisite-driven, not wizard-driven. Each applet declares the assets it genuinely needs and may run whenever those assets exist.
 
-- orientation: compatible source/working image;
-- plate crop placement: compatible image + crop-size calibration or permission to calibrate one;
-- grid registration: compatible image + logical layout/grid dimensions;
-- visibility adjustment: compatible image + accepted grid asset;
-- processed crop export: grid asset + compatible processed image;
-- annotation: metadata/layout + grid asset + compatible source derivative;
+Examples:
+
+- orientation: compatible source/working image only;
+- plate crop placement: compatible image + crop-size calibration (or permission to calibrate one);
+- grid registration: compatible image + logical layout/grid dimensions needed for registration;
+- visibility adjustment: compatible image + accepted `GridCoordinateAsset`;
+- processed crop export: accepted `GridCoordinateAsset` + compatible processed image;
+- annotation: canonical metadata/layout + accepted grid asset + compatible source derivative;
 - matrix/composition: requested crop assets.
 
-If a prerequisite is absent, report that missing prerequisite rather than forcing unrelated earlier stages.
+If a prerequisite is absent, return a concise missing-prerequisite status. Do not force unrelated earlier stages to run merely because they precede it in the preferred full workflow.
 
 ## Standalone + controller parity
 
-Every future mini-app should run independently of the main controller. The overall controller is a convenience/orchestration layer, not a runtime dependency.
+Every future mini-app should be runnable independently of the main controller. The overall controller is a convenience/orchestration layer, not a runtime dependency.
 
-Where practical, one callable/core implementation should serve standalone single-image use, standalone selected-batch use, main-controller launch, and automated tests/CLI-style invocation.
+Where practical, one callable/core implementation should serve all of these entry routes:
 
-Do not maintain separate controller-only and standalone processing implementations.
+- standalone single-image mini-app;
+- standalone selected-batch mini-app;
+- main-controller launch/action;
+- targeted automated tests/CLI-style invocation.
 
-Grid registration should eventually follow the same rule: the proven four-click route can later be divested into a focused grid-registration applet whose principal output is `GridCoordinateAsset`; it should not own crop export, visibility, annotation or matrix workflows.
+Do not maintain separate controller-only and standalone processing implementations for the same operation.
+
+Grid registration should eventually follow this same rule: the current proven four-click route can later be divested into a focused grid-registration applet whose principal output is `GridCoordinateAsset`. It should not remain the owner of crop export, visibility, annotation or matrix workflows.
 
 ## Transform discipline
 
-Orientation and whole-plate cropping change coordinate spaces. Persist transforms or enough deterministic geometry to map coordinates. Derived processed/annotated images should normally preserve registered geometry so saved grid coordinates remain valid.
+Orientation correction and whole-plate cropping change coordinate spaces. Persist explicit transforms or enough deterministic geometry to map coordinates when later reuse requires it.
 
-Geometry-changing operations must update/compose transforms or mark dependent assets stale. Display-only intensity/contrast/CLAHE/levels operations do not invalidate grid coordinates.
+Prefer one canonical working coordinate space for culture-grid registration. Derived processed/annotated images should normally preserve that geometry so the same grid coordinates remain valid.
+
+If a later operation changes geometry, it must compose/update the transform or declare dependent coordinates stale/incompatible. Never silently use coordinates measured in another geometry.
+
+Display-only intensity/contrast/CLAHE/levels operations do not change geometry and therefore should not invalidate the grid asset.
 
 ## Dependency/staleness behavior
 
-- changing orientation may invalidate crop/grid state downstream;
-- changing crop placement/size invalidates a grid measured in the previous cropped space unless transformed;
-- recalibrating crop size alone does not alter already accepted per-image crops until reapplied;
-- resetting/re-registering grid replaces/versions coordinate state and can mark dependent outputs stale;
-- annotation style or visibility adjustment changes do not invalidate grid geometry.
+Rerunning an earlier geometric step must not leave downstream state falsely appearing current.
 
-Use lightweight version/dependency markers rather than a large workflow engine.
+Examples:
+
+- changing orientation may invalidate the per-image crop and any grid measured afterward;
+- changing crop placement/size invalidates a grid measured in the prior cropped coordinate space unless explicitly transformed;
+- recalibrating crop **size** does not by itself alter already accepted per-image crops until they are intentionally reapplied;
+- resetting/re-registering the culture grid replaces/versions the coordinate asset and can mark dependent crop/annotation outputs stale;
+- rerendering annotation with a different font preset does not invalidate grid geometry;
+- recomputing visibility adjustment does not invalidate grid geometry.
+
+Use lightweight dependency/version markers rather than building a large workflow engine.
 
 ## File-system independence
 
-Identity is not filename identity. Image UID is canonical when V10 is available. Generic raw names remain valid when project metadata resolves them. Working-copy renaming is optional.
+Identity is not filename identity. `Image UID` is canonical when V10 is available. Generic names such as `image1.jpg` remain valid when project metadata resolves them.
+
+Renaming working copies is optional. Project assets should refer to canonical identity plus relative paths, not assume a descriptive filename is the primary key.
+
+## Mini-app/controller integration
+
+The eventual overall controller may launch focused mini-apps. Each should consume the reusable state it needs and return/update only its own result state.
+
+Examples:
+
+- orientation app -> `OrientationResult`;
+- crop calibration/placement app -> `CropSizeCalibration` + per-image `CropResult`;
+- grid registration -> `GridCoordinateAsset`;
+- visibility app -> `AdjustmentResult`;
+- annotation app -> `AnnotationResult`;
+- matrix app -> composition result.
+
+The controller should orchestrate state and prerequisites without absorbing all implementation details.
 
 ## Compatibility with current CSV mode
 
-The basic CSV route remains intentionally simpler and does not need V10 Set/annotationSet/profile-order semantics retrofitted into it. It may still save the same reusable geometric assets; V10 later enriches identity/layout metadata around them.
+The working basic CSV route is intentionally simpler and does not need V10 `Set`/annotationSet/profile-order semantics retrofitted into it. It may still save the same reusable geometric assets. V10 later enriches identity/layout metadata around those assets instead of creating a second image-processing architecture.

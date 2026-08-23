@@ -39,7 +39,7 @@ Examples of prerequisite behavior:
 - plate crop: require an image and, when reusing size, a compatible `CropSizeCalibration`;
 - grid registration: eventually becomes its own applet and produces `GridCoordinateAsset`; it should not own later crop/annotation/visibility workflows.
 
-If a prerequisite is missing, report exactly what is missing rather than forcing the user through unrelated steps.
+If a prerequisite is missing, report exactly what is missing (`GRID_REQUIRED`, compatible processed image missing, etc.) rather than forcing the user through steps that are irrelevant to that applet.
 
 Optimize for the actual workflow and user time. Mature packages, Fiji/ImageJ features, Pillow, OpenCV/scikit-image, small scripts and modest manual confirmation are preferable to large bespoke systems when they reach the endpoint more reliably.
 
