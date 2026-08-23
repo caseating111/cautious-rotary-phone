@@ -27,7 +27,7 @@ Read synthetic V10 workbook (.xlsm or .xlsx) and produce `ProjectModel` v1 plus 
 ## Completion record
 
 - Branch: `gemini-v10`
-- Commit: `9648bed`
+- Commit: `5e8078f`
 - Interfaces:
   - `load_v10(path) -> dict` (ProjectModel v1)
   - `extract_layouts(path, row_band_overrides=None) -> dict[str, dict]` (PlateLayout v1 mappings)
