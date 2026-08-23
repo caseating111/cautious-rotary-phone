@@ -7,7 +7,7 @@ Compact routing index for isolated prototype work. Keep this file short; detaile
 | V10 adapter | READY FOR INTEGRATION | `gemini-v10` (`f3eddc8`) | `load_v10(path) -> ProjectModel` | `docs/gemini/prototypes/v10/HANDOFF.md` |
 | Project setup / working-copy rename | READY FOR INTEGRATION | `gemini-project-setup-rename` (`3afaad8`) | `prepare_working_copy(...) -> RenameResult` | `docs/gemini/prototypes/project_setup_rename/HANDOFF.md` |
 | Grid/layout derivation | READY FOR INTEGRATION | `gemini-layout` (`760ef96`) | `derive_plate_layout(project, image_uid) -> PlateLayout` | `docs/gemini/prototypes/layout/HANDOFF.md` |
-| Whole-plate orientation | READY FOR INTEGRATION | `gemini-plate-rotation` | one horizontal-edge line drag -> `OrientationResult` | `docs/gemini/prototypes/plate_rotation/HANDOFF.md` |
+| Whole-plate orientation | READY FOR INTEGRATION | `gemini-plate-rotation` (`06edaa0`) | one horizontal-edge line drag -> `OrientationResult` | `docs/gemini/prototypes/plate_rotation/HANDOFF.md` |
 | Plate crop preprocessing | EXPLORATORY / not started | dedicated child branch when implementation begins | reusable `CropSizeCalibration` + per-image `CropResult` | `docs/gemini/prototypes/plate_crop/HANDOFF.md` |
 | Visibility adjustment / review | EXPLORATORY / not started | dedicated child branch when implementation begins | `adjust_plate_visibility(...) -> AdjustmentResult` | `docs/gemini/prototypes/visibility_adjustment/HANDOFF.md` |
 | Annotation/composition | EXPLORATORY / not started | dedicated child branch when implementation begins | saved grid + metadata/layout -> annotation/composition result | `docs/gemini/prototypes/annotation/HANDOFF.md` |

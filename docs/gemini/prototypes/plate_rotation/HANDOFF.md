@@ -3,7 +3,7 @@
 Status: READY FOR INTEGRATION
 Endpoint: One straight-line drag along a long top or bottom physical plate edge calculates observed tilt and applies a non-destructive counter-rotation transform to produce a straightened working plate image.
 Branch: `gemini-plate-rotation`
-Commit: pending
+Commit: `06edaa0`
 
 ## What was proven
 
