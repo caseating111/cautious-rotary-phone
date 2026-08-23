@@ -9,6 +9,12 @@ import sys
 import tempfile
 from pathlib import Path
 
+try:
+    from tools import crop_replacement_manifest, preflight_batch
+except ModuleNotFoundError:
+    import crop_replacement_manifest
+    import preflight_batch
+
 APP_DIR = Path.home() / ".cautious-rotary-phone"
 CONFIG_FILE = APP_DIR / "config.json"
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -19,6 +25,7 @@ PREFLIGHT_REPORT = APP_DIR / "last_preflight.txt"
 PENDING_IMAGES_CSV = APP_DIR / "pending_images.csv"
 CONFIGURED_FOUR_POINT_MACRO = APP_DIR / "four_point_batch.configured.ijm"
 FOUR_POINT_STATE_FILE = APP_DIR / "four_point_run.state.txt"
+REPLACEMENT_MANIFEST = APP_DIR / "four_point_batch_replacement_manifest.tsv"
 
 START_MARKER = "        // ====================================================\n        // IDENTIFY CURRENT PLATE"
 END_MARKER = "        setBatchMode(false);"
@@ -114,7 +121,7 @@ def validate_four_point_grid_widths(config: dict) -> None:
         )
 
 
-def run_preflight() -> int:
+def run_preflight(*, allow_empty: bool = False) -> int:
     require_fiji_handoff_paths = False
 
     args = [
@@ -134,38 +141,37 @@ def run_preflight() -> int:
 
     with PENDING_IMAGES_CSV.open("r", encoding="utf-8-sig", newline="") as handle:
         pending = sum(1 for _ in csv.DictReader(handle))
-    if pending == 0:
+    if pending == 0 and not allow_empty:
         raise SystemExit(f"All expected crops already exist. See {PREFLIGHT_REPORT}")
     return pending
 
 
-def restrict_pending_to_subfolder(config: dict, subfolder: str | None) -> int:
-    """Keep the normal pending-only contract, optionally scoped to one direct folder."""
-    pending = run_preflight()
-    if not subfolder:
-        return pending
-    try:
-        from tools.preflight_batch import discover_sources
-    except ModuleNotFoundError:
-        from preflight_batch import discover_sources
-    wanted = subfolder.casefold()
-    source_names = {
-        path.name.casefold()
-        for path in discover_sources(Path(config["image_root"]))
-        if path.parent.name.casefold() == wanted
-    }
-    if not source_names:
-        raise SystemExit(f"No image subfolder named {subfolder!r} exists directly under image_root.")
+def restrict_pending_to_subfolder(config: dict, subfolder: str | None, *, include_completed: bool = False) -> list[dict[str, str]]:
+    """Write scoped rows, optionally including completed plates for replacement."""
+    run_preflight(allow_empty=include_completed)
     with PENDING_IMAGES_CSV.open("r", encoding="utf-8-sig", newline="") as handle:
-        rows = [row for row in csv.DictReader(handle) if (row.get("Filename") or "").casefold() in source_names]
+        rows = list(csv.DictReader(handle))
+    if include_completed:
+        source_names = {path.name.casefold() for path in preflight_batch.discover_sources(Path(config["image_root"]))}
+        with Path(config["images_csv"]).open("r", encoding="utf-8-sig", newline="") as handle:
+            rows = [row for row in csv.DictReader(handle) if (row.get("Filename") or "").casefold() in source_names]
+    if subfolder:
+        wanted = subfolder.casefold()
+        source_names = {
+            path.name.casefold()
+            for path in preflight_batch.discover_sources(Path(config["image_root"]))
+            if path.parent.name.casefold() == wanted
+        }
+        if not source_names:
+            raise SystemExit(f"No image subfolder named {subfolder!r} exists directly under image_root.")
+        rows = [row for row in rows if (row.get("Filename") or "").casefold() in source_names]
     if not rows:
-        raise SystemExit("No pending images match the selected subfolder.")
+        raise SystemExit("No eligible images match the selected subfolder." if subfolder else "No eligible images remain.")
     with PENDING_IMAGES_CSV.open("w", encoding="utf-8-sig", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=["Filename", "Experiment", "Set", "Type"])
         writer.writeheader()
         writer.writerows(rows)
-    return len(rows)
-
+    return rows
 
 def ensure_crop_output_root(config: dict) -> Path:
     root = Path(config["crop_output"])
@@ -195,12 +201,12 @@ def replace_once(source: str, old: str, new: str) -> str:
     return source.replace(old, new, 1)
 
 
-def configure_source_settings(source: str, config: dict) -> str:
+def configure_source_settings(source: str, config: dict, replacement_manifest: Path | None = None) -> str:
     replacements = {
         'gridFile   = "path here";': f'gridFile   = "{macro_path(config["grid_csv"])}";',
         'imagesFile = "path here";': f'imagesFile = "{macro_path(PENDING_IMAGES_CSV)}";',
         'stateFile  = "path here";': f'stateFile  = "{macro_path(FOUR_POINT_STATE_FILE)}";',
-        'replacementManifest = "path here";': 'replacementManifest = "";',
+        'replacementManifest = "path here";': f'replacementManifest = "{macro_path(replacement_manifest)}";' if replacement_manifest else 'replacementManifest = "";',
         'inputRoot  = "path here";': f'inputRoot  = "{macro_path(config["image_root"])}";',
         'outputRoot = "path here";': f'outputRoot = "{macro_path(config["crop_output"])}";',
         "CROP_W = 130;": f'CROP_W = {config["crop_width"]};',
@@ -392,8 +398,8 @@ def enhance_four_point_macro(source: str) -> str:
     return source[:start] + block + source[export:]
 
 
-def build_four_point_macro(config: dict) -> Path:
-    source = configure_source_settings(SOURCE_MACRO.read_text(encoding="utf-8"), config)
+def build_four_point_macro(config: dict, replacement_manifest: Path | None = None) -> Path:
+    source = configure_source_settings(SOURCE_MACRO.read_text(encoding="utf-8"), config, replacement_manifest)
     source = enhance_four_point_macro(source)
     APP_DIR.mkdir(parents=True, exist_ok=True)
     CONFIGURED_FOUR_POINT_MACRO.write_text(source, encoding="utf-8")
@@ -408,6 +414,7 @@ def main() -> None:
         help="validate/preflight and build the configured Fiji macro without requiring or launching Fiji",
     )
     parser.add_argument("--subfolder", help="process only this immediate image-root subfolder")
+    parser.add_argument("--replace-existing-crops", action="store_true", help="archive existing crops after accepted grid QC, then export replacements")
     args = parser.parse_args()
 
     config = load_config(
@@ -417,12 +424,17 @@ def main() -> None:
     validate_runtime_files(config, require_fiji=not args.prepare_only)
     validate_csvs(config)
     validate_four_point_grid_widths(config)
-    pending = restrict_pending_to_subfolder(config, args.subfolder)
+    rows = restrict_pending_to_subfolder(config, args.subfolder, include_completed=args.replace_existing_crops)
     ensure_crop_output_root(config)
-    macro = build_four_point_macro(config)
+    replacement_manifest = None
+    if args.replace_existing_crops:
+        crop_replacement_manifest.write_manifests(config, rows, REPLACEMENT_MANIFEST)
+        replacement_manifest = REPLACEMENT_MANIFEST
+    macro = build_four_point_macro(config, replacement_manifest)
 
     if args.prepare_only:
-        print(f"Prepared four-point batch for {pending} pending image(s): {macro}")
+        action = "replacement-ready" if args.replace_existing_crops else "pending"
+        print(f"Prepared four-point batch for {len(rows)} {action} image(s): {macro}")
         return
 
     fiji = Path(config["fiji_executable"])

@@ -170,7 +170,8 @@ class ExtendedController(Controller):
     def run_four_point_batch(self, subfolder: str | None) -> None:
         if not self.save():
             return
-        if not self.skip_done.get():
+        replace_existing = self.replace_existing_crops.get()
+        if not self.skip_done.get() and not replace_existing:
             messagebox.showerror(
                 "Run four-point batch",
                 "Processing completed plates needs accepted-grid crop replacement, which is not enabled yet. Keep Skip done selected.",
@@ -180,13 +181,29 @@ class ExtendedController(Controller):
         args = [sys.executable, str(script)]
         if subfolder:
             args.extend(["--subfolder", subfolder])
+        if replace_existing:
+            args.append("--replace-existing-crops")
+
+        ahk_was_running = bool(self.ahk_process and self.ahk_process.poll() is None)
+        if not ahk_was_running:
+            ahk = Path(self.vars["ahk_executable"].get().strip())
+            if not ahk.is_file():
+                messagebox.showerror("Run four-point batch", "Select the AutoHotkey v2 executable before starting an interactive batch.")
+                return
+            self.start_ahk()
+            # Register the shell hook before Fiji can display its first dialog.
+            time.sleep(0.3)
+        if not self.ahk_process or self.ahk_process.poll() is not None:
+            messagebox.showerror("Run four-point batch", "Alignment hotkeys did not start; batch launch was cancelled.")
+            return
         try:
             subprocess.Popen(args)
         except OSError as exc:
             messagebox.showerror("Run four-point batch", str(exc))
             return
         scope = subfolder or "all pending folders"
-        self.status.set(f"Launched four-point batch for {scope}; completed plates are skipped.")
+        action = "accepted-grid crop replacement is enabled" if replace_existing else "completed plates are skipped"
+        self.status.set(f"Launched four-point batch for {scope}; {action}.")
 
     def choose_csv_folder(self) -> None:
         initial = None

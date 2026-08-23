@@ -81,3 +81,30 @@ def write_manifest(config: dict, row: dict[str, str], path: Path) -> int:
         writer.writeheader()
         writer.writerows(planned)
     return len(planned)
+
+def write_manifests(config: dict, rows: list[dict[str, str]], path: Path) -> int:
+    """Combine exact per-plate replacement plans without target collisions."""
+    planned: list[dict[str, str]] = []
+    reserved_targets: set[Path] = set()
+    for row in rows:
+        write_manifest(config, row, path)
+        with path.open("r", encoding="utf-8", newline="") as handle:
+            entries = list(csv.DictReader(handle, delimiter="\t"))
+        for entry in entries:
+            target = Path(entry["target"])
+            batch_dir = target.parents[1]
+            number = 1
+            while target.exists() or target in reserved_targets:
+                number += 1
+                new_batch = batch_dir.parent / f"DiscardBatch_{number:03d}"
+                target = new_batch / target.parent.name / target.name
+            if target != Path(entry["target"]):
+                entry["target"] = target.as_posix()
+                entry["archive_manifest"] = (target.parents[1] / "discard_manifest.tsv").as_posix()
+            reserved_targets.add(target)
+            planned.append(entry)
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=list(planned[0]) if planned else ["folder", "filename", "source", "target", "strain", "original_crop_time", "archive_manifest", "archived_at"], delimiter="\t")
+        writer.writeheader()
+        writer.writerows(planned)
+    return len(planned)
