@@ -1,6 +1,8 @@
 # V10 adapter prototype handoff
 
-Status: Proven
+Status: PROOF PASSED
+
+This status means the documented V10 proof/tests below succeeded. It does **not** yet claim `READY FOR INTEGRATION`; that requires an explicit audit against the current `geminimain` requirements, shared contracts, and `docs/development/PROTOTYPE_HANDOFF_STANDARD.md`.
 
 ## Target
 
@@ -44,6 +46,6 @@ Read synthetic V10 workbook (.xlsm or .xlsx) and produce `ProjectModel` v1 plus 
   - Master Registry images with `Set=A` and `Set=B` under `annotationSet 2` both correctly receive the full 2-band 8x10 layout.
   - Media-only, Condition-only (sugar), and Media+Condition (heat, salt) combinations resolve properly.
   - Controlled file reconciliation verifies READY, EXPECTED_NOT_PRESENT, AMBIGUOUS, and UNMAPPED_FILE states.
-- Known limitations: None for current V10 contract scope.
+- Integration readiness: not yet claimed; re-audit against the current expanded `geminimain` V10/function requirements before marking `READY FOR INTEGRATION`.
 - Contract changes proposed: None (strictly conforms to version 1 schemas).
-- Integration/cherry-pick notes: `adapter.py` is fully standalone and can be consumed directly by downstream prototypes and controllers.
+- Integration/cherry-pick notes: `adapter.py` is fully standalone and can be consumed directly by downstream prototypes and controllers if the current-requirements audit passes.
