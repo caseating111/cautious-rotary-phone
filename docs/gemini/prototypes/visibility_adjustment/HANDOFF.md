@@ -3,7 +3,7 @@
 Status: READY FOR INTEGRATION
 Endpoint: Calculate robust background black point from outside-grid margin and foreground white point from inside-grid ROI, applying a whole-plate visibility enhancement for visual inspection, with fast approve or manual-review queue flagging.
 Branch: `gemini-visibility-adjustment`
-Commit: pending
+Commit: `f068a55`
 
 ## What was proven
 
