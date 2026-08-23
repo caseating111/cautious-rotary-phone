@@ -4,8 +4,8 @@ Compact routing index for isolated prototype work. Keep this file short; detaile
 
 | Prototype | Status | Branch/commit | Interface | Handoff |
 | --- | --- | --- | --- | --- |
-| V10 adapter | READY FOR INTEGRATION | `gemini-v10` (`bbe8209`) | `load_v10(path) -> ProjectModel` | `docs/gemini/prototypes/v10/HANDOFF.md` |
-| Project setup / working-copy rename | EXPLORATORY / not started | dedicated child branch when implementation begins | `prepare_working_copy(...) -> RenameResult` | `docs/gemini/prototypes/project_setup_rename/HANDOFF.md` |
+| V10 adapter | READY FOR INTEGRATION | `gemini-v10` (`f836ca8`) | `load_v10(path) -> ProjectModel` | `docs/gemini/prototypes/v10/HANDOFF.md` |
+| Project setup / working-copy rename | READY FOR INTEGRATION | `gemini-project-setup-rename` (`3afaad8`) | `prepare_working_copy(...) -> RenameResult` | `docs/gemini/prototypes/project_setup_rename/HANDOFF.md` |
 | Grid/layout derivation | EXPLORATORY / not started | dedicated child branch when implementation begins | `derive_plate_layout(project, image_uid) -> PlateLayout` | `docs/gemini/prototypes/layout/HANDOFF.md` |
 | Whole-plate orientation | EXPLORATORY / not started | dedicated child branch when implementation begins | one horizontal-edge line drag -> `OrientationResult` | `docs/gemini/prototypes/plate_rotation/HANDOFF.md` |
 | Plate crop preprocessing | EXPLORATORY / not started | dedicated child branch when implementation begins | reusable `CropSizeCalibration` + per-image `CropResult` | `docs/gemini/prototypes/plate_crop/HANDOFF.md` |

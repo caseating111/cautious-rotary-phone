@@ -1,190 +1,139 @@
 # Project setup / UID-safe working-copy renaming handoff
 
-Status: Planned
+Status: READY FOR INTEGRATION
+Endpoint: Prepare project directory tree, reconcile physical raw files to V10 metadata/UIDs, and create optional UID-safe renamed working copies and human conversion audit logs.
+Branch: `gemini-project-setup-rename`
+Commit: `3fd3c55`
 
-## Goal
+## What was proven
 
-Create a focused project-setup component that uses canonical V10 metadata to prepare the project tree and optionally create human-readable renamed **working copies** of raw images without altering raw originals.
+1. **Untouched Raw Sources**:
+   - Generic camera names (`image1.jpg`, `image2.jpg`, etc.) in `raw/` remain bit-for-bit untouched and unmodified.
+2. **Optional Renamed Working Copies**:
+   - When `enable_rename=True`, working copies are placed in `working/` using exact V10 working filenames (e.g. `14.08.26_SetA_24h_YPDA, 1.jpg`).
+3. **Rename-Disabled Mode**:
+   - When `enable_rename=False`, working copies keep original camera names in `working/` while maintaining valid structured `Image UID` -> working path mapping.
+4. **Session Disambiguation**:
+   - Repeated camera names (`image1.jpg`) across different sessions (e.g. 24h vs 48h) resolve to distinct UIDs (`E1_14.08.26_24h_I001` vs `E1_15.08.26_48h_I001`) and distinct working destinations without collision.
+5. **Collision Detection & Disambiguation**:
+   - Case-insensitive Windows collisions (e.g. `SAMPLE_PLATE.jpg` vs `sample_plate.jpg`) are detected and flagged as `TARGET_COLLISION` under `'error'` policy, or deterministically disambiguated with UID suffixes under `'disambiguate_with_uid'`.
+6. **Human Conversion Audit Log**:
+   - `image_name_conversions.txt` is generated at project root with clean Experiment and Set dividers, relative paths only, UID and session context, and disposition tracking.
+7. **Idempotence & Safety**:
+   - Rerunning setup on an existing project tree is idempotent, reporting `UNCHANGED_CURRENT` for existing matching files without duplicate file copies or rename chains.
+8. **Incomplete Expected Sets**:
+   - Missing physical files for expected V10 records are marked `EXPECTED_NOT_PRESENT` without blocking the copying and processing of present files.
+9. **Ambiguous Source Detection**:
+   - Multiple candidate files matching one image record are flagged as `AMBIGUOUS_SOURCE` and blocked from copying rather than guessed.
+10. **Preview Mode**:
+    - When `preview_only=True`, zero filesystem writes occur while returning the complete planned `RenameResult` and conversion text.
+11. **Project Directory Tree Initialization**:
+    - Standard directory layout (`raw/`, `working/`, `processed/`, `annotated/`, `crops/unprocessed/`, `crops/processed/`, `matrices/`, `state/`) is created cleanly and compatibly for downstream mini-apps.
 
-This replaces the old requirement to manually/script-rename source files before downstream processing while preserving an easy human audit trail.
+## What was NOT proven
 
-See `docs/gemini/FUTURE_WORKFLOW.md` and `docs/development/PROJECT_ASSET_CONTRACT.md`.
+- Image pixel processing, plate orientation/rotation, and grid alignment (out of scope; handled by downstream mini-apps).
+- Multi-user concurrent filesystem modifications (local single-process execution tested).
 
-## Intended project tree
+## Public interface
 
-The exact names remain configurable, but the project root should conceptually support sibling areas such as:
+- `initialize_project_tree(project_root: str, create_subdirs: bool = True) -> dict[str, str]`
+- `generate_conversion_map_text(project_model: dict, rename_results: list[dict], project_root: Optional[str] = None) -> str`
+- `prepare_working_copy(project_model: dict, project_root: str, raw_root: Optional[str] = None, working_root: Optional[str] = None, options: Optional[dict] = None) -> dict`
 
-```text
-<project>/
-  raw/
-  working/
-  processed/
-  annotated/
-  crops/
-    unprocessed/
-    processed/
-  matrices/
-  state/            # or another unobtrusive machine-state location
-  image_name_conversions.txt
+## Input contract
+
+- `project_model`: Canonical `ProjectModel` v1 dict (from `load_v10`).
+- `project_root`: Root directory path for the project.
+- `options`:
+  - `enable_rename`: bool (default True)
+  - `preview_only`: bool (default False)
+  - `write_conversion_map`: bool (default True)
+  - `collision_policy`: `'error'` | `'disambiguate_with_uid'` (default `'error'`)
+  - `provenance_map`: Optional dict mapping `image_uid` -> accepted physical file
+  - `custom_session_folders`: Optional dict mapping `session_uid` -> folder path
+
+## Output contract / Shared schemas used
+
+- Returns `RenameResult` dictionary containing:
+  - `contract_version`: 1
+  - `project_root`: str
+  - `raw_root`: str
+  - `working_root`: str
+  - `conversion_map_path`: str
+  - `conversion_map_text`: str
+  - `summary`: dict with counts (`total_expected`, `copied_renamed_count`, `copied_original_count`, `unchanged_current_count`, `expected_not_present_count`, `ambiguous_source_count`, `target_collision_count`, `skipped_count`)
+  - `images`: list of dicts (`image_uid`, `session_uid`, `raw_path`, `working_path`, `disposition`, `disposition_detail`)
+  - `unmapped_files`: list of physical files not mapped to any expected image.
+
+## Fixture(s)
+
+- `fixtures/v10/v10_sample_synthetic_sanitized.xlsx`
+
+## Verification command(s)
+
+```powershell
+.\docs\gemini\run_gemini_prototype.ps1 docs\gemini\prototypes\project_setup_rename\test_setup_rename.py
+# or: python docs/gemini/prototypes/project_setup_rename/test_setup_rename.py
 ```
 
-Preserve experiment/date/Set/Condition subfolders where they are useful. Do not flatten everything merely because canonical UIDs exist.
+## Verification result
 
-The setup component may create only the folders required/selected for the current run, but the structure should be compatible with later stages rather than inventing unrelated trees per mini-app.
+```text
+[PASS] test_generic_raw_names_untouched
+[PASS] test_optional_renamed_working_copies
+[PASS] test_rename_disabled_mode
+[PASS] test_session_disambiguation
+[PASS] test_windows_case_collision_detection
+[PASS] test_conversion_map_formatting
+[PASS] test_idempotence
+[PASS] test_incomplete_datasets
+[PASS] test_ambiguous_source_detection
+[PASS] test_preview_mode_zero_writes
+[PASS] test_project_tree_initialization
 
-## Raw source rule
+ALL 11 PROJECT SETUP & RENAME PROOF TESTS PASSED.
+```
 
-`raw/` is authoritative untouched input.
+## Dependencies & external software
 
-Files may retain generic camera/export names such as:
+- Tested & verified runtime: **Python 3.11 (Miniforge Conda `workflow-c` environment)** and **Python 3.14**
+- Python packages: `pandas`, `openpyxl` (standard standard library: `os`, `shutil`, `tempfile`, `sys`, `typing`)
+- Internal dependency: `docs/gemini/prototypes/v10/adapter.py` (`load_v10`, `reconcile_image_files`)
+- External software/plugins required: None.
 
-- `image1.jpg`;
-- `image2.jpg`;
-- repeated generic names in different session/date folders.
+## Known limitations
 
-Do not rename/move the authoritative raw image merely to make later matching easier.
+- Filesystem copy performance on extremely large datasets (e.g. 10,000+ files) will depend on disk I/O; fast size-based checks are used for idempotence.
 
-## Renaming is optional
+## Failed / abandoned routes relevant to integration
 
-The user must be able to choose:
+- *In-place raw renaming*: Renaming source files in-place was considered in historical scripts, but firmly abandoned in favor of non-destructive working copies to preserve raw source integrity.
 
-- **keep generic names** and process through UID/path mapping; or
-- **create renamed working copies** using V10 nomenclature.
+## Human / manual validation still required
 
-Downstream identity relies on structured `Image UID`/session metadata, not on requiring descriptive filenames.
+- None for filesystem setup; users can visually inspect `image_name_conversions.txt` at `project_root`.
 
-If renaming is enabled, create/copy the `working/` derivative and use V10 `Working filename` semantics. If renaming is disabled, a working copy may keep its original generic filename or downstream steps may operate through the mapped source according to integration policy.
+## Files the integrator should inspect
 
-## UID-safe naming and collisions
+- `docs/gemini/prototypes/project_setup_rename/setup_rename.py`: Core setup and rename implementation.
+- `docs/gemini/prototypes/project_setup_rename/test_setup_rename.py`: 11 unit tests covering all edge cases and collision policies.
 
-`Image UID` remains canonical identity even when two human-readable names are similar.
+## Files the integrator normally should NOT need to inspect
 
-Do not automatically clutter every human filename with a UID if the V10 working name is already unique and readable. Instead:
+- `fixtures/v10/`: Test fixtures.
 
-1. use canonical UID internally;
-2. preview proposed names;
-3. detect filesystem collisions before writing;
-4. if two different UIDs would collide, report clearly and apply a deterministic UID-aware suffix/disambiguation only when needed or after user-approved policy.
+## Recommended integration / adaptation
 
-Case-only differences should not create accidental Windows collisions.
+- Can be imported directly by CLI, AHK launcher, or GUI controller:
+  ```python
+  from setup_rename import prepare_working_copy
+  from adapter import load_v10
+  
+  pm = load_v10("path/to/v10.xlsx")
+  res = prepare_working_copy(pm, project_root="path/to/project")
+  ```
 
-## Step-by-step intended user function
+## Contract changes proposed
 
-1. User selects/loads canonical V10 project state.
-2. User selects/confirms project root/raw root if not already known.
-3. App scans only expected source locations needed for mapping.
-4. Reconcile present physical raw files to expected image records/UIDs.
-5. Show a concise preview table: raw relative path -> UID -> proposed working relative path/name -> disposition.
-6. Missing expected files are listed but do not block present files.
-7. Ambiguous/collision records are blocked individually rather than guessed.
-8. User chooses whether renamed working copies should be created.
-9. Apply setup: create required parent/subfolders and copy/rename working derivatives as selected.
-10. Write/update human-readable conversion map at project root.
-11. Save machine state so rerunning setup is idempotent and does not create duplicate rename chains.
-
-Preview performs no writes.
-
-## V10-derived names
-
-Use V10 `Working filename`/nomenclature rather than inventing a second unrelated naming scheme.
-
-The adapter/project model supplies Experiment, Set, Media, Condition, replicate, Image UID and other relevant context. The setup component should consume structured fields rather than parse identity back out of a human filename.
-
-Generic raw filenames remain valid because reconciliation maps them to UID before renaming.
-
-## Conversion/audit text file
-
-At project root generate/update a small human-readable conversion file, e.g. `image_name_conversions.txt`.
-
-Conceptual entry:
-
-`image1.jpg -> ypda+type1,01.jpg`
-
-Format requirements:
-
-- clear divider/header for each Experiment;
-- within experiment, clear Set headings/dividers when Set exists;
-- optionally Condition grouping if it improves readability without duplicating information;
-- original raw relative path/name;
-- resulting working relative path/name;
-- Image UID (and sessionUID when useful) for disambiguation;
-- deterministic stable ordering;
-- no absolute private machine paths;
-- regeneration/update must not silently delete useful historical mapping for the same project state.
-
-This file is for human visual checking, not the canonical machine database.
-
-## Incomplete datasets
-
-Expected-but-missing images are normal. Setup should create working copies for present images while recording missing expected records.
-
-Do not require every expected V10 image before project setup can proceed.
-
-## Idempotence/safety
-
-Repeated setup must not create:
-
-- `working/working/...` chains;
-- `RENAMED RENAMED ...` filename chains;
-- duplicate copies of the same UID/source;
-- overwrites of a different UID because display names collide.
-
-Use UID/source mapping and saved state to decide whether a working copy is already current.
-
-## Output/future integration
-
-Result concept:
-
-`prepare_working_copy(project_model, raw_root, working_root, options) -> RenameResult`
-
-Per image disposition may include:
-
-- `COPIED_RENAMED`;
-- `COPIED_ORIGINAL_NAME`;
-- `UNCHANGED_CURRENT`;
-- `EXPECTED_NOT_PRESENT`;
-- `AMBIGUOUS_SOURCE`;
-- `TARGET_COLLISION`;
-- `SKIPPED`.
-
-Return conversion-map path and created folder information.
-
-Later orientation/crop/grid mini-apps consume Image UID + working path from project state; they do not redo source reconciliation.
-
-## Required proofs
-
-1. generic raw names remain untouched;
-2. optional renamed working copies receive V10 working names;
-3. rename-disabled mode still produces usable UID/path mapping;
-4. similar names stay unambiguous through UID;
-5. Windows case-only collision is caught;
-6. conversion file grouped by Experiment/Set is easy to scan;
-7. rerunning is idempotent;
-8. incomplete expected set does not block present images;
-9. ambiguous/collision cases are reported, not guessed;
-10. preview performs no writes;
-11. resulting project tree is compatible with processed/annotated/crop/matrix stages.
-
-## Out of scope
-
-- image pixel processing;
-- plate orientation/cropping;
-- four-click grid registration;
-- annotation rendering;
-- modifying raw filenames in place by default;
-- forcing descriptive filenames as identity.
-
-## Completion record
-
-- Branch:
-- Commit:
-- Interface:
-- Tests:
-- Dependencies:
-- Folder tree behavior:
-- Rename-disabled behavior:
-- Mapping-file format:
-- Collision/idempotence behavior:
-- Known limitations:
-- Contract changes proposed:
-- Integration/cherry-pick notes:
+- None. Conforms directly to `contracts/project_model.schema.json` and `docs/development/PROJECT_ASSET_CONTRACT.md`.

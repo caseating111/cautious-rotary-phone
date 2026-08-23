@@ -11,6 +11,15 @@ This branch is for isolated future-facing prototypes only. `workflow-C` remains 
 - Keep each prototype independently runnable/testable where practical.
 - Parallelize investigation and bounded independent artifacts; serialize mutation of the production integration surface.
 
+## Runtime environment & launchers
+
+- Primary runtime environment is **Python 3.11 under Miniforge Conda** (`workflow-c` environment).
+- All prototype modules must maintain **dual compatibility with Python 3.11 and 3.14**.
+- Use the dedicated launcher scripts to execute tests across environments:
+  - CMD / Batch: `.\docs\gemini\run_gemini_prototype.cmd <script_path>`
+  - PowerShell: `.\docs\gemini\run_gemini_prototype.ps1 <script_path>`
+- Launchers automatically resolve the active Conda prefix, the `workflow-c` environment, Miniforge base, or system Python.
+
 ## Architecture posture
 
 The intended end state is a lightweight overall controller that owns project selection/shared status and launches focused mini-apps for distinct jobs. Do **not** assume every capability belongs inside one large GUI.
