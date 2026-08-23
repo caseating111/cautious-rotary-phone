@@ -34,6 +34,7 @@ STANDARD_OUTPUT_TYPES = {
 class ExtendedController(Controller):
     def __init__(self) -> None:
         super().__init__()
+        self.protocol("WM_DELETE_WINDOW", self.close_controller)
         self.preview_standard_outputs = tk.BooleanVar(value=True)
         self.replace_existing_crops = tk.BooleanVar(value=False)
         self.skip_done = tk.BooleanVar(value=True)
@@ -108,6 +109,11 @@ class ExtendedController(Controller):
             text="Run one-plate 4-point proof (choose plate)",
             command=lambda: self.run_one_plate_validation(rerun_done=False),
         ).grid(row=25, column=0, columnspan=3, sticky="ew", padx=5, pady=(0, 6))
+
+    def close_controller(self) -> None:
+        """Close controller-owned helpers before returning control to the launcher."""
+        self.stop_ahk()
+        self.destroy()
         ttk.Button(
             self,
             text="Reset / re-run selected DONE plate",
