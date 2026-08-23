@@ -83,7 +83,7 @@ class ControllerContractTests(unittest.TestCase):
     def test_hotkey_shell_hook_only_moves_new_placement_dialogs(self) -> None:
         text = AHK_HELPER.read_text(encoding="utf-8")
         shell_at = text.index("ShellMessage(")
-        timer_at = text.index("StartPlacementCatchup()", shell_at)
+        timer_at = text.index("StartWorkflowWindowWatch()", shell_at)
         shell_block = text[shell_at:timer_at]
 
         self.assertIn("HSHELL_WINDOWCREATED = 1", shell_block)
@@ -94,13 +94,14 @@ class ControllerContractTests(unittest.TestCase):
 
     def test_hotkey_uses_bounded_catchup_and_suppresses_launcher_overlay(self) -> None:
         text = AHK_HELPER.read_text(encoding="utf-8")
-        self.assertIn("PlacementCatchupDeadline := A_TickCount + 3000", text)
-        self.assertIn("SetTimer(CatchUpWorkflowWindows, 120)", text)
+        self.assertIn("WorkflowWindowWatchDeadline := A_TickCount + 10000", text)
+        self.assertIn("LauncherCloseNotBefore := A_TickCount + 750", text)
+        self.assertIn("SetTimer(CatchUpWorkflowWindows, 100)", text)
         self.assertIn("SetTimer(CatchUpWorkflowWindows, 0)", text)
-        self.assertIn('InStr(title, "Launching Fiji")', text)
-        self.assertIn("WinSetAlwaysOnTop(0, hwnd)", text)
-        self.assertIn("WinMoveBottom(hwnd)", text)
-        self.assertIn("WinHide(hwnd)", text)
+        self.assertIn("FijiMainWindowExists()", text)
+        self.assertIn('ahk_class SunAwtWindow ahk_exe fiji-windows-x64.exe', text)
+        self.assertIn('ahk_class SunAwtFrame ahk_exe fiji-windows-x64.exe', text)
+        self.assertIn('WinClose("ahk_id " hwnd)', text)
         self.assertNotIn("DetectHiddenWindows True", text)
         self.assertIn("MoveFijiToolbarOnce()", text)
         self.assertIn('className != "SunAwtFrame"', text)

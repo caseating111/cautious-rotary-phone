@@ -71,7 +71,7 @@ class OnePlateValidationTests(unittest.TestCase):
         self.assertIn('roiBoxW = parseFloat(call("ij.Prefs.get", "rect.width", 108))', generated)
         self.assertIn('roiBoxH = parseFloat(call("ij.Prefs.get", "rect.height", 108))', generated)
         self.assertIn("roiBoxSize = maxOf(roiBoxW, roiBoxH)", generated)
-        self.assertIn("claheBlock = round(roiBoxSize * 3.3)", generated)
+        self.assertIn("claheBlock = maxOf(400, round(roiBoxSize * 4))", generated)
         self.assertEqual(generated.count('run("Enhance Local Contrast (CLAHE)", claheOptions)'), 2)
         self.assertIn('" histogram=256 maximum=1000 mask=*None* fast_(less_accurate)"', generated)
         self.assertIn('run("Install...", "install=[" + roiToolsetPath + "]")', generated)
@@ -98,7 +98,7 @@ class OnePlateValidationTests(unittest.TestCase):
             exact = exact_path.read_text(encoding="utf-8")
         self.assertEqual(exact.count('run("Enhance Local Contrast (CLAHE)", claheOptions)'), 2)
         self.assertIn('" histogram=256 maximum=1000 mask=*None* fast_(less_accurate)"', exact)
-        self.assertIn("claheBlock = round(roiBoxSize * 3.3)", exact)
+        self.assertIn("claheBlock = maxOf(400, round(roiBoxSize * 4))", exact)
         self.assertIn("Overlay.drawLine(p1x, p1y, p2x, p2y)", exact)
 
     def test_direct_batch_script_context_can_build_legacy_interaction(self) -> None:

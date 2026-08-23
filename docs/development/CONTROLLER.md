@@ -41,7 +41,7 @@ Current proof behavior:
 - launch the prepared macro through the configured Fiji/Jaunch executable with `--no-splash` and rely on the installation's intentional single-instance behavior;
 - use the mature ROI 1-click custom Rotated Rectangle Click Tool, not ImageJ's built-in rotated rectangle;
 - make a disposable alignment duplicate and run whole-image CLAHE twice; there is **no central sampling ROI**;
-- CLAHE uses block size about `3.3 * max(rect.width, rect.height)`, histogram 256, maximum slope 1000;
+- CLAHE uses `max(400, round(4 * max(rect.width, rect.height)))`, histogram 256, maximum slope 1000;
 - calculate the full 8 x N grid mathematically from the four clicks;
 - draw QC boxes/lines from the grid vectors so they rotate/skew with the plate rather than remaining screen-axis aligned;
 - export fixed-size crops from the unchanged original source image after QC acceptance.
