@@ -292,7 +292,7 @@ for (folderIndex = 0; folderIndex < folders.length; folderIndex++) {
         // ---------- R1C1 ----------
 
         waitForUser(
-            "1 / 4 — R1C1",
+            "1 / 4 - R1C1",
             sourceTitle + "\n\n" +
             "Centre box on ROW 1, COLUMN 1.\n\n" +
             "Reposition as needed, then click OK."
@@ -310,7 +310,7 @@ for (folderIndex = 0; folderIndex < folders.length; folderIndex++) {
         // ---------- R1C(last) ----------
 
         waitForUser(
-            "2 / 4 — R1C" + gridCols,
+            "2 / 4 - R1C" + gridCols,
             sourceTitle + "\n\n" +
             "Centre box on ROW 1, COLUMN " +
             gridCols + ".\n\n" +
@@ -329,7 +329,7 @@ for (folderIndex = 0; folderIndex < folders.length; folderIndex++) {
         // ---------- R5C1 ----------
 
         waitForUser(
-            "3 / 4 — R5C1",
+            "3 / 4 - R5C1",
             sourceTitle + "\n\n" +
             "Centre box on ROW 5, COLUMN 1.\n\n" +
             "Reposition as needed, then click OK."
@@ -347,7 +347,7 @@ for (folderIndex = 0; folderIndex < folders.length; folderIndex++) {
         // ---------- R5C(last) ----------
 
         waitForUser(
-            "4 / 4 — R5C" + gridCols,
+            "4 / 4 - R5C" + gridCols,
             sourceTitle + "\n\n" +
             "Centre box on ROW 5, COLUMN " +
             gridCols + ".\n\n" +

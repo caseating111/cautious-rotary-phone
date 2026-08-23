@@ -368,16 +368,17 @@ def prepare(filename: str | None = None, *, legacy: bool = False, rerun_done: bo
     result = subprocess.run(args, capture_output=True, text=True, check=False)
     output = (result.stdout + result.stderr).strip()
     if result.returncode != 0:
-        if rerun_done and "All expected crops already exist" in output:
+        if (rerun_done or filename) and "All expected crops already exist" in output:
             configured = _prepare_completed_plate_macro(legacy=legacy)
         else:
             raise SystemExit(output or "Batch preparation failed before one-plate validation.")
 
     fieldnames, rows = read_pending_rows(batch.PENDING_IMAGES_CSV)
-    if rerun_done:
+    if rerun_done or (filename and not any((row.get("Filename") or "").strip() == filename.strip() for row in rows)):
         config = batch.load_config(require_fiji=False, require_fiji_handoff_paths=not legacy)
-        fieldnames, authoritative_rows = read_csv_rows(Path(config["images_csv"]))
+        fieldnames, authoritative_rows = read_pending_rows(Path(config["images_csv"]))
         selected = choose_pending_row(authoritative_rows, filename)
+        configured = _prepare_completed_plate_macro(legacy=legacy)
     else:
         selected = choose_pending_row(rows, filename)
     write_one_row_csv(PROOF_IMAGES_CSV, fieldnames, selected)

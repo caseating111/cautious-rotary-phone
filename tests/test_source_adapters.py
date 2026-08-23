@@ -73,8 +73,8 @@ class SourceAdapterTests(unittest.TestCase):
             self.assertIn('outputRoot = "C:/project/crops";', text)
             self.assertIn("CROP_W = 140;", text)
             self.assertIn("CROP_H = 560;", text)
-            self.assertIn("1 / 4 — R1C1", text)
-            self.assertIn("4 / 4 — R5C", text)
+            self.assertIn("1 / 4 - R1C1", text)
+            self.assertIn("4 / 4 - R5C", text)
             self.assertNotIn("FULL-COLUMN COMPOSED ROUTE", text)
             self.assertNotIn('"path here"', text)
 
