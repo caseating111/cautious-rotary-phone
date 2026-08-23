@@ -85,6 +85,7 @@ class ControllerContractTests(unittest.TestCase):
         self.assertIn("PlacementDialogTitle", text)
         self.assertIn("ShellMessage(", text)
         self.assertIn('WinMove(10, 10', text)
+        self.assertIn('ahk_class SunAwtDialog ahk_exe fiji-windows-x64.exe', text)
 
     def test_hotkey_uses_bounded_catchup_and_suppresses_launcher_overlay(self) -> None:
         text = AHK_HELPER.read_text(encoding="utf-8")

@@ -10,6 +10,11 @@ PlacementDialogTitle(title)
     return InStr(title, "1 / 4") || InStr(title, "2 / 4") || InStr(title, "3 / 4") || InStr(title, "4 / 4")
 }
 
+FijiWorkflowDialog(title)
+{
+    return WinExist(title " ahk_class SunAwtDialog ahk_exe fiji-windows-x64.exe")
+}
+
 MoveFijiToolbarOnce()
 {
     bestHwnd := 0
@@ -73,7 +78,7 @@ PinWorkflowDialogs()
 {
     for title in ["Next plate", "ROI 1-click", "1 / 4", "2 / 4", "3 / 4", "4 / 4", "Full-grid QC"]
     {
-        if hwnd := WinExist(title)
+        if hwnd := FijiWorkflowDialog(title)
         {
             try WinMove(10, 10, , , hwnd)
             try WinSetAlwaysOnTop(1, "ahk_id " hwnd)
@@ -93,7 +98,7 @@ PlaceAlignmentPreviewBelowDialogs()
     targetY := top + 230
     for title in ["ROI 1-click", "1 / 4", "2 / 4", "3 / 4", "4 / 4", "Full-grid QC"]
     {
-        if dialog := WinExist(title)
+        if dialog := FijiWorkflowDialog(title)
         {
             try
             {
@@ -141,7 +146,7 @@ ShellMessage(wParam, lParam, msg, hwnd)
     try title := WinGetTitle("ahk_id " lParam)
     catch
         title := ""
-    if PlacementDialogTitle(title)
+    if PlacementDialogTitle(title) && WinExist("ahk_id " lParam " ahk_class SunAwtDialog ahk_exe fiji-windows-x64.exe")
         try WinMove(10, 10, , , "ahk_id " lParam)
     StartWorkflowWindowWatch()
 }
@@ -158,7 +163,7 @@ AlignmentDialogExists()
         "ALL DONE"
     ]
     {
-        if WinExist(title)
+        if FijiWorkflowDialog(title)
             return true
     }
     return false
@@ -176,7 +181,7 @@ z::
         "ALL DONE"
     ]
     {
-        if hwnd := WinExist(title)
+        if hwnd := FijiWorkflowDialog(title)
         {
             WinActivate(hwnd)
             if WinWaitActive(hwnd, , 0.5)
@@ -191,12 +196,12 @@ z::
 
 ; X selects Retry on either QC dialog. Both dialogs default to Accept;
 ; Down selects Retry, Enter confirms.
-#HotIf WinExist("Alignment QC") || WinExist("Full-grid QC")
+#HotIf FijiWorkflowDialog("Alignment QC") || FijiWorkflowDialog("Full-grid QC")
 x::
 {
     for title in ["Alignment QC", "Full-grid QC"]
     {
-        if hwnd := WinExist(title)
+        if hwnd := FijiWorkflowDialog(title)
         {
             WinActivate(hwnd)
             if WinWaitActive(hwnd, , 0.5)
