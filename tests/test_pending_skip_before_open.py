@@ -12,7 +12,7 @@ class PendingSkipBeforeOpenTests(unittest.TestCase):
     def test_metadata_lookup_and_absent_skip_happen_before_image_open(self) -> None:
         text = SOURCE_MACRO.read_text(encoding="utf-8")
 
-        lookup = text.index('quotedPrefix = "\\\"" + fileName + "\\\",";')
+        lookup = text.index('quotedPrefix = "\\\"" + lowerFileName + "\\\",";')
         absent = text.index('if (experiment == "")', lookup)
         open_image = text.index("open(fullPath);", absent)
 
@@ -20,7 +20,7 @@ class PendingSkipBeforeOpenTests(unittest.TestCase):
         self.assertLess(absent, open_image)
         self.assertIn("continue;", text[absent:open_image])
         self.assertNotIn("close();", text[absent:open_image])
-        self.assertIn('plainPrefix  = fileName + ",";', text[lookup:absent])
+        self.assertIn('plainPrefix  = lowerFileName + ",";', text[lookup:absent])
         self.assertIn("notListedImages++;", text[absent:open_image])
         self.assertNotIn("skippedImages++;", text[absent:open_image])
 

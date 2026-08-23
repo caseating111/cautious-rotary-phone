@@ -101,14 +101,13 @@ class ControllerContractTests(unittest.TestCase):
         self.assertNotIn("DetectHiddenWindows True", text)
         self.assertIn("MoveFijiToolbarOnce()", text)
         self.assertIn('className != "SunAwtFrame"', text)
-        self.assertIn("h <= 320", text)
         self.assertNotIn("w < 640 || h < 160", text)
         self.assertNotIn("h := Min(180, bottom - top)", text)
-        self.assertIn("WinMove(x, top + 10, , , bestHwnd)", text)
         self.assertNotIn("WinShow(bestHwnd)", text)
         self.assertNotIn("WinRestore(bestHwnd)", text)
         self.assertIn("MonitorGetWorkArea", text)
         self.assertIn("right - w - 10", text)
+        self.assertIn("WinMove(x, top + 10, , , bestHwnd)", text)
         self.assertIn("WinMove(10, 10", text)
 
     def test_project_csv_sibling_discovery_uses_only_exact_existing_names(self) -> None:

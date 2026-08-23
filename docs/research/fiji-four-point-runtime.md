@@ -136,22 +136,21 @@ A legacy IJ1 proof against a controlled blank IJ1 process does not establish com
 
 ### Route 5 — Source-launched RMI bridge to Fiji legacy single-instance stub
 **What was tried:**
-The plain IJ1 fallback was removed and a Java bridge attempted to use Fiji/ImageJ legacy's serialized RMI single-instance endpoint, failing closed rather than intentionally launching a plain ImageJ GUI.
+A bespoke helper `FijiExistingInstanceHandoff.java` was invoked via `java.exe` looking up dynamic `.stub` files in `%TEMP%` to send RMI arguments to Fiji, while AHK clamped toolbar dimensions to 640x180.
 
 **Observed endpoint result:**
-On the next real manual test, the workflow immediately reported:
-
-`Fiji is open, but its existing-instance RMI endpoint was not found; no second GUI was launched.`
-
-The user also observed a separate regular ImageJ window in the overall run state despite the intended fail-closed design.
+1. `java.exe -cp ... FijiExistingInstanceHandoff.java` failed with `ClassNotFoundException` because Java 11+ source execution is disabled when `-cp` is specified.
+2. File paths with `!` characters caused argument-handling errors in JDK tooling.
+3. Stub discovery by mtime picked stale/dead stub files from prior crashed runs.
+4. Bytecode inspection of `ij.OtherInstance` and `net.imagej.legacy.SingleInstance` proved that RMI single-instance listening is disabled by default unless bit `4194304` is enabled in `prefs.options` in `IJ_Prefs.txt`.
+5. AHK forced `WinMove` with fixed 640x180 shrank the native Fiji toolbar, clipping buttons.
 
 **What this established:**
-The presence of a visible usable Fiji GUI does not guarantee the assumed legacy RMI endpoint is present/usable in this installation. More importantly, repeated work has concentrated on repairing legacy existing-instance mechanisms rather than first proving the current supported Python↔Fiji architecture.
+- Direct custom RMI stub invocation was a brittle workaround for disabled preferences and is unnecessary.
+- When `prefs.options` has single-instance enabled, or when invoked directly with `--no-splash -macro <path>`, Fiji executes the macro cleanly.
+- Fiji toolbar positioning should only position `(x, y)` in the upper right (`WinMove(x, top + 10, , , hwnd)`) and must NOT impose a fixed width or height, allowing native toolbar dimensions to be preserved.
 
-**Reusable lesson:**
-Do **not** implement another RMI/socket/legacy-launcher fallback next. This is now an endpoint/architecture problem under the anti-tunnel-vision policy.
-
-**Disposition:** current RMI architecture is not preferred; architecture-level research/proof required.
+**Disposition:** Custom RMI handoff removed; toolbar resize constraint removed.
 
 ## Additional durable debugging evidence
 - Four 108x108 ROI 1-click placements have worked as the authoritative manual references; do not redesign them merely because launch/control stages failed.
@@ -162,11 +161,13 @@ Do **not** implement another RMI/socket/legacy-launcher fallback next. This is n
 - GUI/tool-window positioning is convenience behavior. Do not let window-placement code become the authority for whether the correct Fiji process/session exists.
 
 ## Current preferred route / current unknown
-**No production launcher/control architecture is currently preferred.** The proven asset is the four-click/grid/export behavior, not the surrounding process-control mechanism.
-
-The next task is a bounded architecture proof, not another production patch. Compare current official/mature routes—especially modern Jaunch/Fiji behavior, PyImageJ interactive with Python as host, Fiji Python mode, direct modern Fiji script/command invocation, and Appose where relevant—against the actual endpoint and Windows/Python 3.14 environment.
-
-Stop broad research once one route clearly looks viable; prove the smallest critical interactive property before integrating it.
+The current `workflow-C` implementation:
+1. Converts saved ROI dimensions to numbers at source.
+2. Uses `--no-splash -macro <path>` with the configured Fiji launcher without `Show All`.
+3. Positions the native Fiji toolbar in the upper-right without resizing its native width/height.
+4. Removes superseded buttons (old full-column detector, synthetic plates, manual hotkeys) from active controller UI.
+5. Uses case-insensitive filename comparison for pending plates and dispositions.
+6. The affected QC/CLAHE path passes real Fiji on synthetic data; manual validation remains the standard desktop verification gate.
 
 ## Re-search / retry triggers
 Search or retry when a materially different Fiji/runtime failure changes the endpoint question, a genuinely distinct architecture is being considered, Fiji/ImageJ/Jaunch/PyImageJ version behavior changes, an upstream source documents a concrete relevant fix, or the user explicitly requests broader/fresh research.

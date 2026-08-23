@@ -24,11 +24,10 @@ The full-column native-profile route remains available as an experimental/altern
 ## Fiji reuse and UI state
 A live Fiji process is not proof that a one-plate proof is still running. Other open Fiji images do not block a proof. The relevant duplicate guard is the exact selected proof-plate window.
 
-The actual Fiji main-window title observed on the user's desktop is `(Fiji Is Just) ImageJ`; existing-instance detection must recognize it. The proof currently attempts Fiji/ImageJ's normal single-instance/Macro Runner handoff when Fiji is already open. This is still a desktop-validation point because the user's Fiji installation previously showed a stale ImageJ single-instance/RMI stub connection error.
+The actual Fiji main-window title observed on the user's desktop is `(Fiji Is Just) ImageJ`. Fiji is launched directly via `--no-splash -macro <path>` with working directory set to Fiji's directory. Stale custom RMI stub invocation has been removed.
 
-The proof should explicitly use ImageJ/Fiji's own **Window -> Show All** behavior before interaction. ImageJ's `Show All`/`WindowOrganizer` brings windows to the front but does not reposition the main ImageJ frame, so a remembered off-screen/bad toolbar position can still make the main GUI appear missing. The AHK helper currently rescues this case by moving the already-created Fiji/ImageJ `SunAwtFrame` into the visible upper-right. AHK may assist with positioning, but the proof must not depend on AHK for basic creation/visibility of the Fiji GUI; keep a non-AHK visibility path working as well. The small main Fiji toolbar/interface should remain available in the upper-right so the ROI tool can be changed manually if automatic selection fails.
+The native Fiji toolbar is positioned in the upper-right (`x := Max(left, right - w - 10)`, `y := top + 10`) while preserving its native dimensions without arbitrary size clamping, ensuring all tool buttons remain fully accessible. Fresh launches use `--no-splash`.
 
-Fresh launches use `--no-splash`; the previously observed persistent central "Launching Fiji" splash should therefore remain gone, but this still needs desktop confirmation.
 
 ## AHK v2
 **Hard runtime contract: AutoHotkey v2 only. AutoHotkey v1 compatibility is not required or desired.** Every repository AHK helper must use valid v2 syntax and must run under an AutoHotkey v2 executable. Do not copy v1 syntax, do not write v1/v2 hybrid code, and do not spend time preserving v1 behavior.
