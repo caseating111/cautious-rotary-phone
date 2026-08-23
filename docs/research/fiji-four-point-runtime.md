@@ -179,6 +179,10 @@ The current `workflow-C` implementation:
 5. Uses case-insensitive filename comparison for pending plates and dispositions.
 6. The affected QC/CLAHE path passes real Fiji on synthetic data; manual validation remains the standard desktop verification gate.
 
+### Late duplicate prompt containment
+
+Generated one-plate macros contain one calibration block and four click dialogs; static inspection does not support generator duplication.  A retained Fiji session can nevertheless receive a late duplicate macro delivery from the launcher/single-instance lifecycle.  The AutoHotkey helper therefore has a deliberately narrow containment rule: after `ALL DONE`, or an explicit user cancellation, it dismisses only a newly appearing four-click dialog whose title matches the just-finished source for 1.8 seconds.  Retries do not arm it.  This is not evidence that session ownership is solved; revisit the runtime architecture rather than broadening this window hook if the containment proves unreliable.
+
 ## Re-search / retry triggers
 Search or retry when a materially different Fiji/runtime failure changes the endpoint question, a genuinely distinct architecture is being considered, Fiji/ImageJ/Jaunch/PyImageJ version behavior changes, an upstream source documents a concrete relevant fix, or the user explicitly requests broader/fresh research.
 

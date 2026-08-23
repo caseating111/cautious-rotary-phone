@@ -4,6 +4,9 @@
 SetTitleMatchMode(2)
 
 WorkflowWindowWatchDeadline := 0
+WorkflowSourceTitle := ""
+DuplicatePromptSource := ""
+DuplicatePromptDeadline := 0
 
 PlacementDialogTitle(title)
 {
@@ -13,6 +16,72 @@ PlacementDialogTitle(title)
 FijiWorkflowDialog(title)
 {
     return WinExist(title " ahk_class SunAwtDialog ahk_exe fiji-windows-x64.exe")
+}
+
+RememberWorkflowSource(title)
+{
+    global WorkflowSourceTitle
+    if !PlacementDialogTitle(title)
+        return
+    parts := StrSplit(title, " -- ")
+    if (parts.Length >= 3)
+        WorkflowSourceTitle := parts[3]
+}
+
+ClearFijiOnCancel()
+{
+    configPath := A_UserProfile "\\.cautious-rotary-phone\\config.json"
+    try settings := FileRead(configPath)
+    catch
+        return true
+    return InStr(settings, '"clear_fiji_on_cancel": "0"') = 0
+}
+
+ClearCancelledWorkflowWindows()
+{
+    global WorkflowSourceTitle
+    if !ClearFijiOnCancel()
+        return
+    if preview := WinExist("__alignment_view__ ahk_class SunAwtFrame ahk_exe fiji-windows-x64.exe")
+        try WinClose("ahk_id " preview)
+    if (WorkflowSourceTitle != "") {
+        if source := WinExist(WorkflowSourceTitle " ahk_class SunAwtFrame ahk_exe fiji-windows-x64.exe")
+            try WinClose("ahk_id " source)
+    }
+}
+
+ArmDuplicatePromptCancellation()
+{
+    global WorkflowSourceTitle, DuplicatePromptSource, DuplicatePromptDeadline
+    if (WorkflowSourceTitle = "")
+        return
+    DuplicatePromptSource := WorkflowSourceTitle
+    DuplicatePromptDeadline := A_TickCount + 1800
+    SetTimer(CancelDelayedDuplicatePrompt, 80)
+}
+
+CancelDelayedDuplicatePrompt()
+{
+    global DuplicatePromptSource, DuplicatePromptDeadline
+    if (A_TickCount >= DuplicatePromptDeadline) {
+        SetTimer(CancelDelayedDuplicatePrompt, 0)
+        DuplicatePromptSource := ""
+        return
+    }
+    for hwnd in WinGetList("ahk_class SunAwtDialog ahk_exe fiji-windows-x64.exe")
+    {
+        try title := WinGetTitle(hwnd)
+        catch
+            continue
+        if !PlacementDialogTitle(title)
+            continue
+        parts := StrSplit(title, " -- ")
+        if (parts.Length >= 3 && parts[3] = DuplicatePromptSource) {
+            WinActivate(hwnd)
+            if WinWaitActive(hwnd, , 0.3)
+                Send("{Esc}")
+        }
+    }
 }
 
 MoveFijiToolbarOnce()
@@ -80,6 +149,7 @@ PinWorkflowDialogs()
     {
         if hwnd := FijiWorkflowDialog(title)
         {
+            try RememberWorkflowSource(WinGetTitle(hwnd))
             try WinMove(10, 10, , , hwnd)
             try WinSetAlwaysOnTop(1, "ahk_id " hwnd)
         }
@@ -146,7 +216,10 @@ ShellMessage(wParam, lParam, msg, hwnd)
     catch
         title := ""
     if PlacementDialogTitle(title) && WinExist("ahk_id " lParam " ahk_class SunAwtDialog ahk_exe fiji-windows-x64.exe")
+    {
+        try RememberWorkflowSource(title)
         try WinMove(10, 10, , , "ahk_id " lParam)
+    }
     StartWorkflowWindowWatch()
 }
 
@@ -186,6 +259,8 @@ z::
             WinActivate(hwnd)
             if WinWaitActive(hwnd, , 0.5)
                 Send("{Enter}")
+            if title = "ALL DONE"
+                ArmDuplicatePromptCancellation()
             return
         }
     }
@@ -207,6 +282,8 @@ c::
             WinActivate(hwnd)
             if WinWaitActive(hwnd, , 0.5)
                 Send("{Esc}")
+            ArmDuplicatePromptCancellation()
+            SetTimer(ClearCancelledWorkflowWindows, -250)
             return
         }
     }
@@ -224,7 +301,7 @@ x::
         {
             WinActivate(hwnd)
             if WinWaitActive(hwnd, , 0.5)
-                Send("{Down}{Enter}")
+                Send("{Home}{Down}{Enter}")
             return
         }
     }

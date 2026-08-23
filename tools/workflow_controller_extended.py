@@ -39,10 +39,11 @@ class ExtendedController(Controller):
         self.preview_standard_outputs = tk.BooleanVar(value=self.config_bool("preview_standard_outputs", True))
         self.replace_existing_crops = tk.BooleanVar(value=self.config_bool("replace_existing_crops", False))
         self.skip_done = tk.BooleanVar(value=self.config_bool("skip_done", True))
+        self.clear_fiji_on_cancel = tk.BooleanVar(value=self.config_bool("clear_fiji_on_cancel", True))
         self.batch_subfolder = tk.StringVar()
         self.project_prefix = tk.StringVar(value=project_layout.default_prefix())
         self.fiji_processes: list[subprocess.Popen] = []
-        for variable in (self.preview_standard_outputs, self.replace_existing_crops, self.skip_done):
+        for variable in (self.preview_standard_outputs, self.replace_existing_crops, self.skip_done, self.clear_fiji_on_cancel):
             variable.trace_add("write", self.save_toggle_settings)
 
         project_frame = ttk.Frame(self)
@@ -107,17 +108,22 @@ class ExtendedController(Controller):
             text="Replace existing crops after accepted grid",
             variable=self.replace_existing_crops,
         ).grid(row=24, column=0, columnspan=3, sticky="w", padx=5, pady=(0, 3))
+        ttk.Checkbutton(
+            self,
+            text="Clear Fiji source/alignment windows on C cancellation",
+            variable=self.clear_fiji_on_cancel,
+        ).grid(row=25, column=0, columnspan=3, sticky="w", padx=5, pady=(0, 3))
 
         ttk.Button(
             self,
             text="Run one-plate 4-point proof (choose plate)",
             command=lambda: self.run_one_plate_validation(rerun_done=False),
-        ).grid(row=25, column=0, columnspan=3, sticky="ew", padx=5, pady=(0, 6))
+        ).grid(row=26, column=0, columnspan=3, sticky="ew", padx=5, pady=(0, 6))
         ttk.Button(
             self,
             text="Reset / re-run selected DONE plate",
             command=lambda: self.run_one_plate_validation(rerun_done=True),
-        ).grid(row=26, column=0, columnspan=3, sticky="ew", padx=5, pady=(0, 6))
+        ).grid(row=27, column=0, columnspan=3, sticky="ew", padx=5, pady=(0, 6))
 
     def close_controller(self) -> None:
         """Close controller-owned helpers before returning control to the launcher."""
@@ -141,6 +147,7 @@ class ExtendedController(Controller):
         self.vars["preview_standard_outputs"].set("1" if self.preview_standard_outputs.get() else "0")
         self.vars["replace_existing_crops"].set("1" if self.replace_existing_crops.get() else "0")
         self.vars["skip_done"].set("1" if self.skip_done.get() else "0")
+        self.vars["clear_fiji_on_cancel"].set("1" if self.clear_fiji_on_cancel.get() else "0")
         return super().save(explicit)
 
     def refresh_subfolders(self, widget: ttk.Combobox) -> None:

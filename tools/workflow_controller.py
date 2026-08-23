@@ -34,6 +34,7 @@ DEFAULTS = {
     "preview_standard_outputs": "1",
     "replace_existing_crops": "0",
     "skip_done": "1",
+    "clear_fiji_on_cancel": "1",
 }
 
 PROJECT_CSV_FILES = {
