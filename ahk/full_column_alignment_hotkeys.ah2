@@ -4,7 +4,6 @@
 SetTitleMatchMode(2)
 
 WorkflowWindowWatchDeadline := 0
-LauncherCloseNotBefore := 0
 
 PlacementDialogTitle(title)
 {
@@ -66,43 +65,63 @@ MoveFijiToolbarOnce()
     }
 }
 
-FijiMainWindowExists()
+DemoteFijiUtilityWindows()
 {
-    return WinExist("(Fiji Is Just) ImageJ ahk_class SunAwtFrame ahk_exe fiji-windows-x64.exe") != 0
-}
-
-CloseExtraFijiLauncherWindows()
-{
-    global LauncherCloseNotBefore
-    if (A_TickCount < LauncherCloseNotBefore) || !FijiMainWindowExists()
-        return
-
     for hwnd in WinGetList("ahk_class SunAwtWindow ahk_exe fiji-windows-x64.exe")
     {
-        ; Window Spy identifies the separate Jaunch overlay by this class and
-        ; executable. Close only that window after the real Fiji frame exists;
-        ; never identify either process by its variable PID or window ID.
-        try WinClose("ahk_id " hwnd)
+        ; This broad Java utility-window class includes the launcher overlay.
+        ; Do not hide or close it: make every member non-topmost and lower it.
+        try WinSetAlwaysOnTop(0, "ahk_id " hwnd)
+        try WinMoveBottom("ahk_id " hwnd)
     }
 }
 
-MoveKnownWorkflowWindowsOnce()
+PinWorkflowDialogs()
 {
-    for title in ["1 / 2", "2 / 2", "1 / 4", "2 / 4", "3 / 4", "4 / 4"]
+    for title in ["Next plate", "ROI 1-click", "1 / 4", "2 / 4", "3 / 4", "4 / 4", "Full-grid QC"]
     {
         if hwnd := WinExist(title)
         {
             try WinMove(10, 10, , , hwnd)
+            try WinSetAlwaysOnTop(1, "ahk_id " hwnd)
         }
     }
+}
+
+PlaceAlignmentPreviewBelowDialogs()
+{
+    if !(preview := WinExist("__alignment_view__ ahk_class SunAwtFrame ahk_exe fiji-windows-x64.exe"))
+        return
+
+    MonitorGetWorkArea(1, &left, &top, &right, &bottom)
+    targetX := left + 10
+    targetY := top + 360
+    for title in ["Next plate", "ROI 1-click", "1 / 4", "2 / 4", "3 / 4", "4 / 4", "Full-grid QC"]
+    {
+        if dialog := WinExist(title)
+        {
+            try
+            {
+                WinGetPos(&dialogX, &dialogY, &dialogW, &dialogH, dialog)
+                targetY := Max(targetY, dialogY + dialogH + 12)
+            }
+        }
+    }
+    try WinMove(targetX, targetY, , , preview)
+    try WinSetAlwaysOnTop(1, "ahk_id " preview)
+}
+
+MoveKnownWorkflowWindowsOnce()
+{
+    PinWorkflowDialogs()
+    PlaceAlignmentPreviewBelowDialogs()
     MoveFijiToolbarOnce()
-    CloseExtraFijiLauncherWindows()
+    DemoteFijiUtilityWindows()
 }
 
 StartWorkflowWindowWatch()
 {
     global WorkflowWindowWatchDeadline := A_TickCount + 10000
-    global LauncherCloseNotBefore := A_TickCount + 750
     SetTimer(CatchUpWorkflowWindows, 100)
 }
 
