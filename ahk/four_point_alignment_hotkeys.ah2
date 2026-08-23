@@ -30,7 +30,7 @@ RememberWorkflowSource(title)
 
 ClearFijiOnCancel()
 {
-    configPath := A_UserProfile "\\.cautious-rotary-phone\\config.json"
+    configPath := EnvGet("USERPROFILE") "\\.cautious-rotary-phone\\config.json"
     try settings := FileRead(configPath)
     catch
         return true
