@@ -73,7 +73,8 @@ Commit: `3fd3c55`
 ## Verification command(s)
 
 ```powershell
-python docs/gemini/prototypes/project_setup_rename/test_setup_rename.py
+.\docs\gemini\run_gemini_prototype.ps1 docs\gemini\prototypes\project_setup_rename\test_setup_rename.py
+# or: python docs/gemini/prototypes/project_setup_rename/test_setup_rename.py
 ```
 
 ## Verification result
@@ -96,7 +97,8 @@ ALL 11 PROJECT SETUP & RENAME PROOF TESTS PASSED.
 
 ## Dependencies & external software
 
-- Python standard library (`os`, `shutil`, `tempfile`, `sys`, `typing`)
+- Tested & verified runtime: **Python 3.11 (Miniforge Conda `workflow-c` environment)** and **Python 3.14**
+- Python packages: `pandas`, `openpyxl` (standard standard library: `os`, `shutil`, `tempfile`, `sys`, `typing`)
 - Internal dependency: `docs/gemini/prototypes/v10/adapter.py` (`load_v10`, `reconcile_image_files`)
 - External software/plugins required: None.
 

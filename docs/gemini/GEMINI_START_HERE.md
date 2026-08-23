@@ -50,6 +50,15 @@ Start with the smallest useful proof for the assigned component rather than atte
 
 Future mini-apps should be independently runnable without the main controller. The main controller is an orchestrator/convenience layer. Applets should consume shared project state, check only their true prerequisites, and use the same core implementation whether launched standalone or from the controller.
 
+## Runtime environment & launcher
+
+- The primary runtime environment is **Python 3.11 via Miniforge Conda** (`workflow-c` environment).
+- All Gemini prototype code and test suites maintain dual compatibility across Python 3.11 and 3.14.
+- Use the dedicated cross-environment launchers to execute prototype scripts and test suites without worrying about PATH configuration:
+  - CMD / Batch: `.\docs\gemini\run_gemini_prototype.cmd <path_to_test_or_script>`
+  - PowerShell: `.\docs\gemini\run_gemini_prototype.ps1 <path_to_test_or_script>`
+- The launcher automatically detects an active Conda environment (`%CONDA_PREFIX%`), the `workflow-c` environment (`%USERPROFILE%\.conda\envs\workflow-c\python.exe`), Miniforge base, or system Python 3.11.
+
 ## Efficiency
 
 - Optimize for a useful isolated proof, not production completeness.
