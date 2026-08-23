@@ -74,6 +74,12 @@ Do not select one merely because it sounds promising; inspect the current instal
    - Evaluate as a separate-process bridge when isolated Python worker environments or heavy Python processing are advantageous.
    - Do not adopt it merely to solve GUI ownership if PyImageJ/modern Fiji Python integration is simpler.
 
+### Fresh endpoint-first check — 2026-08-23
+
+Current official PyImageJ guidance documents Python-hosted interactive initialization (`imagej.init(..., mode="interactive")`), explicit UI display (`ij.ui().showUI()`), and repeated macro/script execution through the same gateway. This is a materially different ownership model from repeatedly launching Fiji with `-macro` and is now the preferred next micro-proof.
+
+Jaunch/Fiji documents `--no-splash`, but no supported option was found for suppressing the separate observed `Launching Fiji...` status window. The bounded AHK hide/lower rule is therefore only a UI workaround. It must not be treated as evidence that launcher reuse or macro delivery is reliable.
+
 ## Endpoint debugging / failure history
 
 ### Route 1 — ROI 1-click adapter applied in both production and proof preparation

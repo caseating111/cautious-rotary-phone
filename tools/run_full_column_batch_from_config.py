@@ -214,11 +214,10 @@ def enhance_four_point_macro(source: str) -> str:
             "Type: " + typeName + "\n" +
             "Grid: 8 x " + gridCols + "\n" +
             "Exports: " + (nWanted * 2) + "\n\n" +
-            "A temporary boosted alignment view will open. Centre the 108x108 box four times."
+            "A temporary CLAHE alignment view will open. The ROI 1-click Rotated Rectangle Click Tool will be selected automatically for the four colony-centre clicks."
         );
 
-        // Disposable alignment-only copy: sample the central 30% so bright
-        // plate rims do not dominate the temporary contrast stretch.
+        // Disposable alignment-only copy. Source pixels remain untouched.
         selectWindow(sourceTitle);
         if (isOpen("__alignment_view__")) {
             selectWindow("__alignment_view__");
@@ -227,16 +226,34 @@ def enhance_four_point_macro(source: str) -> str:
         }
         run("Duplicate...", "title=__alignment_view__");
         getDimensions(viewW, viewH, viewC, viewZ, viewT);
-        sampleW = round(viewW * 0.30);
-        sampleH = round(viewH * 0.30);
-        sampleX = round((viewW - sampleW) / 2);
-        sampleY = round((viewH - sampleH) / 2);
-        makeRectangle(sampleX, sampleY, sampleW, sampleH);
-        run("Enhance Contrast", "saturated=0.35");
+        run("Select None");
+        roiBoxW = parseFloat(call("ij.Prefs.get", "rect.width", 108));
+        roiBoxH = parseFloat(call("ij.Prefs.get", "rect.height", 108));
+        roiBoxSize = maxOf(roiBoxW, roiBoxH);
+        claheBlock = round(roiBoxSize * 3.3);
+        if (claheBlock < 1) claheBlock = 356;
+        claheOptions = "blocksize=" + claheBlock + " histogram=256 maximum=1000 mask=*None* fast_(less_accurate)";
+        run("Enhance Local Contrast (CLAHE)", claheOptions);
+        run("Enhance Local Contrast (CLAHE)", claheOptions);
 
-        CLICK_ROI = 108;
+        roiToolsetPath = getDirectory("macros") + "toolsets/Roi 1-Click Tools.ijm";
+        if (File.exists(roiToolsetPath))
+            run("Install...", "install=[" + roiToolsetPath + "]");
+
+        roiClickToolFound = 0;
+        for (toolCandidate = 15; toolCandidate <= 21; toolCandidate++) {
+            setTool(toolCandidate);
+            if (startsWith(IJ.getToolName, "Rotated Rectangle Click Tool")) {
+                roiClickToolFound = 1;
+                break;
+            }
+        }
+        if (roiClickToolFound == 0)
+            showMessage("ROI 1-click", "The Rotated Rectangle Click Tool could not be selected automatically. The Fiji toolbar is visible so you can select it manually, then continue.");
+
+        QC_W = roiBoxW;
+        QC_H = roiBoxH;
         accepted = 0;
-        makeRectangle(round(viewW / 2 - CLICK_ROI / 2), round(viewH / 2 - CLICK_ROI / 2), CLICK_ROI, CLICK_ROI);
 
         // Brief yield: let Java AWT finish painting the main ImageJ toolbar and
         // plate image before the first modal waitForUser dialog appears.
@@ -249,7 +266,7 @@ def enhance_four_point_macro(source: str) -> str:
 
             waitForUser(
                 "1 / 4 - R1C1",
-                sourceTitle + "\n\nCentre box on ROW 1, COLUMN 1.\n\nReposition as needed, then click OK."
+                sourceTitle + "\n\nClick the centre of ROW 1, COLUMN 1 with the ROI 1-click Rotated Rectangle Click Tool, then click OK."
             );
             getSelectionBounds(x, y, w, h);
             if (w <= 0 || h <= 0)
@@ -259,7 +276,7 @@ def enhance_four_point_macro(source: str) -> str:
 
             waitForUser(
                 "2 / 4 - R1C" + gridCols,
-                sourceTitle + "\n\nCentre box on ROW 1, COLUMN " + gridCols + ".\n\nReposition as needed, then click OK."
+                sourceTitle + "\n\nClick the centre of ROW 1, COLUMN " + gridCols + " with the ROI 1-click Rotated Rectangle Click Tool, then click OK."
             );
             getSelectionBounds(x, y, w, h);
             if (w <= 0 || h <= 0)
@@ -269,7 +286,7 @@ def enhance_four_point_macro(source: str) -> str:
 
             waitForUser(
                 "3 / 4 - R5C1",
-                sourceTitle + "\n\nCentre box on ROW 5, COLUMN 1.\n\nReposition as needed, then click OK."
+                sourceTitle + "\n\nClick the centre of ROW 5, COLUMN 1 with the ROI 1-click Rotated Rectangle Click Tool, then click OK."
             );
             getSelectionBounds(x, y, w, h);
             if (w <= 0 || h <= 0)
@@ -279,7 +296,7 @@ def enhance_four_point_macro(source: str) -> str:
 
             waitForUser(
                 "4 / 4 - R5C" + gridCols,
-                sourceTitle + "\n\nCentre box on ROW 5, COLUMN " + gridCols + ".\n\nReposition as needed, then click OK."
+                sourceTitle + "\n\nClick the centre of ROW 5, COLUMN " + gridCols + " with the ROI 1-click Rotated Rectangle Click Tool, then click OK."
             );
             getSelectionBounds(x, y, w, h);
             if (w <= 0 || h <= 0)
@@ -288,6 +305,18 @@ def enhance_four_point_macro(source: str) -> str:
             R5RY = y + h / 2;
 
             // Pure mathematical 8 x N lattice from the four authoritative centres.
+            gridHX = ((R1RX - R1LX) + (R5RX - R5LX)) / 2;
+            gridHY = ((R1RY - R1LY) + (R5RY - R5LY)) / 2;
+            gridVX = ((R5LX - R1LX) + (R5RX - R1RX)) / 2;
+            gridVY = ((R5LY - R1LY) + (R5RY - R1RY)) / 2;
+            hLen = sqrt(gridHX * gridHX + gridHY * gridHY);
+            vLen = sqrt(gridVX * gridVX + gridVY * gridVY);
+            if (hLen <= 0 || vLen <= 0)
+                exit("Four-point geometry collapsed to a zero-length grid axis.");
+            hux = gridHX / hLen;
+            huy = gridHY / hLen;
+            vux = gridVX / vLen;
+            vuy = gridVY / vLen;
             Overlay.remove;
             setColor("cyan");
             for (qcRow = 1; qcRow <= 8; qcRow++) {
@@ -296,12 +325,36 @@ def enhance_four_point_macro(source: str) -> str:
                 qcLeftY = R1LY + v * (R5LY - R1LY);
                 qcRightX = R1RX + v * (R5RX - R1RX);
                 qcRightY = R1RY + v * (R5RY - R1RY);
+                Overlay.drawLine(qcLeftX, qcLeftY, qcRightX, qcRightY);
                 for (qcCol = 1; qcCol <= gridCols; qcCol++) {
                     u = (qcCol - 1) / (gridCols - 1);
                     qcX = qcLeftX + u * (qcRightX - qcLeftX);
                     qcY = qcLeftY + u * (qcRightY - qcLeftY);
-                    Overlay.drawRect(qcX - CLICK_ROI / 2, qcY - CLICK_ROI / 2, CLICK_ROI, CLICK_ROI);
+                    p1x = qcX - (QC_W / 2) * hux - (QC_H / 2) * vux;
+                    p1y = qcY - (QC_W / 2) * huy - (QC_H / 2) * vuy;
+                    p2x = qcX + (QC_W / 2) * hux - (QC_H / 2) * vux;
+                    p2y = qcY + (QC_W / 2) * huy - (QC_H / 2) * vuy;
+                    p3x = qcX + (QC_W / 2) * hux + (QC_H / 2) * vux;
+                    p3y = qcY + (QC_W / 2) * huy + (QC_H / 2) * vuy;
+                    p4x = qcX - (QC_W / 2) * hux + (QC_H / 2) * vux;
+                    p4y = qcY - (QC_W / 2) * huy + (QC_H / 2) * vuy;
+                    Overlay.drawLine(p1x, p1y, p2x, p2y);
+                    Overlay.drawLine(p2x, p2y, p3x, p3y);
+                    Overlay.drawLine(p3x, p3y, p4x, p4y);
+                    Overlay.drawLine(p4x, p4y, p1x, p1y);
                 }
+            }
+            for (qcCol = 1; qcCol <= gridCols; qcCol++) {
+                u = (qcCol - 1) / (gridCols - 1);
+                topX = R1LX + u * (R1RX - R1LX);
+                topY = R1LY + u * (R1RY - R1LY);
+                bottomLeftX = R1LX + 1.75 * (R5LX - R1LX);
+                bottomLeftY = R1LY + 1.75 * (R5LY - R1LY);
+                bottomRightX = R1RX + 1.75 * (R5RX - R1RX);
+                bottomRightY = R1RY + 1.75 * (R5RY - R1RY);
+                bottomX = bottomLeftX + u * (bottomRightX - bottomLeftX);
+                bottomY = bottomLeftY + u * (bottomRightY - bottomLeftY);
+                Overlay.drawLine(topX, topY, bottomX, bottomY);
             }
             Overlay.show;
 
@@ -317,7 +370,6 @@ def enhance_four_point_macro(source: str) -> str:
                 accepted = 1;
             } else {
                 Overlay.remove;
-                makeRectangle(round(R1LX - CLICK_ROI / 2), round(R1LY - CLICK_ROI / 2), CLICK_ROI, CLICK_ROI);
             }
         }
 
@@ -332,16 +384,6 @@ def enhance_four_point_macro(source: str) -> str:
 def build_legacy_macro(config: dict) -> Path:
     source = configure_source_settings(SOURCE_MACRO.read_text(encoding="utf-8"), config)
     source = enhance_four_point_macro(source)
-    # Keep the production fallback on the same proven interaction path as the
-    # one-plate proof: ROI 1-click, whole-preview CLAHE x2 and rotated QC.
-    try:
-        from tools.run_one_plate_validation import patch_roi_click_interaction
-    except ModuleNotFoundError:
-        # The supported controller launches this file directly, making tools/
-        # sys.path[0] rather than the repository root.
-        from run_one_plate_validation import patch_roi_click_interaction
-
-    source = patch_roi_click_interaction(source)
     APP_DIR.mkdir(parents=True, exist_ok=True)
     CONFIGURED_LEGACY_MACRO.write_text(source, encoding="utf-8")
     return CONFIGURED_LEGACY_MACRO

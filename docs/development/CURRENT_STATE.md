@@ -19,6 +19,8 @@ For the current route, the mature ROI 1-click toolset supplies the click ROI. Th
 
 The temporary alignment view is a disposable duplicate. **There is no central sampling ROI anymore.** The current visibility aid applies CLAHE to the **whole disposable image twice**, using block size approximately `3.3 * max(rect.width, rect.height)`, histogram bins 256 and maximum slope 1000. Source pixels remain unchanged and crops are exported from the original source image.
 
+The four-point generator now emits that ROI 1-click/CLAHE/rotated-QC interaction directly. The former second-stage string-replacement adapter and its dead `Enhance Contrast` intermediate block have been removed.
+
 After the four clicks, QC uses the same mathematical plate vectors as the grid: both centres and the displayed grid boxes/lines rotate or skew with the clicked plate geometry. Axis-aligned QC boxes at rotated centres are not acceptable.
 
 The old full-column detector/route is superseded for normal user-facing operation. Preserve useful historical code/evidence in retired/legacy areas where appropriate, but do not expose or reinvest in that route unless new evidence or an explicit task justifies it.
@@ -39,7 +41,7 @@ The Fiji toolbar should retain its native/default useful dimensions. Window-mana
 ## AHK v2
 **Hard runtime contract: AutoHotkey v2 only. AutoHotkey v1 compatibility is not required or desired.** Every repository AHK helper must use valid v2 syntax and must run under an AutoHotkey v2 executable. Do not copy v1 syntax, do not write v1/v2 hybrid code, and do not spend time preserving v1 behavior.
 
-Keep the helper thin: Z advances/accepts recognized alignment dialogs, X selects Retry on either `Alignment QC` or `Full-grid QC`, Esc exits, placement dialogs go upper-left, and the visible Fiji toolbar is positioned upper-right.
+Keep the helper thin: Z advances/accepts recognized alignment dialogs, X selects Retry on either `Alignment QC` or `Full-grid QC`, Esc exits, placement dialogs go upper-left, and the visible Fiji toolbar is positioned upper-right. A bounded three-second catch-up scan handles delayed Java dialog titles. The same helper hides and lowers the Jaunch `Launching Fiji...` status window as a display workaround; this does not establish reliable Fiji ownership/control.
 
 Recent v2 mistakes that must not recur include using v1-style catch/try shorthand such as `catch title := ""`, using a one-line `try` before `else if`, and omitting `&` on `WinGetPos` output variables. Use explicit v2 `catch { ... }` blocks where assignment is needed. Dialog movement uses the normal shell-hook move plus one small delayed catch-up pass (~120 ms); do not reintroduce permanent polling unless concrete evidence requires it.
 

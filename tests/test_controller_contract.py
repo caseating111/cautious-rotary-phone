@@ -83,7 +83,7 @@ class ControllerContractTests(unittest.TestCase):
     def test_hotkey_shell_hook_only_moves_new_placement_dialogs(self) -> None:
         text = AHK_HELPER.read_text(encoding="utf-8")
         shell_at = text.index("ShellMessage(")
-        timer_at = text.index("SetTimer(MoveKnownWorkflowWindowsOnce, -120)", shell_at)
+        timer_at = text.index("StartPlacementCatchup()", shell_at)
         shell_block = text[shell_at:timer_at]
 
         self.assertIn("HSHELL_WINDOWCREATED = 1", shell_block)
@@ -92,12 +92,15 @@ class ControllerContractTests(unittest.TestCase):
         self.assertNotIn("Send(", shell_block)
         self.assertNotIn("WinActivate", shell_block)
 
-    def test_hotkey_uses_bounded_delayed_catchups_and_positions_visible_java_toolbar(self) -> None:
+    def test_hotkey_uses_bounded_catchup_and_suppresses_launcher_overlay(self) -> None:
         text = AHK_HELPER.read_text(encoding="utf-8")
-        self.assertIn("SetTimer(MoveKnownWorkflowWindowsOnce, -120)", text)
-        self.assertIn("SetTimer(MoveKnownWorkflowWindowsAfter350ms, -350)", text)
-        self.assertIn("SetTimer(MoveKnownWorkflowWindowsAfter700ms, -700)", text)
-        self.assertNotIn("SetTimer(MoveKnownWorkflowWindowsOnce, 300)", text)
+        self.assertIn("PlacementCatchupDeadline := A_TickCount + 3000", text)
+        self.assertIn("SetTimer(CatchUpWorkflowWindows, 120)", text)
+        self.assertIn("SetTimer(CatchUpWorkflowWindows, 0)", text)
+        self.assertIn('InStr(title, "Launching Fiji")', text)
+        self.assertIn("WinSetAlwaysOnTop(0, hwnd)", text)
+        self.assertIn("WinMoveBottom(hwnd)", text)
+        self.assertIn("WinHide(hwnd)", text)
         self.assertNotIn("DetectHiddenWindows True", text)
         self.assertIn("MoveFijiToolbarOnce()", text)
         self.assertIn('className != "SunAwtFrame"', text)

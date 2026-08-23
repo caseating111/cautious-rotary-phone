@@ -18,12 +18,13 @@ class FourPointMathematicalQCTests(unittest.TestCase):
         self.assertIn("CROP_W", text)
         self.assertIn("CROP_H", text)
 
-    def test_alignment_view_is_disposable_and_uses_central_sample(self) -> None:
+    def test_alignment_view_is_disposable_and_uses_whole_image_double_clahe(self) -> None:
         text = batch.enhance_four_point_macro(self.source)
         self.assertIn('run("Duplicate...", "title=__alignment_view__")', text)
-        self.assertIn("sampleW = round(viewW * 0.30);", text)
-        self.assertIn("sampleH = round(viewH * 0.30);", text)
-        self.assertIn('run("Enhance Contrast", "saturated=0.35")', text)
+        self.assertIn('run("Select None")', text)
+        self.assertEqual(text.count('run("Enhance Local Contrast (CLAHE)", claheOptions)'), 2)
+        self.assertNotIn("sampleW =", text)
+        self.assertNotIn('run("Enhance Contrast", "saturated=0.35")', text)
         self.assertIn('selectWindow(sourceTitle);', text)
 
     def test_full_grid_qc_is_pure_math_and_runs_before_export(self) -> None:

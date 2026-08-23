@@ -3,6 +3,8 @@
 
 SetTitleMatchMode(2)
 
+PlacementCatchupDeadline := 0
+
 PlacementDialogTitle(title)
 {
     return (
@@ -63,6 +65,26 @@ MoveFijiToolbarOnce()
     }
 }
 
+SuppressFijiLauncherOnce()
+{
+    for hwnd in WinGetList()
+    {
+        title := ""
+        try title := WinGetTitle(hwnd)
+        catch
+            continue
+        if !InStr(title, "Launching Fiji") && !InStr(title, "Launching ImageJ")
+            continue
+
+        ; Jaunch exposes no supported option for suppressing this separate
+        ; status window. Keep it non-topmost, send it behind normal windows,
+        ; then hide it without activating or closing the launcher process.
+        try WinSetAlwaysOnTop(0, hwnd)
+        try WinMoveBottom(hwnd)
+        try WinHide(hwnd)
+    }
+}
+
 MoveKnownWorkflowWindowsOnce()
 {
     for title in ["1 / 2", "2 / 2", "1 / 4", "2 / 4", "3 / 4", "4 / 4"]
@@ -73,6 +95,21 @@ MoveKnownWorkflowWindowsOnce()
         }
     }
     MoveFijiToolbarOnce()
+    SuppressFijiLauncherOnce()
+}
+
+StartPlacementCatchup()
+{
+    global PlacementCatchupDeadline := A_TickCount + 3000
+    SetTimer(CatchUpWorkflowWindows, 120)
+}
+
+CatchUpWorkflowWindows()
+{
+    global PlacementCatchupDeadline
+    MoveKnownWorkflowWindowsOnce()
+    if (A_TickCount >= PlacementCatchupDeadline)
+        SetTimer(CatchUpWorkflowWindows, 0)
 }
 
 ; Position an already-visible Fiji toolbar when this helper starts.
@@ -103,21 +140,9 @@ ShellMessage(wParam, lParam, msg, hwnd)
         try WinMove(10, 10, , , "ahk_id " lParam)
     }
 
-    ; AWT can assign/finalize a dialog title slowly. Use three bounded one-shot
-    ; passes; there is no permanent polling or movement after startup.
-    SetTimer(MoveKnownWorkflowWindowsOnce, -120)
-    SetTimer(MoveKnownWorkflowWindowsAfter350ms, -350)
-    SetTimer(MoveKnownWorkflowWindowsAfter700ms, -700)
-}
-
-MoveKnownWorkflowWindowsAfter350ms()
-{
-    MoveKnownWorkflowWindowsOnce()
-}
-
-MoveKnownWorkflowWindowsAfter700ms()
-{
-    MoveKnownWorkflowWindowsOnce()
+    ; AWT can create a window before assigning its final title. Re-scan for a
+    ; bounded three seconds so slow Java dialog creation cannot defeat placement.
+    StartPlacementCatchup()
 }
 
 AlignmentDialogExists()

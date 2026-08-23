@@ -230,10 +230,6 @@ def expected_crop_contract(grid_path: Path, images_path: Path) -> dict[str, str]
     return contract
 
 
-def expected_crop_prefixes(grid_path: Path, images_path: Path) -> set[str]:
-    return set(expected_crop_contract(grid_path, images_path))
-
-
 def validate_unique_crop_matches(
     root: Path,
     grid_path: Path,

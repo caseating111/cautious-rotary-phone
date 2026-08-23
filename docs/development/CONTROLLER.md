@@ -38,10 +38,7 @@ ROI presets refer to the small per-culture box used by the mature ROI 1-click ro
 
 Current proof behavior:
 - block only if the exact selected proof-plate window is already open; unrelated Fiji images do not block;
-- recognize the observed Fiji main-window title `(Fiji Is Just) ImageJ` when deciding whether Fiji is already running;
-- attempt Fiji/ImageJ's normal single-instance/Macro Runner handoff for an existing instance rather than deliberately starting a second full UI;
-- use `--no-splash` for fresh launches;
-- use ImageJ/Fiji **Window -> Show All** before interaction so the normal main interface is visible;
+- launch the prepared macro through the configured Fiji/Jaunch executable with `--no-splash` and rely on the installation's intentional single-instance behavior;
 - use the mature ROI 1-click custom Rotated Rectangle Click Tool, not ImageJ's built-in rotated rectangle;
 - make a disposable alignment duplicate and run whole-image CLAHE twice; there is **no central sampling ROI**;
 - CLAHE uses block size about `3.3 * max(rect.width, rect.height)`, histogram 256, maximum slope 1000;
@@ -49,7 +46,7 @@ Current proof behavior:
 - draw QC boxes/lines from the grid vectors so they rotate/skew with the plate rather than remaining screen-axis aligned;
 - export fixed-size crops from the unchanged original source image after QC acceptance.
 
-Existing-Fiji reuse remains a real desktop validation point because this Fiji installation previously reported a stale ImageJ single-instance/RMI stub connection error. Do not claim that handoff is proven until the desktop proof succeeds.
+Existing-Fiji reuse remains a real desktop validation point. Repeated launcher invocation has produced delayed status windows and Macro Runner lifecycle problems, so do not claim ownership/control is proven until the architecture proof in `docs/research/fiji-four-point-runtime.md` succeeds.
 
 ## Batch preflight and alignment routes
 
@@ -61,9 +58,9 @@ For **Run full-column batch**, the controller runs `run_full_column_batch_from_c
 
 ## AHK v2 helper
 
-The alignment helper is AutoHotkey **v2** and must stay thin. It recognizes placement dialogs for both alignment routes, moves them upper-left, and positions the already-visible Fiji main toolbar/interface upper-right. It should not be responsible for discovering/unhiding Fiji when ImageJ can show its own UI.
+The alignment helper is AutoHotkey **v2** and must stay thin. It recognizes placement dialogs for both alignment routes, uses a bounded three-second catch-up scan to move delayed Java dialogs upper-left, positions the already-visible Fiji toolbar upper-right, and hides/lowers the Jaunch launcher status window. It is convenience window management, not Fiji process/session authority.
 
-Dialog movement uses the shell creation event plus one small delayed catch-up (~120 ms), not a permanent polling timer. Z advances/accepts recognized dialogs, X selects Retry on either `Alignment QC` or `Full-grid QC`, and Esc exits the helper. Do not reintroduce AHK v1 syntax; v2 output variables such as `WinGetPos` outputs require `&`.
+Z advances/accepts recognized dialogs, X selects Retry on either `Alignment QC` or `Full-grid QC`, and Esc exits the helper. Do not reintroduce AHK v1 syntax; v2 output variables such as `WinGetPos` outputs require `&`.
 
 ## Pillow / output orchestration
 

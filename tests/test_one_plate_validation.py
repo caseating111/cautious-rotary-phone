@@ -44,50 +44,48 @@ class OnePlateValidationTests(unittest.TestCase):
         old = proof.batch.macro_path(proof.batch.PENDING_IMAGES_CSV)
         with tempfile.TemporaryDirectory() as temp:
             target = Path(temp) / "one.csv"
-            source = f'imagesFile = "{old}";\nother = "keep";\n'
+            source = f'imagesFile = "{old}";\nprocessedImages++;\nprint("keep");\n'
             patched = proof.patch_prepared_macro(source, target)
             self.assertNotIn(f'imagesFile = "{old}";', patched)
             self.assertIn(f'imagesFile = "{proof.batch.macro_path(target)}";', patched)
-            self.assertIn('other = "keep";', patched)
+            self.assertIn('processedImages++;\n        exit();', patched)
+            self.assertIn('print("keep");', patched)
 
             with self.assertRaises(SystemExit):
                 proof.patch_prepared_macro("other = 1;\n", target)
 
-    def test_roi_click_adapter_uses_whole_image_double_clahe_rotated_qc_and_shows_fiji(self) -> None:
-        source = proof.batch.enhance_four_point_macro(proof.batch.SOURCE_MACRO.read_text(encoding="utf-8"))
-        patched = proof.patch_roi_click_interaction(source)
-        self.assertNotIn("CLICK_ROI = 108", patched)
-        self.assertNotIn("makeRectangle(round(viewW / 2 - CLICK_ROI", patched)
-        self.assertNotIn('run("Enhance Contrast", "saturated=0.35")', patched)
-        self.assertNotIn("sampleW =", patched)
-        self.assertNotIn("sampleH =", patched)
-        self.assertNotIn("sampleX =", patched)
-        self.assertNotIn("sampleY =", patched)
-        self.assertIn('run("Select None")', patched)
+    def test_four_point_generator_directly_uses_whole_image_double_clahe_and_rotated_qc(self) -> None:
+        generated = proof.batch.enhance_four_point_macro(proof.batch.SOURCE_MACRO.read_text(encoding="utf-8"))
+        self.assertNotIn("CLICK_ROI = 108", generated)
+        self.assertNotIn("makeRectangle(round(viewW / 2 - CLICK_ROI", generated)
+        self.assertNotIn('run("Enhance Contrast", "saturated=0.35")', generated)
+        self.assertNotIn("sampleW =", generated)
+        self.assertNotIn("sampleH =", generated)
+        self.assertNotIn("sampleX =", generated)
+        self.assertNotIn("sampleY =", generated)
+        self.assertIn('run("Select None")', generated)
         self.assertLess(
-            patched.index('run("Select None")'),
-            patched.index('run("Enhance Local Contrast (CLAHE)", claheOptions)'),
+            generated.index('run("Select None")'),
+            generated.index('run("Enhance Local Contrast (CLAHE)", claheOptions)'),
         )
-        self.assertIn('roiBoxW = parseFloat(call("ij.Prefs.get", "rect.width", 108))', patched)
-        self.assertIn('roiBoxH = parseFloat(call("ij.Prefs.get", "rect.height", 108))', patched)
-        self.assertIn("roiBoxSize = maxOf(roiBoxW, roiBoxH)", patched)
-        self.assertIn("claheBlock = round(roiBoxSize * 3.3)", patched)
-        self.assertEqual(patched.count('run("Enhance Local Contrast (CLAHE)", claheOptions)'), 2)
-        self.assertIn('" histogram=256 maximum=1000 mask=*None* fast_(less_accurate)"', patched)
-        self.assertIn('run("Install...", "install=[" + roiToolsetPath + "]")', patched)
-        self.assertNotIn('run("Show All")', patched)
-        self.assertIn("for (toolCandidate = 15; toolCandidate <= 21; toolCandidate++)", patched)
-        self.assertIn('startsWith(IJ.getToolName, "Rotated Rectangle Click Tool")', patched)
-        self.assertIn("gridHX =", patched)
-        self.assertIn("gridVX =", patched)
-        self.assertIn("hux = gridHX / hLen", patched)
-        self.assertIn("vux = gridVX / vLen", patched)
-        self.assertIn("Overlay.drawLine(p1x, p1y, p2x, p2y)", patched)
-        self.assertNotIn("halfW =", patched)
-        self.assertNotIn("halfH =", patched)
-        self.assertIn("p1x = qcX - (QC_W / 2) * hux", patched)
-        self.assertIn("Overlay.drawLine(topX, topY, bottomX, bottomY)", patched)
-        self.assertNotIn("Overlay.drawRect(qcX", patched)
+        self.assertIn('roiBoxW = parseFloat(call("ij.Prefs.get", "rect.width", 108))', generated)
+        self.assertIn('roiBoxH = parseFloat(call("ij.Prefs.get", "rect.height", 108))', generated)
+        self.assertIn("roiBoxSize = maxOf(roiBoxW, roiBoxH)", generated)
+        self.assertIn("claheBlock = round(roiBoxSize * 3.3)", generated)
+        self.assertEqual(generated.count('run("Enhance Local Contrast (CLAHE)", claheOptions)'), 2)
+        self.assertIn('" histogram=256 maximum=1000 mask=*None* fast_(less_accurate)"', generated)
+        self.assertIn('run("Install...", "install=[" + roiToolsetPath + "]")', generated)
+        self.assertNotIn('run("Show All")', generated)
+        self.assertIn("for (toolCandidate = 15; toolCandidate <= 21; toolCandidate++)", generated)
+        self.assertIn('startsWith(IJ.getToolName, "Rotated Rectangle Click Tool")', generated)
+        self.assertIn("gridHX =", generated)
+        self.assertIn("gridVX =", generated)
+        self.assertIn("hux = gridHX / hLen", generated)
+        self.assertIn("vux = gridVX / vLen", generated)
+        self.assertIn("Overlay.drawLine(p1x, p1y, p2x, p2y)", generated)
+        self.assertIn("p1x = qcX - (QC_W / 2) * hux", generated)
+        self.assertIn("Overlay.drawLine(topX, topY, bottomX, bottomY)", generated)
+        self.assertNotIn("Overlay.drawRect(qcX", generated)
 
     def test_production_legacy_macro_uses_the_same_clahe_roi_and_qc_adapter(self) -> None:
         source = proof.batch.SOURCE_MACRO.read_text(encoding="utf-8")
@@ -103,7 +101,7 @@ class OnePlateValidationTests(unittest.TestCase):
         self.assertIn("claheBlock = round(roiBoxSize * 3.3)", exact)
         self.assertIn("Overlay.drawLine(p1x, p1y, p2x, p2y)", exact)
 
-    def test_direct_batch_script_context_can_load_legacy_interaction_adapter(self) -> None:
+    def test_direct_batch_script_context_can_build_legacy_interaction(self) -> None:
         tools_dir = proof.batch.REPO_ROOT / "tools"
         result = subprocess.run(
             [
@@ -131,19 +129,12 @@ class OnePlateValidationTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("DIRECT_SCRIPT_IMPORT_OK", result.stdout)
 
-    def test_fiji_main_title_contract_includes_observed_desktop_title(self) -> None:
-        self.assertTrue(proof._is_fiji_main_title("(Fiji Is Just) ImageJ"))
-        self.assertTrue(proof._is_fiji_main_title("Fiji"))
-        self.assertTrue(proof._is_fiji_main_title("ImageJ"))
-        self.assertFalse(proof._is_fiji_main_title("plate1.jpg"))
-
     def test_selected_plate_window_match_is_exact_and_case_insensitive(self) -> None:
         with patch.object(
             proof,
             "open_window_titles",
             return_value=["(Fiji Is Just) ImageJ", "other.jpg", "PLATE1.JPG", "plate1.jpg - notes"],
         ):
-            self.assertTrue(proof.fiji_is_open())
             self.assertTrue(proof.proof_plate_is_open("plate1.jpg"))
             self.assertFalse(proof.proof_plate_is_open("plate2.jpg"))
             self.assertFalse(proof.proof_plate_is_open("notes"))
@@ -157,47 +148,15 @@ class OnePlateValidationTests(unittest.TestCase):
             self.assertIn("selected proof plate is already open", str(caught.exception))
             prepare.assert_not_called()
 
-    def test_live_fiji_process_does_not_block_another_proof(self) -> None:
-        class RunningProcess:
-            def poll(self):
-                return None
-
-        selected = {"Filename": "plate1.jpg"}
-        fake_config = {"fiji_executable": str(Path(__file__))}
-        launched = object()
-
-        with patch.object(proof, "_ACTIVE_FIJI_PROCESS", RunningProcess()), patch.object(
-            proof, "proof_is_running", return_value=False
-        ), patch.object(
-            proof, "proof_plate_is_open", return_value=False
-        ), patch.object(proof, "fiji_is_open", return_value=False), patch.object(
-            proof, "prepare", return_value=(Path("proof.ijm"), selected)
-        ) as prepare, patch.object(
-            proof.batch, "load_config", return_value=fake_config
-        ), patch.object(
-            proof.subprocess, "Popen", return_value=launched
-        ) as popen:
-            self.assertFalse(proof.proof_is_running())
-            result = proof.run("plate1.jpg")
-
-        self.assertEqual(result, selected)
-        prepare.assert_called_once_with("plate1.jpg", legacy=False, rerun_done=False)
-        command = popen.call_args.args[0]
-        self.assertIn("--no-splash", command)
-        self.assertEqual(command[-2:], ["-macro", str(Path("proof.ijm"))])
-        self.assertEqual(popen.call_args.kwargs["cwd"], Path(fake_config["fiji_executable"]).parent)
-
-    def test_existing_fiji_launches_macro_directly(self) -> None:
+    def test_launcher_command_runs_prepared_macro(self) -> None:
         selected = {"Filename": "plate1.jpg"}
         fake_fiji = Path(__file__)
         fake_config = {"fiji_executable": str(fake_fiji)}
         macro = Path("proof.ijm")
         launched = object()
-        with patch.object(proof, "proof_is_running", return_value=False), patch.object(
-            proof, "proof_plate_is_open", return_value=False
+        with patch.object(proof, "proof_plate_is_open", return_value=False), patch.object(
+            proof, "prepare", return_value=(macro, selected)
         ), patch.object(
-            proof, "fiji_is_open", return_value=True
-        ), patch.object(proof, "prepare", return_value=(macro, selected)), patch.object(
             proof.batch, "load_config", return_value=fake_config
         ), patch.object(proof.subprocess, "Popen", return_value=launched) as popen:
             result = proof.run("plate1.jpg")
@@ -209,9 +168,7 @@ class OnePlateValidationTests(unittest.TestCase):
     def test_new_roi_click_patch_requires_one_restart_before_legacy_proof(self) -> None:
         fake_fiji = Path(__file__)
         fake_config = {"fiji_executable": str(fake_fiji)}
-        with patch.object(proof, "proof_is_running", return_value=False), patch.object(
-            proof, "proof_plate_is_open", return_value=False
-        ), patch.object(
+        with patch.object(proof, "proof_plate_is_open", return_value=False), patch.object(
             proof.batch, "load_config", return_value=fake_config
         ), patch.object(proof, "ensure_roi_click_patch", return_value=True), patch.object(
             proof, "prepare"
@@ -255,7 +212,7 @@ class OnePlateValidationTests(unittest.TestCase):
                 encoding="utf-8",
             )
             configured.write_text(
-                f'imagesFile = "{proof.batch.macro_path(pending)}";\n',
+                f'imagesFile = "{proof.batch.macro_path(pending)}";\nprocessedImages++;\nprint("done");\n',
                 encoding="utf-8",
             )
             completed = type("Completed", (), {"returncode": 0, "stdout": "ok", "stderr": ""})()
@@ -272,45 +229,6 @@ class OnePlateValidationTests(unittest.TestCase):
             self.assertIn("--legacy", run_mock.call_args.args[0])
             self.assertIn(proof.batch.macro_path(proof_csv), proof_macro.read_text(encoding="utf-8"))
 
-    def test_invocation_guard_claims_once_and_marks_success(self) -> None:
-        source = "gridText = File.openAsString(gridFile);\n// ============================================================\n// FINISHED\n// ============================================================\n"
-        with patch.object(proof, "PROOF_STATUS_FILE", Path("C:/proof.status")):
-            guarded = proof.patch_invocation_guard(source, "abc")
-        self.assertIn('proofStatus != "READY " + proofToken', guarded)
-        self.assertIn('File.saveString("RUNNING " + proofToken', guarded)
-        self.assertIn('File.saveString("DONE abc"', guarded)
-
-
-    def test_source_dispositions_cover_each_physical_file_with_casefolded_keys(self) -> None:
-        with tempfile.TemporaryDirectory() as temp:
-            root = Path(temp)
-            images = root / "images.csv"
-            pending = root / "pending.csv"
-            folder = root / "EXP1"
-            folder.mkdir()
-            for name in ("active.JPG", "waiting.jpg", "done.jpg", "unknown.tif"):
-                (folder / name).touch()
-            images.write_text(
-                "Filename,Experiment,Set,Type\nACTIVE.jpg,E,S,T\nwaiting.JPG,E,S,T\ndone.jpg,E,S,T\n",
-                encoding="utf-8",
-            )
-            pending.write_text(
-                "Filename,Experiment,Set,Type\nwaiting.jpg,E,S,T\n",
-                encoding="utf-8",
-            )
-            with patch.object(proof.batch, "PENDING_IMAGES_CSV", pending):
-                decisions = proof.source_dispositions(
-                    {"images_csv": str(images), "image_root": str(root)}, "active.jpg"
-                )
-        self.assertEqual(
-            decisions,
-            [
-                "ACTIVE: EXP1/active.JPG",
-                "DONE: EXP1/done.jpg",
-                "NOT_LISTED: EXP1/unknown.tif",
-                "PENDING: EXP1/waiting.jpg",
-            ],
-        )
 
     def test_done_rerun_uses_authoritative_images_row_when_pending_is_empty(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -323,7 +241,7 @@ class OnePlateValidationTests(unittest.TestCase):
             pending.write_text("Filename,Experiment,Set,Type\n", encoding="utf-8")
             images.write_text("Filename,Experiment,Set,Type\nPlate.JPG,E,S,T\n", encoding="utf-8")
             configured.write_text(
-                f'imagesFile = "{proof.batch.macro_path(pending)}";\n', encoding="utf-8"
+                f'imagesFile = "{proof.batch.macro_path(pending)}";\nprocessedImages++;\nprint("done");\n', encoding="utf-8"
             )
             completed = type(
                 "Completed", (), {"returncode": 1, "stdout": "All expected crops already exist", "stderr": ""}

@@ -18,16 +18,6 @@ except ModuleNotFoundError:
     from preflight_batch import discover_sources, expected_crop_issue, expected_output_names
 
 
-def selected_state_crop_count(contract: dict[str, str], states: list[str]) -> int:
-    wanted = {state.casefold() for state in states}
-    count = 0
-    for prefix in contract:
-        parts = prefix.rstrip("_").split("_")
-        if parts and parts[-1].casefold() in wanted:
-            count += 1
-    return count
-
-
 def validate_selected_freshness(
     config: dict,
     filtered: dict[str, Path],

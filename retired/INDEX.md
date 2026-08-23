@@ -11,4 +11,4 @@ Current canonical basic-CSV actions are:
 - alignment: **Run one-plate 4-point proof (choose plate)**;
 - selected DONE rerun: **Reset / re-run selected DONE plate**;
 - reconciliation/validation: **Reconcile / validate CSV workflow**;
-- Fiji invocation: `tools/run_one_plate_validation.py`, using Fiji RMI for an existing GUI and the configured Fiji launcher only for a fresh GUI.
+- Fiji invocation: `tools/run_one_plate_validation.py`, currently using the configured Fiji/Jaunch executable and the installation's single-instance behavior. The retired custom RMI helper has been deleted.
