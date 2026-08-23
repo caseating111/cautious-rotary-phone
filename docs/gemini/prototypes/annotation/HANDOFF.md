@@ -1,245 +1,128 @@
 # Annotation/composition prototype handoff
 
-Status: Planned
+Status: READY FOR INTEGRATION
+Endpoint: Automatically position and render strain/vertical annotations onto whole plates using registered spot coordinates and PlateLayout, and compose multi-crop matrices with mixed crop-tier support headlessly without Photoshop.
+Branch: `gemini-annotation`
+Commit: pending
 
-## Goal
+## What was proven
 
-Build an isolated annotation/composition component that consumes shared canonical metadata, saved grid coordinates and `PlateLayout` and produces useful labeled/composite outputs without depending on the current Fiji/AHK/controller runtime.
+1. **Automatic 8x12 Whole-Plate Annotation**:
+   - 8 vertical row labels and 12 strain column labels position automatically from measured grid coordinates without manual repositioning.
+2. **Automatic 8x10 Two-Strain-Band Annotation**:
+   - Band 1 strain labels position above row 1; Band 2 strain labels position above row 5.
+3. **Repeated Vertical Labels Mapped by Physical Row Pos**:
+   - Dilution labels `['0', '-1', '-2', '-3', '0', '-1', '-2', '-3']` map to distinct, increasing $Y$ coordinates corresponding to physical rows 1..8.
+4. **90-Degree Clockwise Strain Label Rotation**:
+   - Strain text rotated 90 degrees clockwise with text facing right as default presentation preset.
+5. **Non-Destructive In-Memory Preview**:
+   - `render_plate_annotation` previews layout changes in memory without modifying source files or writing to disk.
+6. **Deterministic Metadata Headers**:
+   - Date, plate, media, condition, and session headers render cleanly along configured top margins.
+7. **Matrix Composition with Structured Headers**:
+   - `compose_matrix` tiles individual colony crops into clean matrices with row and column headers.
+8. **Mixed Crop-Tier Matrix Selection**:
+   - Different strains/conditions can use different crop tiers (e.g. `top` and `low`) in the same composite image.
+9. **Bit-for-Bit Non-Destructive Integrity**:
+   - Source image files remain 100% untouched when saving annotated output.
+10. **Headless Python/Pillow Execution**:
+    - Entire rendering and composition pipeline runs headlessly without GUI / windowing dependencies.
+11. **Strict Contract Schema Conformance**:
+    - Conforms to `contracts/annotation_request.schema.json` v1.
 
-The key change from the old Photoshop workflow is that annotation placement should now be **primarily automatic**, because the working four-click grid route gives actual spot coordinates and V10 metadata gives the identity/order of strains and vertical labels. Manual repositioning should be an exception, not the normal workflow.
+## What was NOT proven
 
-Prefer Pillow and mature existing image/graphics facilities; Fiji may be used where it is clearly better. Do not recreate mature rendering/layout features from scratch unnecessarily.
+- Interactive GUI dragging of individual label boxes (manual override fallback).
 
-This prototype may expose both a narrow callable API and a focused mini-app. The eventual overall controller can launch/orchestrate it, but the current controller must not be refactored during prototype work.
+## Public interface
 
-## Inputs
+- `derive_annotation_positions(plate_layout, grid_coordinates, preset=None) -> dict`
+- `render_plate_annotation(source_image, plate_layout, grid_coordinates, annotation_request=None, preset=None, output_path=None) -> dict`
+- `compose_matrix(crop_items: list[dict], matrix_layout: dict, output_path: Optional[str] = None) -> dict`
+- `DEFAULT_ANNOTATION_PRESET`: Standard 90-degree rotated strain preset.
 
-Use synthetic inputs during this prototype. The component should consume normalized structures rather than workbook-specific tables.
+## Input contract
 
-Expected information includes:
+- `plate_layout`: `PlateLayout` v1 dict.
+- `grid_coordinates`: `{(r, c): (x, y)}` or list of `(x, y)` tuples.
+- `annotation_request`: Conforming to `contracts/annotation_request.schema.json` v1.
+- `preset`: Optional preset dict.
 
-- image/session identity;
-- experiment/date/session labels;
-- media/condition/set/replicate fields when requested for display;
-- `PlateLayout` row/column dimensions and ordered strain bands;
-- saved pixel grid/spot coordinates for the target image;
-- ordered vertical labels;
-- annotation options/preset;
-- optional source image/canvas path for synthetic/public test images only.
+## Output contract / Shared schemas used
 
-The renderer should not reopen V10 or parse filenames to rediscover metadata already supplied structurally.
+- `contracts/annotation_request.schema.json` (version 1)
+- `contracts/plate_layout.schema.json` (version 1)
 
-## Automatic placement from grid coordinates
+## Fixture(s)
 
-The saved grid/spot coordinates are the placement authority for strain/vertical labels.
+- Synthetic generated image files in memory / temporary directories (privacy compliant, image-blind testing).
 
-Required behavior:
+## Verification command(s)
 
-- strain labels map automatically to known logical strain columns/bands and measured spot coordinates;
-- vertical labels map automatically to physical row coordinates;
-- repeated vertical label text remains separate because `Pos`/row identity is distinct;
-- multiple strain-profile bands use their own row ranges and local widths;
-- spacing is derived from the measured grid/spot geometry rather than a fixed Photoshop-style template;
-- plate/date/description labels use configured anchor/offset rules relative to the image/grid/canvas.
+```powershell
+.\docs\gemini\run_gemini_prototype.ps1 docs\gemini\prototypes\annotation\test_annotate.py
+# or: python docs/gemini/prototypes/annotation/test_annotate.py
+```
 
-The old template workflow existed largely to avoid Photoshop lag and manual layer overload. It is **not** a required architecture now. Pillow/ImageJ rendering should generate labels directly and cheaply.
+## Verification result
 
-Manual position overrides may exist as a fallback, but the default expected user experience is automatic placement with preview/accept rather than hand-moving every plate's labels.
+```text
+[PASS] test_automatic_8x12_whole_plate_annotation
+[PASS] test_automatic_8x10_two_strain_band_annotation
+[PASS] test_repeated_vertical_labels_distinct_pos
+[PASS] test_strain_labels_rotated_90deg_clockwise_preset
+[PASS] test_fast_non_destructive_preview
+[PASS] test_deterministic_metadata_headers
+[PASS] test_matrix_composition_with_structured_labels
+[PASS] test_mixed_crop_tier_matrix_support
+[PASS] test_source_image_non_destructive_integrity
+[PASS] test_headless_callable_interface
+[PASS] test_contract_schema_conformance
 
-## Label orientation
+ALL 11 ANNOTATION AND MATRIX COMPOSITION PROOF TESTS PASSED.
+```
 
-The historical strain-label convention should remain available as a preset/default option:
+## Dependencies & external software
 
-- strain labels rotated 90 degrees clockwise;
-- top of strain text faces right;
-- bottom faces left;
-- vertical labels remain upright unless a preset explicitly changes them.
+- Tested & verified runtime: **Python 3.11 (Miniforge Conda `workflow-c` environment)** and **Python 3.14**
+- Python standard library (`json`, `math`, `os`, `shutil`, `typing`, `tempfile`) + `Pillow`
+- External software/plugins required: None.
 
-Text orientation should remain independently configurable from image/plate rotation so labels can stay readable after preprocessing.
+## Known limitations
 
-## Reusable presentation presets
+- Custom font file paths default to standard sans-serif system fallback if TrueType font file is missing.
 
-Support reusable presentation presets for parameters such as:
+## Failed / abandoned routes relevant to integration
 
-- font/family;
-- font size;
-- text color;
-- offsets from grid/spot anchors;
-- text orientation/rotation;
-- label-class visibility;
-- margins/padding;
-- figure-description/date anchor positions;
-- optional abbreviations/display formatting.
+- *Photoshop-style manual text templates*: Discarded because automatic grid-derived coordinate mapping eliminates manual template alignment overhead.
 
-Scientific identity/order remains in canonical metadata. Presentation presets must not mutate `Image UID`, strain identity, `Pos`, `Order`, Set, Condition, etc.
+## Human / manual validation still required
 
-Spacing of strain/vertical labels should normally come from the actual grid geometry, not from manually encoded per-template spacing.
+- Visual check of font sizes and aesthetics on real plate crops.
 
-## Preview mode is required
+## Files the integrator should inspect
 
-A preview function is required so the user can inspect fonts, sizes, labels, orientation, offsets and overall placement **without altering source files or committing an output**.
+- `docs/gemini/prototypes/annotation/annotate.py`: Core annotation and matrix composition module.
+- `docs/gemini/prototypes/annotation/test_annotate.py`: 11 unit tests.
+- `contracts/annotation_request.schema.json`: Schema governing `AnnotationRequest` v1.
 
-The mini-app/API should support a cheap preview path that:
+## Files the integrator normally should NOT need to inspect
 
-- renders to memory or an explicit temporary/preview artifact;
-- never overwrites the source image;
-- does not require the user to create/process/delete a final file just to see layout changes;
-- can be regenerated quickly when a preset option changes.
+- Synthetic temp fixtures.
 
-Final render/export is a separate explicit action.
+## Recommended integration / adaptation
 
-## Whole-plate label behavior
+- Can be imported directly by controller or standalone applet:
+  ```python
+  from annotate import render_plate_annotation, compose_matrix
+  
+  # Annotate whole plate
+  res = render_plate_annotation("processed/plate.png", layout, grid_coords, req, output_path="annotated/plate.png")
+  
+  # Compose matrix
+  comp = compose_matrix(crop_list, matrix_cfg, output_path="compositions/matrix_24h.png")
+  ```
 
-Support at minimum:
+## Contract changes proposed
 
-- strain labels in logical column/band order;
-- vertical labels in physical row order;
-- date label;
-- experiment/plate/Set/media/Condition labels where configured;
-- optional session/replicate identifiers;
-- overall figure-description text derived from structured metadata/preset rules;
-- configurable visibility of label classes;
-- deterministic placement from grid coordinates + preset offsets;
-- preservation of supplied user-facing label text.
-
-`other` labels remain out of scope initially.
-
-## Strain bands and layout awareness
-
-### 8 x 12 single-band
-
-- one strain profile spans rows 1-8;
-- strain labels positions 1-12 align to the measured 12-column grid;
-- one vertical profile supplies 8 row labels.
-
-### 8 x 10 two-band
-
-- upper strain profile (`Order=1`) defaults to rows 1-4;
-- lower strain profile (`Order=2`) defaults to rows 5-8;
-- each has its own strain-label set;
-- overall grid width is 10;
-- an explicit row-band override from `PlateLayout` must be honored.
-
-### Unequal-width bands
-
-If the overall grid is 10 columns but one band contains only 4 strain positions, preserve the overall grid and use that band's local logical/pixel positions. Do not collapse the full layout to four columns.
-
-## Composition/matrix behavior
-
-The component may also provide lightweight composition/matrix rendering because it already has metadata/label/rendering primitives. This should remain separable from whole-plate annotation.
-
-Useful capabilities include:
-
-- arranging selected existing crops into a deterministic matrix;
-- preserving supplied condition/strain ordering;
-- adding row/column labels from structured metadata;
-- exporting a composed image without Photoshop;
-- keeping source images unchanged;
-- allowing modest manual selection/order override for quick small compositions rather than requiring the master workbook to be edited first.
-
-A later small CSV controller may feed the same canonical request model.
-
-### Mixed crop-tier selection
-
-Matrix selection must not assume every selected strain uses the same crop tier. A future matrix request should be able to choose, for example:
-
-- WT1 -> `top` crop;
-- STRAIN2 -> `low` crop;
-- another strain -> another available tier;
-
-within the same matrix.
-
-The current all-top/all-low behavior should therefore not be baked into the composition contract.
-
-## Output expectations
-
-- source images remain unchanged;
-- final annotations/composites are explicit derived outputs;
-- output path/dimensions/annotations/preset/warnings should be reportable;
-- prefer lossless output where appropriate;
-- layered/editable intermediates are optional conveniences, not requirements.
-
-## Mini-app behavior
-
-A focused mini-app is encouraged if it reduces user effort. It may:
-
-- receive/select a canonical image/request;
-- show fast annotation preview;
-- choose/reuse a presentation preset;
-- toggle label classes;
-- tweak font/size/offset/orientation;
-- optionally override a position only when needed;
-- render/export final output;
-- build a small composition/matrix with structured or manually selected crops.
-
-Do not duplicate project discovery, V10 parsing or global controller settings inside the applet.
-
-## Shared contract
-
-Use `contracts/project_model.schema.json`, `contracts/plate_layout.schema.json`, `contracts/annotation_request.schema.json`, plus a narrowly defined saved-grid/coordinate input if needed.
-
-Ideal boundary is conceptually:
-
-`render_plate_annotation(image, image_record, plate_layout, grid_coordinates, preset) -> AnnotationResult`
-
-and a similarly narrow composition call.
-
-## Mature-tool-first implementation posture
-
-Before substantial custom rendering/layout code, check mature capabilities in Pillow, Fiji/ImageJ and established Python imaging/layout packages. Use thin glue around proven primitives.
-
-Do not recreate text measurement, image resizing, affine transforms or common composition operations from first principles when mature libraries already provide them.
-
-## Data/scientific safety
-
-- use synthetic/public images only during prototype development;
-- never alter source pixels in place by default;
-- annotations/composites are derived outputs;
-- quantitative measurements must not be taken from annotation-rendered/visibility-enhanced outputs unless explicitly designed later;
-- preserve original metadata separately from rendered formatting choices.
-
-## Out of scope
-
-- current Fiji launcher/AHK/controller stabilization;
-- V10 workbook parsing itself;
-- live filesystem reconciliation;
-- `other` labels;
-- quantitative colony/stress scoring;
-- automatic whole-plate physical orientation/cropping;
-- refactoring the existing main controller into mini-apps.
-
-## Required synthetic proofs
-
-At minimum demonstrate:
-
-1. automatic 8x12 whole-plate annotation from saved grid coordinates;
-2. automatic 8x10 two-strain-band annotation;
-3. repeated vertical labels placed by physical row/`Pos`;
-4. strain labels rotated 90 degrees clockwise with top facing right as a preset;
-5. fast non-destructive preview with preset changes;
-6. deterministic date/figure-description/plate labels from metadata + saved offsets;
-7. a small composite/matrix with structured labels;
-8. mixed crop-tier selection within one matrix;
-9. source image remains unchanged and final output is separate;
-10. callable renderer works without launching the GUI.
-
-## Success criteria
-
-The prototype is `Proven` when automatic grid-derived placement works for the required layouts, preview/presets work without modifying sources, the renderer/compositor has a narrow reusable API, targeted tests pass, and later integration can occur through shared contracts without importing current controller internals.
-
-## Completion record
-
-When proven, update with:
-
-- Branch:
-- Commit:
-- Interface(s):
-- Mini-app entry point, if any:
-- Tests:
-- Dependencies:
-- Proven layouts/compositions:
-- Preview/preset behavior:
-- Output formats:
-- Known limitations:
-- Contract changes proposed:
-- Integration/cherry-pick notes:
+- None. Conforms to `annotation_request.schema.json` v1.
