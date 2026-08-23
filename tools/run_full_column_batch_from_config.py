@@ -292,7 +292,7 @@ def enhance_four_point_macro(source: str) -> str:
             Overlay.remove;
 
             waitForUser(
-                "1 / 4 - R1C1",
+                "1 / 4 - R1C1 - " + sourceTitle,
                 "Click the R1C1 colony centre, then OK."
             );
             getSelectionBounds(x, y, w, h);
@@ -302,7 +302,7 @@ def enhance_four_point_macro(source: str) -> str:
             R1LY = y + h / 2;
 
             waitForUser(
-                "2 / 4 - R1C" + gridCols,
+                "2 / 4 - R1C" + gridCols + " - " + sourceTitle,
                 "Click the R1C" + gridCols + " colony centre, then OK."
             );
             getSelectionBounds(x, y, w, h);
@@ -312,7 +312,7 @@ def enhance_four_point_macro(source: str) -> str:
             R1RY = y + h / 2;
 
             waitForUser(
-                "3 / 4 - R5C1",
+                "3 / 4 - R5C1 - " + sourceTitle,
                 "Click the R5C1 colony centre, then OK."
             );
             getSelectionBounds(x, y, w, h);
@@ -322,7 +322,7 @@ def enhance_four_point_macro(source: str) -> str:
             R5LY = y + h / 2;
 
             waitForUser(
-                "4 / 4 - R5C" + gridCols,
+                "4 / 4 - R5C" + gridCols + " - " + sourceTitle,
                 "Click the R5C" + gridCols + " colony centre, then OK."
             );
             getSelectionBounds(x, y, w, h);

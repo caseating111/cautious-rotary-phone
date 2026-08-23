@@ -160,6 +160,13 @@ for (folderIndex = 0; folderIndex < folders.length; folderIndex++) {
         // complete and therefore not in the pending-only metadata file.
         if (experiment == "") {
 
+            stateKey = cleanFolderName + "/" + fileName;
+            previousRun = recordedRun(stateKey);
+            if (previousRun > 0)
+                print("DONE / NOT SELECTED - run " + previousRun + ": " + stateKey);
+            else
+                print("NOT PENDING - no recorded completed run: " + stateKey);
+
             notListedImages++;
 
             continue;
@@ -483,9 +490,12 @@ for (folderIndex = 0; folderIndex < folders.length; folderIndex++) {
         close();
 
         processedImages++;
+        stateKey = cleanFolderName + "/" + fileName;
+        runNumber = recordedRun(stateKey) + 1;
+        File.append(stateKey + "\t" + runNumber + "\n", stateFile);
 
         print(
-            "DONE: " + sourceTitle +
+            "DONE - run " + runNumber + ": " + stateKey +
             " -> " + outDir
         );
     }
@@ -570,6 +580,22 @@ function safeName(s) {
     s = replace(s, "|", "-");
 
     return s;
+}
+
+
+function recordedRun(key) {
+
+    if (!File.exists(stateFile))
+        return 0;
+
+    entries = split(File.openAsString(stateFile), "\n");
+    prefix = key + "\t";
+    for (entryIndex = entries.length - 1; entryIndex >= 0; entryIndex--) {
+        entry = replace(entries[entryIndex], "\r", "");
+        if (startsWith(entry, prefix))
+            return parseInt(substring(entry, lengthOf(prefix)));
+    }
+    return 0;
 }
 
 
