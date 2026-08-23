@@ -273,7 +273,7 @@ def enhance_four_point_macro(source: str) -> str:
 
             waitForUser(
                 "1 / 4 -- R1C1 -- " + sourceTitle + " -- Z=OK, C=CANCEL",
-                "Target: Row 1, Column 1  |+|  Centre ROI box around target at R1C1, then click OK.  |+|  Exp: " + experiment + ", Set: " + setName + "  |+|  Grid: 8R x " + gridCols + "C  |+|  Export count: " + (nWanted * 2)
+                "Target: Row 1, Column 1 [+] Centre ROI box around target at R1C1, then click OK. [+] Exp: " + experiment + ", Set: " + setName + " [+] Grid: 8R x " + gridCols + "C [+] Export count: " + (nWanted * 2)
             );
             getSelectionBounds(x, y, w, h);
             if (w <= 0 || h <= 0)
@@ -283,7 +283,7 @@ def enhance_four_point_macro(source: str) -> str:
 
             waitForUser(
                 "2 / 4 -- R1C" + gridCols + " -- " + sourceTitle + " -- Z=OK, C=CANCEL",
-                "Target: Row 1, Column " + gridCols + "  |+|  Centre ROI box around target at R1C" + gridCols + ", then click OK.  |+|  Exp: " + experiment + ", Set: " + setName + "  |+|  Grid: 8R x " + gridCols + "C  |+|  Export count: " + (nWanted * 2)
+                "Target: Row 1, Column " + gridCols + " [+] Centre ROI box around target at R1C" + gridCols + ", then click OK. [+] Exp: " + experiment + ", Set: " + setName + " [+] Grid: 8R x " + gridCols + "C [+] Export count: " + (nWanted * 2)
             );
             getSelectionBounds(x, y, w, h);
             if (w <= 0 || h <= 0)
@@ -293,7 +293,7 @@ def enhance_four_point_macro(source: str) -> str:
 
             waitForUser(
                 "3 / 4 -- R5C1 -- " + sourceTitle + " -- Z=OK, C=CANCEL",
-                "Target: Row 5, Column 1  |+|  Centre ROI box around target at R5C1, then click OK.  |+|  Exp: " + experiment + ", Set: " + setName + "  |+|  Grid: 8R x " + gridCols + "C  |+|  Export count: " + (nWanted * 2)
+                "Target: Row 5, Column 1 [+] Centre ROI box around target at R5C1, then click OK. [+] Exp: " + experiment + ", Set: " + setName + " [+] Grid: 8R x " + gridCols + "C [+] Export count: " + (nWanted * 2)
             );
             getSelectionBounds(x, y, w, h);
             if (w <= 0 || h <= 0)
@@ -303,7 +303,7 @@ def enhance_four_point_macro(source: str) -> str:
 
             waitForUser(
                 "4 / 4 -- R5C" + gridCols + " -- " + sourceTitle + " -- Z=OK, C=CANCEL",
-                "Target: Row 5, Column " + gridCols + "  |+|  Centre ROI box around target at R5C" + gridCols + ", then click OK.  |+|  Exp: " + experiment + ", Set: " + setName + "  |+|  Grid: 8R x " + gridCols + "C  |+|  Export count: " + (nWanted * 2)
+                "Target: Row 5, Column " + gridCols + " [+] Centre ROI box around target at R5C" + gridCols + ", then click OK. [+] Exp: " + experiment + ", Set: " + setName + " [+] Grid: 8R x " + gridCols + "C [+] Export count: " + (nWanted * 2)
             );
             getSelectionBounds(x, y, w, h);
             if (w <= 0 || h <= 0)
@@ -370,7 +370,7 @@ def enhance_four_point_macro(source: str) -> str:
             // a vertically separate message row.
             Dialog.create("Full-grid QC -- Inspect 8R x " + gridCols + "C grid -- Z=ACCEPT, X=RETRY, C=CANCEL");
             Dialog.addChoice(
-                "ACCEPT: Export crops and save grid coordinates.  |+|  RETRY: Repeat four-point calibration.",
+                "ACCEPT: Export crops and save grid coordinates. [+] RETRY: Repeat four-point calibration.",
                 newArray("ACCEPT", "RETRY"),
                 "ACCEPT"
             );

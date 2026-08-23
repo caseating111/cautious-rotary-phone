@@ -3,6 +3,7 @@ from __future__ import annotations
 import tkinter as tk
 import subprocess
 import sys
+import time
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
@@ -344,6 +345,9 @@ class ExtendedController(Controller):
         started_ahk_here = False
         if ahk.is_file() and not ahk_was_running:
             self.start_ahk()
+            # Let the scoped helper register its shell hook/hotkeys before a
+            # cold Fiji launch can display the first wait-for-user dialog.
+            time.sleep(0.3)
             started_ahk_here = bool(self.ahk_process and self.ahk_process.poll() is None)
 
         try:

@@ -136,11 +136,12 @@ def patch_prepared_macro(
         guard = (
             f'onePlateInvocationFile = "{invocation_file}";\n'
             f'onePlateInvocationToken = "{invocation_token}";\n'
-            'if (File.exists(onePlateInvocationFile)) {\n'
-            '    if (File.openAsString(onePlateInvocationFile) == onePlateInvocationToken)\n'
-            '        exit();\n'
-            '}\n'
-            'File.saveString(onePlateInvocationToken, onePlateInvocationFile);\n'
+            'onePlateInvocationReady = onePlateInvocationToken + "\\tREADY";\n'
+            'if (!File.exists(onePlateInvocationFile))\n'
+            '    exit();\n'
+            'if (File.openAsString(onePlateInvocationFile) != onePlateInvocationReady)\n'
+            '    exit();\n'
+            'File.saveString(onePlateInvocationToken + "\\tRUNNING", onePlateInvocationFile);\n'
             'print("=== ONE-PLATE RUN " + onePlateInvocationToken + " | selected source-folder status ===");\n\n'
         )
         source = source.replace(folder_loop, guard + folder_loop, 1)
@@ -230,12 +231,15 @@ def prepare(filename: str | None = None, *, rerun_done: bool = False, replace_ex
     if replace_existing:
         crop_replacement_manifest.write_manifest(config, selected, REPLACEMENT_MANIFEST)
         manifest = REPLACEMENT_MANIFEST
+    invocation_token = uuid.uuid4().hex
+    APP_DIR.mkdir(parents=True, exist_ok=True)
+    ONE_PLATE_INVOCATION_FILE.write_text(f"{invocation_token}\tREADY", encoding="utf-8")
     proof_text = patch_prepared_macro(
         configured.read_text(encoding="utf-8"),
         PROOF_IMAGES_CSV,
         manifest,
         matching_sources[0].parent.name,
-        uuid.uuid4().hex,
+        invocation_token,
     )
     proof_macro.write_text(proof_text, encoding="utf-8")
     return proof_macro, selected

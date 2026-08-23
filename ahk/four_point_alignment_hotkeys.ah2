@@ -169,8 +169,9 @@ AlignmentDialogExists()
 }
 
 ; Z is only intercepted while one of the workflow's Fiji dialogs exists.
-; It advances either alignment route, accepts QC, and dismisses ALL DONE
-; before closing this helper.
+; It advances either alignment route, accepts QC, and dismisses ALL DONE.
+; The controller owns this helper for its entire session so it also handles a
+; delayed stale Fiji macro window if one appears after completion.
 #HotIf AlignmentDialogExists()
 z::
 {
@@ -185,8 +186,6 @@ z::
             WinActivate(hwnd)
             if WinWaitActive(hwnd, , 0.5)
                 Send("{Enter}")
-            if title = "ALL DONE"
-                ExitApp()
             return
         }
     }
@@ -208,7 +207,7 @@ c::
             WinActivate(hwnd)
             if WinWaitActive(hwnd, , 0.5)
                 Send("{Esc}")
-            ExitApp()
+            return
         }
     }
 }
