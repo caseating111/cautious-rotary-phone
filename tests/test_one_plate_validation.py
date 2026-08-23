@@ -172,57 +172,39 @@ class OnePlateValidationTests(unittest.TestCase):
             proof, "proof_plate_is_open", return_value=False
         ), patch.object(proof, "fiji_is_open", return_value=False), patch.object(
             proof, "prepare", return_value=(Path("proof.ijm"), selected)
-        ) as prepare, patch.object(proof, "arm_invocation"), patch.object(
-            proof, "source_dispositions", return_value=[]
-        ), patch.object(proof, "PROOF_STATUS_FILE", Path(tempfile.gettempdir()) / "proof-test-status.txt"), patch.object(
-            proof, "PROOF_LAUNCH_LOG", Path(tempfile.gettempdir()) / "proof-test-launch.log"
-        ), patch.object(
+        ) as prepare, patch.object(
             proof.batch, "load_config", return_value=fake_config
         ), patch.object(
             proof.subprocess, "Popen", return_value=launched
-        ) as popen, patch.object(proof, "ensure_fiji_main_window_visible", return_value=True) as visible:
+        ) as popen:
             self.assertFalse(proof.proof_is_running())
             result = proof.run("plate1.jpg")
 
         self.assertEqual(result, selected)
         prepare.assert_called_once_with("plate1.jpg", legacy=False, rerun_done=False)
-        visible.assert_called_once_with()
         command = popen.call_args.args[0]
         self.assertIn("--no-splash", command)
         self.assertEqual(command[-2:], ["-macro", str(Path("proof.ijm"))])
         self.assertEqual(popen.call_args.kwargs["cwd"], Path(fake_config["fiji_executable"]).parent)
 
-    def test_existing_fiji_uses_rmi_handoff_without_popen_gui(self) -> None:
+    def test_existing_fiji_launches_macro_directly(self) -> None:
         selected = {"Filename": "plate1.jpg"}
         fake_fiji = Path(__file__)
         fake_config = {"fiji_executable": str(fake_fiji)}
         macro = Path("proof.ijm")
+        launched = object()
         with patch.object(proof, "proof_is_running", return_value=False), patch.object(
             proof, "proof_plate_is_open", return_value=False
         ), patch.object(
             proof, "fiji_is_open", return_value=True
         ), patch.object(proof, "prepare", return_value=(macro, selected)), patch.object(
-            proof, "arm_invocation"
-        ), patch.object(proof, "source_dispositions", return_value=[]), patch.object(
-            proof, "PROOF_STATUS_FILE", Path(tempfile.gettempdir()) / "proof-test-status.txt"
-        ), patch.object(proof, "PROOF_LAUNCH_LOG", Path(tempfile.gettempdir()) / "proof-test-launch.log"), patch.object(
-            proof, "fiji_macro_command", return_value=(["java", "handoff.java", "57294", str(macro)], "fiji-rmi-handoff")
-        ), patch.object(
             proof.batch, "load_config", return_value=fake_config
-        ), patch.object(
-            proof.subprocess,
-            "run",
-            return_value=type("Result", (), {"returncode": 0, "stdout": "", "stderr": ""})(),
-        ) as run, patch.object(proof.subprocess, "Popen") as popen, patch.object(
-            proof, "ensure_fiji_main_window_visible", return_value=True
-        ) as visible:
+        ), patch.object(proof.subprocess, "Popen", return_value=launched) as popen:
             result = proof.run("plate1.jpg")
         self.assertEqual(result, selected)
-        visible.assert_called_once_with()
-        run.assert_called_once()
-        self.assertEqual(run.call_args.args[0], ["java", "handoff.java", "57294", str(macro)])
-        self.assertEqual(run.call_args.kwargs["cwd"], fake_fiji.parent)
-        popen.assert_not_called()
+        popen.assert_called_once()
+        self.assertEqual(popen.call_args.args[0], [str(fake_fiji), "--no-splash", "-macro", str(macro)])
+        self.assertEqual(popen.call_args.kwargs["cwd"], fake_fiji.parent)
 
     def test_new_roi_click_patch_requires_one_restart_before_legacy_proof(self) -> None:
         fake_fiji = Path(__file__)
@@ -298,28 +280,6 @@ class OnePlateValidationTests(unittest.TestCase):
         self.assertIn('File.saveString("RUNNING " + proofToken', guarded)
         self.assertIn('File.saveString("DONE abc"', guarded)
 
-    def test_existing_fiji_command_uses_rmi_client_without_imagej_gui_entrypoint(self) -> None:
-        with tempfile.TemporaryDirectory() as temp:
-            root = Path(temp)
-            fiji = root / "fiji-windows-x64.exe"
-            legacy = root / "jars" / "imagej-legacy-2.0.3.jar"
-            java = root / "java" / "win64" / "jdk" / "bin" / "java.exe"
-            helper = root / "FijiExistingInstanceHandoff.java"
-            legacy.parent.mkdir(parents=True)
-            java.parent.mkdir(parents=True)
-            legacy.touch()
-            java.touch()
-            helper.touch()
-            with patch.object(proof, "FIJI_RMI_HANDOFF", helper), patch.object(
-                proof, "_fiji_rmi_port", return_value=57294
-            ):
-                command, route = proof.fiji_macro_command(fiji, Path("proof.ijm"), existing_fiji=True)
-        self.assertEqual(route, "fiji-rmi-handoff")
-        self.assertEqual(command[0], str(java))
-        self.assertIn(str(helper), command)
-        self.assertIn("57294", command)
-        self.assertNotIn("ij.ImageJ", command)
-        self.assertNotIn(str(fiji), command)
 
     def test_source_dispositions_cover_each_physical_file_with_casefolded_keys(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

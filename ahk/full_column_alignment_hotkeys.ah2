@@ -17,31 +17,22 @@ PlacementDialogTitle(title)
 
 MoveFijiToolbarOnce()
 {
-    ; Fiji itself is responsible for making its main interface visible. Prefer
-    ; the exact title observed on the target desktop; use geometry only as a
-    ; compatibility fallback for other Fiji/ImageJ builds.
     bestHwnd := 0
-
-    for title in ["(Fiji Is Just) ImageJ", "ImageJ", "Fiji"]
+    for hwnd in WinGetList("ahk_class SunAwtFrame")
     {
-        if hwnd := WinExist(title)
+        title := ""
+        try title := WinGetTitle(hwnd)
+        catch
+            continue
+        if InStr(title, "(Fiji Is Just) ImageJ") || InStr(title, "Fiji") || InStr(title, "ImageJ")
         {
-            try
-            {
-                className := WinGetClass(hwnd)
-                WinGetPos(, , &w, &h, hwnd)
-                if (className = "SunAwtFrame" && h <= 320)
-                {
-                    bestHwnd := hwnd
-                    break
-                }
-            }
+            bestHwnd := hwnd
+            break
         }
     }
 
     if !bestHwnd
     {
-        bestWidth := 0
         for hwnd in WinGetList()
         {
             try className := WinGetClass(hwnd)
@@ -49,25 +40,13 @@ MoveFijiToolbarOnce()
                 continue
             if (className != "SunAwtFrame")
                 continue
-
-            try
-            {
-                WinGetPos(, , &w, &h, hwnd)
-                title := WinGetTitle(hwnd)
-            }
+            try title := WinGetTitle(hwnd)
             catch
                 continue
-
-            ; Image windows are much taller; the main Fiji/ImageJ toolbar is short and wide.
-            if (w < 250 || h < 40 || h > 320)
-                continue
-            if (InStr(title, "1 / 4") || InStr(title, "2 / 4") || InStr(title, "3 / 4") || InStr(title, "4 / 4"))
-                continue
-
-            if (w > bestWidth)
+            if InStr(title, "(Fiji Is Just) ImageJ") || InStr(title, "Fiji") || InStr(title, "ImageJ")
             {
                 bestHwnd := hwnd
-                bestWidth := w
+                break
             }
         }
     }
