@@ -136,8 +136,10 @@ def patch_prepared_macro(
         guard = (
             f'onePlateInvocationFile = "{invocation_file}";\n'
             f'onePlateInvocationToken = "{invocation_token}";\n'
-            'if (File.exists(onePlateInvocationFile) && File.openAsString(onePlateInvocationFile) == onePlateInvocationToken)\n'
-            '    exit();\n'
+            'if (File.exists(onePlateInvocationFile)) {\n'
+            '    if (File.openAsString(onePlateInvocationFile) == onePlateInvocationToken)\n'
+            '        exit();\n'
+            '}\n'
             'File.saveString(onePlateInvocationToken, onePlateInvocationFile);\n'
             'print("=== ONE-PLATE RUN " + onePlateInvocationToken + " | selected source-folder status ===");\n\n'
         )
