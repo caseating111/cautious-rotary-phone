@@ -115,14 +115,23 @@ def patch_prepared_macro(source: str, proof_csv: Path, replacement_manifest: Pat
             raise SystemExit("Prepared macro has no unambiguous replacement-manifest setting.")
         source = source.replace(old_manifest, new_manifest, 1)
 
-    # Stop this one-plate macro after the selected plate. ImageJ's exit() ends
-    # the macro; it does not close the persistent Fiji application.
+    # Stop only after the selected plate has exported and its persistent run
+    # number has been recorded. ImageJ's exit() ends the macro, not Fiji.
     source, substitutions = re.subn(
-        r"(processedImages\+\+;)\s*(print\()",
-        r"\1\n        exit();\n\n        \2",
+        r'(File\.append\(stateKey \+ "\\t" \+ runNumber \+ "\\n", stateFile\);\s*)',
+        r"\1exit();\n\n        ",
         source,
         count=1,
     )
+    if substitutions == 0:
+        # Compatibility with compact fixture/older generated macros that do
+        # not yet have persistent run-state logging.
+        source, substitutions = re.subn(
+            r"(processedImages\+\+;)\s*(print\()",
+            r"\1\n        exit();\n\n        \2",
+            source,
+            count=1,
+        )
     if substitutions != 1:
         raise SystemExit("Prepared one-plate macro no longer has one unambiguous post-export stop point.")
     return source
