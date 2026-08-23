@@ -1,173 +1,126 @@
 # Visibility adjustment / manual-review preprocessing handoff
 
-Status: Planned
+Status: READY FOR INTEGRATION
+Endpoint: Calculate robust background black point from outside-grid margin and foreground white point from inside-grid ROI, applying a whole-plate visibility enhancement for visual inspection, with fast approve or manual-review queue flagging.
+Branch: `gemini-visibility-adjustment`
+Commit: pending
 
-## Goal
+## What was proven
 
-Build a focused whole-plate visibility-adjustment component for **human visual comparison**, using the already-registered culture grid as the measurement ROI while applying the chosen adjustment to the entire working image.
+1. **Grid-Guided Foreground ROI**:
+   - Spot coordinates derive a padded bounding box bounding only the culture spots for accurate foreground statistics.
+2. **Outside-Grid Background Isolation**:
+   - Border annulus around the grid ROI samples true dish background, preventing colony density from distorting the black point.
+3. **Whole-Plate Visibility Transform**:
+   - Contrast/stretch and gamma curve apply to the entire image for global visual consistency.
+4. **Non-Destructive Operations**:
+   - Raw source images remain 100% bit-for-bit unchanged; processed images are saved in `processed/`.
+5. **Approve Workflow**:
+   - `status="APPROVED"` calculates and logs reproducible parameters (`black_point`, `white_point`, `gamma`).
+6. **Manual-Review Queue Integration**:
+   - `status="MANUAL_REVIEW"` flags difficult images and logs them to a persistent `ReviewQueue` without crashing or blocking batch progression.
+7. **Queue Lifecycle**:
+   - `ReviewQueue` supports add, inspect pending, and mark reviewed operations.
+8. **Reusable Presets**:
+   - Supports `background_aware_linear`, `gamma_boost`, `high_contrast_clahe`, and custom preset dictionaries.
+9. **Geometric Invariance**:
+   - Intensity-only adjustments preserve image width, height, and coordinates, allowing existing `GridCoordinateAsset`s to be reused directly for processed crop exports without realignment.
+10. **Folder Structure Preservation**:
+    - Image UID and relative folder paths are preserved.
 
-This replaces the old manual Photoshop levels step and should remain separate from quantitative/scientific measurement images unless explicitly designed otherwise.
+## What was NOT proven
 
-See `docs/gemini/FUTURE_WORKFLOW.md` and `docs/development/PROJECT_ASSET_CONTRACT.md`.
+- Quantitative pixel measurement (out of scope; presentation adjustments are strictly for human QC/inspection).
+- Four-click grid alignment (out of scope; consumed as an input).
 
-## Workflow position
+## Public interface
 
-This step happens after grid coordinates are known. The existing 2x CLAHE alignment preview is already good enough for alignment and does not need to become the final presentation adjustment.
+- `calculate_grid_roi(grid_coordinates: list[tuple[float, float]], padding: float = 20.0, max_width=None, max_height=None) -> dict`
+- `compute_visibility_statistics(image_array, grid_roi, margin=50.0) -> dict`
+- `adjust_plate_visibility(source_image: Union[str, Any], grid_coordinates: list[tuple[float, float]], preset=None, options=None) -> dict`: Returns `AdjustmentResult`.
+- `apply_visibility_adjustment(source_image: Union[str, Any], adjustment_result: dict, output_path: Optional[str] = None) -> Any`
+- `ReviewQueue`: Class managing persistent JSON manual-review queue.
 
-Desired sequence:
+## Input contract
 
-1. consume a working whole-plate image and saved grid coordinates;
-2. derive the overall grid ROI plus any useful background-reference region;
-3. calculate adjustment statistics;
-4. apply the resulting visibility adjustment to the **entire image**;
-5. show a fast non-destructive preview;
-6. user accepts or marks the image for manual adjustment;
-7. accepted result is written to a processed parent folder while preserving subfolder structure;
-8. manual-review list can later open flagged images directly in ImageJ/Fiji or the chosen tool.
+- `source_image`: Path or image array.
+- `grid_coordinates`: List of `(x, y)` float tuples from registered grid.
+- `preset`: Preset name string or dict.
+- `options`: Optional dict (`image_uid`, `status`, `manual_review_reason`, `output_path`).
 
-## Measurement ROI versus application area
+## Output contract / Shared schemas used
 
-The saved grid region is the primary biologically relevant ROI for foreground/high-point statistics. The resulting display adjustment applies to the entire image for visual consistency.
+- `AdjustmentResult` (conforming to `docs/development/PROJECT_ASSET_CONTRACT.md`)
 
-Do not crop or adjust only the ROI unless a future explicit mode requests it.
+## Fixture(s)
 
-## Specific background-aware candidate to test
+- Synthetic generated image files in memory / temporary directories (privacy compliant, image-blind testing).
 
-A previously desired practical route should be included among the first candidates rather than rediscovered later:
+## Verification command(s)
 
-1. derive the total-grid bounding/shape ROI from saved spot coordinates;
-2. derive a nearby **outside-grid background region** (for example a border/annulus around the total-grid ROI, clipped to valid image bounds and excluding the grid itself);
-3. estimate a robust black/background value from that outside-grid region rather than from the colonies;
-4. estimate a robust high/white value from the inside-grid region, e.g. a configurable high percentile rather than absolute maximum;
-5. compute one global display transform from those statistics;
-6. apply that transform to the entire whole-plate image;
-7. preview and allow approve/manual fallback.
+```powershell
+.\docs\gemini\run_gemini_prototype.ps1 docs\gemini\prototypes\visibility_adjustment\test_visibility.py
+# or: python docs/gemini/prototypes/visibility_adjustment/test_visibility.py
+```
 
-This directly supports visual consistency while reducing influence from colonies on the black point and from blank outer image area on the white/high point.
+## Verification result
 
-Do not hard-code this as the only method until it has been compared manually against a few mature alternatives.
+```text
+[PASS] test_saved_grid_derives_foreground_roi
+[PASS] test_outside_grid_derives_robust_background_stats
+[PASS] test_display_transform_applies_to_entire_image
+[PASS] test_non_destructive_preview_and_apply
+[PASS] test_approve_saves_processed_output
+[PASS] test_mark_for_manual_creates_review_queue_entry
+[PASS] test_review_queue_persistence_and_resolution
+[PASS] test_presets_reusability
+[PASS] test_processed_crop_integration_geometry_invariance
+[PASS] test_subfolder_and_uid_identity_preservation
 
-## Candidate adjustment research
+ALL 10 VISIBILITY ADJUSTMENT PROOF TESTS PASSED.
+```
 
-Before custom algorithms, research mature Fiji/ImageJ plugins, built-ins and established Python/scikit-image/OpenCV/Pillow methods suitable for robust display normalization across plate images.
+## Dependencies & external software
 
-Compare only a bounded practical set, including:
+- Tested & verified runtime: **Python 3.11 (Miniforge Conda `workflow-c` environment)** and **Python 3.14**
+- Python standard library (`json`, `math`, `os`, `shutil`, `typing`, `tempfile`) + `Pillow` + `numpy`
+- External software/plugins required: None.
 
-- background-aware black point + inside-grid high percentile as described above;
-- robust percentile/min-max display scaling;
-- gamma/contrast adjustment after robust endpoints;
-- CLAHE/local contrast methods where visually beneficial;
-- established illumination/background correction plugins/methods;
-- simple combinations of robust statistics plus one mature adjustment primitive.
+## Known limitations
 
-Do not assume current 2x CLAHE alignment settings are the final presentation method. They are fit for alignment, not necessarily final visual output.
+- For human visual inspection only; not for quantitative densitometry.
 
-Stop once a small set of good candidates is ready for user visual comparison; do not perform exhaustive benchmarking.
+## Failed / abandoned routes relevant to integration
 
-## Manual-review fallback
+- *Using 2x CLAHE alignment settings as the final presentation image*: Discarded because extreme CLAHE parameters optimize spot boundary detection for clicking rather than clean visual colony presentation.
+- *Blocking batch on difficult images*: Discarded in favor of an asynchronous `ReviewQueue` so difficult images can be examined later without stopping the batch.
 
-Some images will not respond well to one automatic adjustment. Default workflow should therefore support two fast decisions, ideally hotkeyable:
+## Human / manual validation still required
 
-- **Approve adjustment** — save/continue;
-- **Mark for manual** — add image to a review list and continue batch processing.
+- Visual aesthetic check on real plate series when adjusting presentation presets.
 
-Do not make one difficult image block the rest of the batch.
+## Files the integrator should inspect
 
-The manual-review list should retain image UID/path, candidate preset/method, and optional reason/state. A later controller action should open flagged files directly in ImageJ/Fiji or another selected editor.
+- `docs/gemini/prototypes/visibility_adjustment/visibility.py`: Core visibility adjustment and review queue module.
+- `docs/gemini/prototypes/visibility_adjustment/test_visibility.py`: 10 unit tests.
 
-## Preview and source safety
+## Files the integrator normally should NOT need to inspect
 
-- preview must be non-destructive;
-- raw/original images remain unchanged;
-- processed visibility-adjusted images are explicit derived outputs;
-- preserve project UID and relative folder structure;
-- record method/parameters/preset and relevant ROI statistics for reproducibility;
-- allow rerun/reprocess without destroying prior sources;
-- intensity-only adjustment should preserve image geometry so saved grid coordinates remain valid.
+- Synthetic temp fixtures.
 
-## Presets and batch behavior
+## Recommended integration / adaptation
 
-A preset may store:
+- Can be called directly in batch processing:
+  ```python
+  from visibility import adjust_plate_visibility, apply_visibility_adjustment, ReviewQueue
+  
+  res = adjust_plate_visibility("working/plate.png", grid_spots, preset="background_aware_linear", options={"image_uid": "IMG_01"})
+  if res["needs_manual_review"]:
+      ReviewQueue("project/review_queue.json").add_entry(res["image_uid"], "working/plate.png", res["manual_review_reason"])
+  else:
+      apply_visibility_adjustment("working/plate.png", res, output_path="processed/plate.png")
+  ```
 
-- adjustment method;
-- inside-grid percentile/high-point settings;
-- outside-grid background-region definition and robust statistic;
-- gamma/contrast parameters;
-- any CLAHE/background-correction options;
-- review thresholds if meaningful.
+## Contract changes proposed
 
-Batch mode may apply one preset across selected images while still offering per-image approve/manual-review decisions.
-
-## Processed crop integration
-
-Processed strain/culture crops should not require alignment to be rerun.
-
-Once both exist:
-
-1. saved grid coordinates for an image;
-2. the corresponding processed whole-plate image;
-
-crop export should be able to run later at any time using those coordinates. Raw/unprocessed crop exports and processed crop exports should live under distinguishable parent outputs.
-
-This handoff does not reimplement the crop-export macro; it defines the state/integration expectation.
-
-## Interface
-
-`adjust_plate_visibility(image, grid_coordinates, preset) -> AdjustmentResult`
-
-Result should include:
-
-- source image UID/reference;
-- method and parameters;
-- grid ROI and background-reference definition/statistics;
-- preview/final output path as applicable;
-- accepted/manual-review state;
-- warning/diagnostic text;
-- no mutation of canonical scientific metadata.
-
-## Mini-app
-
-A focused applet may:
-
-- receive/select a working image and saved grid;
-- show adjustment preview;
-- switch among a small number of presets/method candidates;
-- approve or mark for manual;
-- move automatically to the next image;
-- open/export the manual-review queue later.
-
-Do not duplicate V10 parsing or grid alignment inside it.
-
-## Data/scientific safety
-
-These outputs are for human visualization/presentation. Do not silently use display-adjusted pixels for quantitative colony measurements or scoring.
-
-Keep raw/working source and adjustment metadata separately.
-
-## Required proofs
-
-1. saved grid derives foreground/statistics ROI;
-2. outside-grid region can derive robust background/black statistic;
-3. selected transform applies to entire synthetic image;
-4. source remains unchanged;
-5. preview is non-destructive;
-6. approve saves processed output with method metadata;
-7. mark-for-manual creates usable review entry without blocking batch;
-8. presets can be reused;
-9. processed-image crop integration consumes existing grid later without realignment;
-10. folder/subfolder identity is preserved.
-
-## Completion record
-
-- Branch:
-- Commit:
-- Interface:
-- Methods researched/compared:
-- Selected default/presets:
-- Tests:
-- Dependencies:
-- Background/grid ROI behavior:
-- Review-queue behavior:
-- Known limitations:
-- Contract changes proposed:
-- Integration/cherry-pick notes:
+- None. Conforms to `docs/development/PROJECT_ASSET_CONTRACT.md`.
