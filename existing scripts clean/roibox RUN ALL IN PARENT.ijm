@@ -606,7 +606,7 @@ function archiveReplacementCrops(folderName, fileName) {
     entries = split(File.openAsString(replacementManifest), "\n");
     for (entryIndex = 1; entryIndex < entries.length; entryIndex++) {
         fields = split(replace(entries[entryIndex], "\r", ""), "\t");
-        if (fields.length != 4 || fields[0] != folderName || fields[1] != fileName)
+        if (fields.length != 8 || fields[0] != folderName || fields[1] != fileName)
             continue;
         sourceCrop = fields[2];
         targetCrop = fields[3];
@@ -616,7 +616,45 @@ function archiveReplacementCrops(folderName, fileName) {
         eval("script", "var f=new java.io.File('" + escapeJavaScript(targetDir) + "'); f.mkdirs(); '';");
         if (!File.rename(sourceCrop, targetCrop))
             exit("Could not archive existing crop before replacement: " + sourceCrop);
+        updateDiscardManifest(
+            fields[6], fields[4], fields[7], fields[5],
+            folderName, fileName, sourceCrop, targetCrop
+        );
     }
+}
+
+
+function updateDiscardManifest(manifestPath, strain, archivedAt, originalCropTime, folderName, fileName, sourceCrop, targetCrop) {
+    separator = "======================================================================\n";
+    marker = "STRAIN: " + strain + "\n";
+    columnHeader = "archived_at\toriginal_crop_time\tsource_folder\tsource_plate\toriginal_crop\tdiscarded_crop\n";
+    row = archivedAt + "\t" + originalCropTime + "\t" + folderName + "\t" + fileName + "\t" + sourceCrop + "\t" + targetCrop + "\n";
+    group = separator + marker + "----------------------------------------------------------------------\n" + columnHeader + row;
+
+    if (!File.exists(manifestPath)) {
+        File.saveString(group, manifestPath);
+        return;
+    }
+
+    existing = File.openAsString(manifestPath);
+    groupStart = indexOf(existing, marker);
+    if (groupStart < 0) {
+        if (!endsWith(existing, "\n"))
+            existing = existing + "\n";
+        File.saveString(existing + group, manifestPath);
+        return;
+    }
+
+    groupAndAfter = substring(existing, groupStart);
+    nextGroupOffset = indexOf(groupAndAfter, "\n======================================================================\n");
+    if (nextGroupOffset < 0)
+        File.saveString(existing + row, manifestPath);
+    else
+        File.saveString(
+            substring(existing, 0, groupStart + nextGroupOffset + 1) + row +
+            substring(existing, groupStart + nextGroupOffset + 1),
+            manifestPath
+        );
 }
 
 

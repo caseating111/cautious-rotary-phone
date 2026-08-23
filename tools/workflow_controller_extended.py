@@ -40,6 +40,7 @@ class ExtendedController(Controller):
         self.skip_done = tk.BooleanVar(value=True)
         self.batch_subfolder = tk.StringVar()
         self.project_prefix = tk.StringVar(value=project_layout.default_prefix())
+        self.fiji_processes: list[subprocess.Popen] = []
 
         project_frame = ttk.Frame(self)
         project_frame.grid(row=18, column=0, columnspan=3, sticky="ew", padx=5, pady=(6, 3))
@@ -109,16 +110,19 @@ class ExtendedController(Controller):
             text="Run one-plate 4-point proof (choose plate)",
             command=lambda: self.run_one_plate_validation(rerun_done=False),
         ).grid(row=25, column=0, columnspan=3, sticky="ew", padx=5, pady=(0, 6))
-
-    def close_controller(self) -> None:
-        """Close controller-owned helpers before returning control to the launcher."""
-        self.stop_ahk()
-        self.destroy()
         ttk.Button(
             self,
             text="Reset / re-run selected DONE plate",
             command=lambda: self.run_one_plate_validation(rerun_done=True),
         ).grid(row=26, column=0, columnspan=3, sticky="ew", padx=5, pady=(0, 6))
+
+    def close_controller(self) -> None:
+        """Close controller-owned helpers before returning control to the launcher."""
+        self.stop_ahk()
+        for process in self.fiji_processes:
+            if process.poll() is None:
+                process.terminate()
+        self.destroy()
 
     def refresh_subfolders(self, widget: ttk.Combobox) -> None:
         root = Path(self.vars["image_root"].get().strip())
@@ -325,7 +329,7 @@ class ExtendedController(Controller):
             started_ahk_here = bool(self.ahk_process and self.ahk_process.poll() is None)
 
         try:
-            selected = one_plate_validation.run(
+            selected, fiji_process = one_plate_validation.run_with_process(
                 filename,
                 rerun_done=rerun_done,
                 replace_existing=self.replace_existing_crops.get(),
@@ -336,6 +340,8 @@ class ExtendedController(Controller):
             messagebox.showerror("One-plate validation", str(exc))
             self.status.set("One-plate proof was not launched; authoritative prepare-only results remain available.")
             return
+        self.fiji_processes = [process for process in self.fiji_processes if process.poll() is None]
+        self.fiji_processes.append(fiji_process)
 
         filename = selected.get("Filename", "")
         context = "/".join(

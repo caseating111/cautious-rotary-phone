@@ -225,18 +225,6 @@ def enhance_four_point_macro(source: str) -> str:
         // source pixels and the established crop export remain untouched.
         // ====================================================
 
-        showMessage(
-            "Next plate",
-            "Folder: " + cleanFolderName + "\n\n" +
-            "Image: " + sourceTitle + "\n\n" +
-            "Experiment: " + experiment + "\n" +
-            "Set: " + setName + "\n" +
-            "Type: " + typeName + "\n" +
-            "Grid: 8 x " + gridCols + "\n" +
-            "Exports: " + (nWanted * 2) + "\n\n" +
-            "A temporary CLAHE alignment view will open. The ROI 1-click Rotated Rectangle Click Tool will be selected automatically for the four colony-centre clicks."
-        );
-
         // Disposable alignment-only copy. Source pixels remain untouched.
         selectWindow(sourceTitle);
         if (isOpen("__alignment_view__")) {
@@ -377,11 +365,15 @@ def enhance_four_point_macro(source: str) -> str:
             }
             Overlay.show;
 
-            Dialog.create("Full-grid QC");
-            Dialog.addMessage(
-                "Inspect 8 x " + gridCols + " grid | Accept: export crops | Retry: repeat four points."
+            // GenericDialog only places a choice beside its own label. Keep the
+            // entire instruction on that single compact row rather than adding
+            // a vertically separate message row.
+            Dialog.create("Full-grid QC  ♦  Inspect 8 x " + gridCols + " grid");
+            Dialog.addChoice(
+                "Action  ♦  Accept: export crops  ♦  Retry: repeat four points",
+                newArray("Accept", "Retry"),
+                "Accept"
             );
-            Dialog.addChoice("Action", newArray("Accept", "Retry"), "Accept");
             Dialog.show();
             qcAction = Dialog.getChoice();
             if (qcAction == "Accept") {

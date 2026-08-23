@@ -126,11 +126,14 @@ def patch_prepared_macro(
             raise SystemExit("Prepared macro has no unambiguous replacement-manifest setting.")
         source = source.replace(old_manifest, new_manifest, 1)
 
-    # Stop only after the selected plate has exported and its persistent run
-    # number has been recorded. ImageJ's exit() ends the macro, not Fiji.
+    # A one-plate proof narrows the metadata file to the selected plate, but it
+    # must finish the immediate source-folder loop so Fiji logs every other
+    # plate's current state. Remove an old early-stop patch if present.
     source, substitutions = re.subn(
-        r'(File\.append\(stateKey \+ "\\t" \+ runNumber \+ "\\n", stateFile\);\s*)',
-        r"\1exit();\n\n        ",
+        r'(File\.append\(stateKey \+ "\\t" \+ runNumber \+ "\\n", stateFile\);\s*)'
+        r'(?:exit\(\);\s*)?'
+        r'(print\([\s\S]*?\);\s*)',
+        r"\1\2",
         source,
         count=1,
     )
@@ -139,12 +142,12 @@ def patch_prepared_macro(
         # not yet have persistent run-state logging.
         source, substitutions = re.subn(
             r"(processedImages\+\+;)\s*(print\()",
-            r"\1\n        exit();\n\n        \2",
+            r"\1\n        \2",
             source,
             count=1,
         )
     if substitutions != 1:
-        raise SystemExit("Prepared one-plate macro no longer has one unambiguous post-export stop point.")
+        raise SystemExit("Prepared one-plate macro no longer has one unambiguous post-export completion point.")
     return source
 
 
@@ -218,7 +221,13 @@ def prepare(filename: str | None = None, *, rerun_done: bool = False, replace_ex
     return proof_macro, selected
 
 
-def run(filename: str | None = None, *, rerun_done: bool = False, replace_existing: bool = False) -> dict[str, str]:
+def run_with_process(
+    filename: str | None = None,
+    *,
+    rerun_done: bool = False,
+    replace_existing: bool = False,
+) -> tuple[dict[str, str], subprocess.Popen]:
+    """Launch one proof and return the controller-owned Fiji process."""
     if filename and proof_plate_is_open(filename):
         raise SystemExit(
             f"The selected proof plate is already open in Fiji: {Path(filename).name}. "
@@ -239,9 +248,19 @@ def run(filename: str | None = None, *, rerun_done: bool = False, replace_existi
     macro, selected = prepare(filename, rerun_done=rerun_done, replace_existing=replace_existing)
     command = [str(fiji), "--no-splash", "-macro", str(macro)]
     try:
-        subprocess.Popen(command, cwd=fiji.parent)
+        process = subprocess.Popen(command, cwd=fiji.parent)
     except OSError as exc:
         raise SystemExit(f"Could not launch Fiji one-plate validation: {exc}") from exc
+    return selected, process
+
+
+def run(filename: str | None = None, *, rerun_done: bool = False, replace_existing: bool = False) -> dict[str, str]:
+    """Backward-compatible one-plate launcher for command-line callers."""
+    selected, _process = run_with_process(
+        filename,
+        rerun_done=rerun_done,
+        replace_existing=replace_existing,
+    )
     return selected
 
 

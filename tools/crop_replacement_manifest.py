@@ -30,23 +30,25 @@ def write_manifest(config: dict, row: dict[str, str], path: Path) -> int:
             crop = crop_root / source.parent.name / f"{prefix}_{state}_{strain}.png"
             if crop.is_file():
                 by_strain[strain].append(crop)
-    planned_files: list[tuple[str, str, Path]] = []
+    planned_files: list[tuple[str, str, str, Path]] = []
     for strain, files in sorted(by_strain.items()):
         stamp = datetime.fromtimestamp(median(item.stat().st_ctime for item in files)).strftime("%d.%m.%y_%H.%M")
         for crop in files:
-            planned_files.append((f"{stamp}_{strain}", strain, crop))
+            planned_files.append((strain, strain, stamp, crop))
 
     batch_root = crop_root.parent / "Discards" / "Discarded_Crops" / f"{row['Experiment']}_{row['Set']}"
     batch_number = 1
     while True:
         batch_dir = batch_root / f"DiscardBatch_{batch_number:03d}"
-        targets = [batch_dir / group / crop.name for group, _strain, crop in planned_files]
+        targets = [batch_dir / group / crop.name for group, _strain, _stamp, crop in planned_files]
         if not any(target.exists() for target in targets):
             break
         batch_number += 1
 
+    prepared_at = datetime.now().strftime("%d.%m.%y_%H.%M")
     planned: list[dict[str, str]] = []
-    for group, _strain, crop in planned_files:
+    archive_manifest = batch_dir / "discard_manifest.tsv"
+    for group, strain, original_stamp, crop in planned_files:
         target = batch_dir / group / crop.name
         planned.append(
             {
@@ -54,11 +56,28 @@ def write_manifest(config: dict, row: dict[str, str], path: Path) -> int:
                 "filename": row["Filename"],
                 "source": crop.as_posix(),
                 "target": target.as_posix(),
+                "strain": strain,
+                "original_crop_time": original_stamp,
+                "archive_manifest": archive_manifest.as_posix(),
+                "archived_at": prepared_at,
             }
         )
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=["folder", "filename", "source", "target"], delimiter="\t")
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=[
+                "folder",
+                "filename",
+                "source",
+                "target",
+                "strain",
+                "original_crop_time",
+                "archive_manifest",
+                "archived_at",
+            ],
+            delimiter="\t",
+        )
         writer.writeheader()
         writer.writerows(planned)
     return len(planned)

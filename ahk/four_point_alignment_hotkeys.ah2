@@ -108,7 +108,6 @@ PlaceAlignmentPreviewBelowDialogs()
         }
     }
     try WinMove(targetX, targetY, , , preview)
-    try WinSetAlwaysOnTop(1, "ahk_id " preview)
 }
 
 MoveKnownWorkflowWindowsOnce()
