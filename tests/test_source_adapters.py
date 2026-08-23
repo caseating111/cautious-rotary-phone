@@ -9,11 +9,11 @@ from unittest.mock import patch
 from PIL import Image
 
 from tools import run_existing_pillow_from_config as pillow_adapter
-from tools import run_full_column_batch_from_config as batch_adapter
+from tools import four_point_batch as batch_adapter
 
 
 class SourceAdapterTests(unittest.TestCase):
-    def test_full_column_batch_keeps_loop_and_replaces_calibration(self) -> None:
+    def test_four_point_batch_configures_existing_macro(self) -> None:
         config = {
             "grid_csv": "C:/project/grid.csv",
             "images_csv": "C:/project/images.csv",
@@ -24,46 +24,13 @@ class SourceAdapterTests(unittest.TestCase):
             "crop_height": 560,
         }
         with tempfile.TemporaryDirectory() as temp:
-            output = Path(temp) / "batch.ijm"
+            output = Path(temp) / "four-point.ijm"
             pending = Path(temp) / "pending_images.csv"
-            state = Path(temp) / "legacy-state.txt"
+            state = Path(temp) / "grid-state.txt"
             with patch.object(batch_adapter, "CONFIGURED_MACRO", output), patch.object(
                 batch_adapter, "PENDING_IMAGES_CSV", pending
-            ), patch.object(batch_adapter, "LEGACY_STATE_FILE", state):
+            ), patch.object(batch_adapter, "STATE_FILE", state):
                 built = batch_adapter.build_macro(config)
-
-            text = built.read_text(encoding="utf-8")
-            self.assertIn('gridFile   = "C:/project/grid.csv";', text)
-            self.assertIn(str(pending).replace("\\", "/"), text)
-            self.assertIn(str(state).replace("\\", "/"), text)
-            self.assertIn('inputRoot  = "C:/project/images";', text)
-            self.assertIn('outputRoot = "C:/project/crops";', text)
-            self.assertIn("CROP_W = 140;", text)
-            self.assertIn("CROP_H = 560;", text)
-            self.assertIn("tolerance=0.05", text)
-            self.assertIn("folders = getFileList(inputRoot);", text)
-            self.assertIn("runMacro(", text)
-            self.assertNotIn("1 / 4 — R1C1", text)
-            self.assertNotIn("4 / 4 — R5C", text)
-
-    def test_four_point_fallback_only_configures_existing_macro(self) -> None:
-        config = {
-            "grid_csv": "C:/project/grid.csv",
-            "images_csv": "C:/project/images.csv",
-            "image_root": "C:/project/images",
-            "crop_output": "C:/project/crops",
-            "alignment_tolerance": 0.05,
-            "crop_width": 140,
-            "crop_height": 560,
-        }
-        with tempfile.TemporaryDirectory() as temp:
-            output = Path(temp) / "legacy.ijm"
-            pending = Path(temp) / "pending_images.csv"
-            state = Path(temp) / "legacy-state.txt"
-            with patch.object(batch_adapter, "CONFIGURED_LEGACY_MACRO", output), patch.object(
-                batch_adapter, "PENDING_IMAGES_CSV", pending
-            ), patch.object(batch_adapter, "LEGACY_STATE_FILE", state):
-                built = batch_adapter.build_legacy_macro(config)
 
             text = built.read_text(encoding="utf-8")
             self.assertIn('gridFile   = "C:/project/grid.csv";', text)
@@ -75,10 +42,9 @@ class SourceAdapterTests(unittest.TestCase):
             self.assertIn("CROP_H = 560;", text)
             self.assertIn("1 / 4 - R1C1", text)
             self.assertIn("4 / 4 - R5C", text)
-            self.assertNotIn("FULL-COLUMN COMPOSED ROUTE", text)
             self.assertNotIn('"path here"', text)
 
-    def test_four_point_fallback_rejects_grid_width_outside_original_contract(self) -> None:
+    def test_four_point_route_rejects_grid_width_outside_contract(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             grid = Path(temp) / "grid.csv"
             grid.write_text(
@@ -87,8 +53,8 @@ class SourceAdapterTests(unittest.TestCase):
                 encoding="utf-8",
             )
             with self.assertRaises(SystemExit) as caught:
-                batch_adapter.validate_legacy_grid_widths({"grid_csv": str(grid)})
-            self.assertIn("only supports its original 10- or 12-column grids", str(caught.exception))
+                batch_adapter.validate_grid_widths({"grid_csv": str(grid)})
+            self.assertIn("supports 10- or 12-column grids", str(caught.exception))
 
     def test_prepare_only_config_does_not_require_fiji_path(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -115,23 +81,20 @@ class SourceAdapterTests(unittest.TestCase):
     def test_batch_runtime_precheck_keeps_prepare_only_independent_of_fiji(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            required = [root / name for name in ("source.ijm", "align.ijm", "crop.ijm", "validate.py", "preflight.py")]
+            required = [root / name for name in ("source.ijm", "validate.py", "preflight.py")]
             for path in required:
                 path.write_text("placeholder\n", encoding="utf-8")
 
             config = {"fiji_executable": str(root / "missing-fiji.exe")}
             patches = [
                 patch.object(batch_adapter, "SOURCE_MACRO", required[0]),
-                patch.object(batch_adapter, "ALIGNMENT_MACRO", required[1]),
-                patch.object(batch_adapter, "CROP_HELPER", required[2]),
-                patch.object(batch_adapter, "VALIDATOR", required[3]),
-                patch.object(batch_adapter, "PREFLIGHT", required[4]),
+                patch.object(batch_adapter, "VALIDATOR", required[1]),
+                patch.object(batch_adapter, "PREFLIGHT", required[2]),
             ]
             for item in patches:
                 item.start()
             try:
                 batch_adapter.validate_runtime_files(config, require_fiji=False)
-                batch_adapter.validate_runtime_files(config, require_fiji=False, legacy=True)
                 with self.assertRaises(SystemExit) as caught:
                     batch_adapter.validate_runtime_files(config, require_fiji=True)
                 self.assertIn("Fiji executable not found", str(caught.exception))

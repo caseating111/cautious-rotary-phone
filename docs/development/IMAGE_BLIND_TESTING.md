@@ -62,15 +62,11 @@ That directory must contain text/JSON/CSV/log/geometry data only. Never place sc
 
 ## Temp redirection and default launch path
 
-For privacy-sensitive controller tests, use `start_controller_private_test.cmd` by default. It sets process-local `TEMP`, `TMP`, and Java `java.io.tmpdir` to the external `C:\LocalWorkflowData\PrivateTemp` tree and then invokes the **non-Anaconda Windows Python 3.14 launcher** (`start_controller_no_anaconda.cmd`). Child processes launched by the controller inherit these locations.
-
-Do not use Anaconda/conda for the default private-test route. Anaconda integration is deferred unless the user explicitly requests it later.
-
-For a direct Fiji test that does not start through the controller, use `tools/start_fiji_private_test.ps1 -FijiExecutable <path> [Fiji args...]`. It applies the same private TEMP/TMP/java.io.tmpdir boundary to the Fiji process without globally changing Windows or Java settings.
+Use `start_controller_miniforge.cmd` for privacy-sensitive controller runs. It sets process-local `TEMP`, `TMP`, and Java `java.io.tmpdir` to the external `C:\LocalWorkflowData\PrivateTemp` tree before launching the Miniforge Python 3.11 controller. Child processes inherit these locations.
 
 Do not globally modify the user's Windows TEMP/TMP or Java configuration merely for this project.
 
-A Fiji process that was already running before either private launcher started did **not** inherit these process-local temp settings. Both private launch routes therefore refuse an already-running `ImageJ-win64` process. Close Fiji first and let the private launcher start the test instance.
+A Fiji process already running before the launcher did **not** inherit these process-local temp settings. Close Fiji first when validating the privacy boundary so the launched process inherits them.
 
 The launchers redirect conventional Windows/Java temporary storage. Fiji plugins can still choose their own explicit output paths; any plugin/script that writes pixel-bearing intermediates must be configured to use the external private tree rather than the repository or telemetry directory.
 

@@ -6,7 +6,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 EXTENDED = REPO_ROOT / "tools" / "workflow_controller_extended.py"
-STARTER = REPO_ROOT / "start_controller.cmd"
+STARTER = REPO_ROOT / "start_controller_miniforge.cmd"
 
 
 class ControllerExtensionContractTests(unittest.TestCase):
@@ -31,7 +31,7 @@ class ControllerExtensionContractTests(unittest.TestCase):
         self.assertNotIn("one_plate_validation.proof_is_running()", block)
         self.assertIn("filedialog.askopenfilename(", block)
         self.assertIn("filename = Path(chosen).name", block)
-        self.assertIn("selected = one_plate_validation.run(filename, legacy=True, rerun_done=rerun_done)", block)
+        self.assertIn("selected = one_plate_validation.run(filename, rerun_done=rerun_done)", block)
         self.assertIn("authoritative prepare-only results remain available", block)
         self.assertIn("Fiji macro handoff", block)
 
@@ -99,7 +99,7 @@ class ControllerExtensionContractTests(unittest.TestCase):
         self.assertIn('Path(raw) / "Processing Logs"', block)
         self.assertNotIn("_workflow", block)
 
-    def test_windows_starter_uses_extended_controller(self) -> None:
+    def test_windows_miniforge_starter_uses_extended_controller(self) -> None:
         text = STARTER.read_text(encoding="utf-8")
         self.assertIn("tools\\workflow_controller_extended.py", text)
         self.assertNotIn("tools\\workflow_controller.py", text)
@@ -110,7 +110,8 @@ class ControllerExtensionContractTests(unittest.TestCase):
         text = miniforge_starter.read_text(encoding="utf-8")
         self.assertIn("tools\\workflow_controller_extended.py", text)
         self.assertIn("PRIVATE_ROOT=C:\\LocalWorkflowData", text)
-        self.assertIn("-Djava.rmi.server.hostname=127.0.0.1", text)
+        self.assertIn("-Djava.io.tmpdir=%PRIVATE_JAVA_TEMP%", text)
+        self.assertNotIn("java.rmi", text)
 
 
 if __name__ == "__main__":

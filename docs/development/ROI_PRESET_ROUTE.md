@@ -10,13 +10,9 @@ Uses the existing **ROI 1-Click Tools** plugin rather than replacing it.
 
 The active preset is stored at `~/.cautious-rotary-phone/active_roi_preset.txt`; named presets are stored in `roi_presets.json` beside it. The patched upstream rectangle tool reads the active file immediately before each click, so changing presets does not require rewriting the plugin settings each time.
 
-## Important separation from full-column alignment
+## Four-point alignment use
 
-The ROI 1-Click preset is **not** the tall first/last-column alignment reference. Do not use the plugin's rotated-rectangle click tool to satisfy the `1 / 2` or `2 / 2` full-column prompts.
-
-`fiji/full_column_alignment.ijm` deliberately requires a normal axis-aligned tall rectangle for those two manual references. It reads the active preset only for the small per-culture boxes drawn in the proposed full-grid QC overlay and used by the established crop geometry. The tall first-column reference is remembered separately by the alignment macro for same-sized-image starting-position reuse.
-
-This separation keeps the published plugin doing the fixed per-culture ROI task it already handles while leaving manually authoritative whole-column alignment in native ImageJ selection interaction.
+The four-point macro selects the plugin's Rotated Rectangle Click Tool for R1C1, R1C(last), R5C1 and R5C(last). Saved width, height and angle provide the per-culture click box and QC box dimensions; the clicked ROI centres remain the authoritative grid references.
 
 ## Scope
 This slice intentionally handles the fixed rectangular per-culture ROI case only. It preserves ROI 1-Click Tools' own movement, ROI Manager, measurement and other behavior. The capture macro does not try to infer colony/ROI size automatically: the user's one manually validated per-culture ROI is the reference.

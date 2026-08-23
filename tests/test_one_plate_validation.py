@@ -10,6 +10,14 @@ from unittest.mock import patch
 from tools import run_one_plate_validation as proof
 
 
+TEST_TMP_ROOT = Path(__file__).resolve().parents[1] / ".local-test-telemetry" / "tmp"
+
+
+def local_tempdir():
+    TEST_TMP_ROOT.mkdir(parents=True, exist_ok=True)
+    return tempfile.TemporaryDirectory(dir=TEST_TMP_ROOT)
+
+
 class OnePlateValidationTests(unittest.TestCase):
     def test_default_uses_first_authoritative_pending_row(self) -> None:
         rows = [
@@ -31,7 +39,7 @@ class OnePlateValidationTests(unittest.TestCase):
             proof.choose_pending_row(rows, "missing.jpg")
 
     def test_one_row_csv_preserves_header_and_only_selected_row(self) -> None:
-        with tempfile.TemporaryDirectory() as temp:
+        with local_tempdir() as temp:
             path = Path(temp) / "proof.csv"
             fields = ["Filename", "Experiment", "Set", "Type"]
             row = {"Filename": "plate2.jpg", "Experiment": "E2", "Set": "B", "Type": "SALT"}
@@ -42,7 +50,7 @@ class OnePlateValidationTests(unittest.TestCase):
 
     def test_macro_patch_changes_only_pending_metadata_path(self) -> None:
         old = proof.batch.macro_path(proof.batch.PENDING_IMAGES_CSV)
-        with tempfile.TemporaryDirectory() as temp:
+        with local_tempdir() as temp:
             target = Path(temp) / "one.csv"
             source = f'imagesFile = "{old}";\nprocessedImages++;\nprint("keep");\n'
             patched = proof.patch_prepared_macro(source, target)
@@ -87,21 +95,21 @@ class OnePlateValidationTests(unittest.TestCase):
         self.assertIn("Overlay.drawLine(topX, topY, bottomX, bottomY)", generated)
         self.assertNotIn("Overlay.drawRect(qcX", generated)
 
-    def test_production_legacy_macro_uses_the_same_clahe_roi_and_qc_adapter(self) -> None:
+    def test_production_macro_uses_the_same_clahe_roi_and_qc_adapter(self) -> None:
         source = proof.batch.SOURCE_MACRO.read_text(encoding="utf-8")
-        with tempfile.TemporaryDirectory() as temp, patch.object(
+        with local_tempdir() as temp, patch.object(
             proof.batch, "configure_source_settings", return_value=source
         ), patch.object(proof.batch, "APP_DIR", Path(temp)), patch.object(
-            proof.batch, "CONFIGURED_LEGACY_MACRO", Path(temp) / "legacy.ijm"
+            proof.batch, "CONFIGURED_MACRO", Path(temp) / "four-point.ijm"
         ):
-            exact_path = proof.batch.build_legacy_macro({})
+            exact_path = proof.batch.build_macro({})
             exact = exact_path.read_text(encoding="utf-8")
         self.assertEqual(exact.count('run("Enhance Local Contrast (CLAHE)", claheOptions)'), 2)
         self.assertIn('" histogram=256 maximum=1000 mask=*None* fast_(less_accurate)"', exact)
         self.assertIn("claheBlock = round(roiBoxSize * 3.3)", exact)
         self.assertIn("Overlay.drawLine(p1x, p1y, p2x, p2y)", exact)
 
-    def test_direct_batch_script_context_can_build_legacy_interaction(self) -> None:
+    def test_direct_batch_script_context_can_build_four_point_interaction(self) -> None:
         tools_dir = proof.batch.REPO_ROOT / "tools"
         result = subprocess.run(
             [
@@ -110,13 +118,13 @@ class OnePlateValidationTests(unittest.TestCase):
                 (
                     "import shutil, tempfile\n"
                     "from pathlib import Path\n"
-                    "import run_full_column_batch_from_config as batch\n"
+                    "import four_point_batch as batch\n"
                     "target=Path(tempfile.mkdtemp())\n"
                     "source=batch.SOURCE_MACRO.read_text(encoding='utf-8')\n"
                     "batch.configure_source_settings=lambda _source,_config: source\n"
                     "batch.APP_DIR=target\n"
-                    "batch.CONFIGURED_LEGACY_MACRO=target/'legacy.ijm'\n"
-                    "batch.build_legacy_macro({})\n"
+                    "batch.CONFIGURED_MACRO=target/'four-point.ijm'\n"
+                    "batch.build_macro({})\n"
                     "print('DIRECT_SCRIPT_IMPORT_OK')\n"
                     "shutil.rmtree(target)\n"
                 ),
@@ -130,11 +138,47 @@ class OnePlateValidationTests(unittest.TestCase):
         self.assertIn("DIRECT_SCRIPT_IMPORT_OK", result.stdout)
 
     def test_selected_plate_window_match_is_exact_and_case_insensitive(self) -> None:
-        with patch.object(
-            proof,
-            "open_window_titles",
-            return_value=["(Fiji Is Just) ImageJ", "other.jpg", "PLATE1.JPG", "plate1.jpg - notes"],
-        ):
+        import ctypes as real_ctypes
+
+        fake_ctypes = type(
+            "FakeCtypes",
+            (),
+            {
+                "c_bool": real_ctypes.c_bool,
+                "c_void_p": real_ctypes.c_void_p,
+                "windll": type(
+                    "FakeWindll",
+                    (),
+                    {
+                        "user32": type(
+                            "FakeUser32",
+                            (),
+                            {
+                                "EnumWindows": staticmethod(
+                                    lambda callback, _lparam: all(callback(hwnd, 0) for hwnd in range(1, 5))
+                                ),
+                                "GetWindowTextLengthW": staticmethod(lambda _hwnd: 10),
+                                "GetWindowTextW": staticmethod(
+                                    lambda hwnd, buffer, _length: setattr(buffer, "value", titles[hwnd - 1]) or len(buffer.value)
+                                ),
+                            },
+                        )()
+                    },
+                )()
+            },
+        )()
+        titles = ["(Fiji Is Just) ImageJ", "other.jpg", "PLATE1.JPG", "plate1.jpg - notes"]
+
+        class Buffer:
+            value = ""
+
+        def create_unicode_buffer(_length: int) -> Buffer:
+            buffer = Buffer()
+            return buffer
+
+        fake_ctypes.create_unicode_buffer = staticmethod(create_unicode_buffer)
+        fake_ctypes.WINFUNCTYPE = staticmethod(lambda *_args: (lambda fn: fn))
+        with patch.dict("sys.modules", {"ctypes": fake_ctypes}):
             self.assertTrue(proof.proof_plate_is_open("plate1.jpg"))
             self.assertFalse(proof.proof_plate_is_open("plate2.jpg"))
             self.assertFalse(proof.proof_plate_is_open("notes"))
@@ -158,6 +202,8 @@ class OnePlateValidationTests(unittest.TestCase):
             proof, "prepare", return_value=(macro, selected)
         ), patch.object(
             proof.batch, "load_config", return_value=fake_config
+        ), patch.object(
+            proof, "ensure_roi_click_patch", return_value=False
         ), patch.object(proof.subprocess, "Popen", return_value=launched) as popen:
             result = proof.run("plate1.jpg")
         self.assertEqual(result, selected)
@@ -165,7 +211,7 @@ class OnePlateValidationTests(unittest.TestCase):
         self.assertEqual(popen.call_args.args[0], [str(fake_fiji), "--no-splash", "-macro", str(macro)])
         self.assertEqual(popen.call_args.kwargs["cwd"], fake_fiji.parent)
 
-    def test_new_roi_click_patch_requires_one_restart_before_legacy_proof(self) -> None:
+    def test_new_roi_click_patch_requires_one_restart_before_proof(self) -> None:
         fake_fiji = Path(__file__)
         fake_config = {"fiji_executable": str(fake_fiji)}
         with patch.object(proof, "proof_plate_is_open", return_value=False), patch.object(
@@ -174,7 +220,7 @@ class OnePlateValidationTests(unittest.TestCase):
             proof, "prepare"
         ) as prepare:
             with self.assertRaises(SystemExit) as caught:
-                proof.run("plate1.jpg", legacy=True)
+                proof.run("plate1.jpg")
         self.assertIn("Close/restart Fiji once", str(caught.exception))
         prepare.assert_not_called()
 
@@ -200,11 +246,11 @@ class OnePlateValidationTests(unittest.TestCase):
             with self.assertRaises(SystemExit):
                 proof.ensure_roi_click_patch(fake_fiji)
 
-    def test_four_point_prepare_uses_legacy_configured_macro(self) -> None:
-        with tempfile.TemporaryDirectory() as temp:
+    def test_four_point_prepare_uses_configured_macro(self) -> None:
+        with local_tempdir() as temp:
             root = Path(temp)
             pending = root / "pending.csv"
-            configured = root / "legacy.ijm"
+            configured = root / "four-point.ijm"
             proof_csv = root / "proof.csv"
             proof_macro = root / "proof.ijm"
             pending.write_text(
@@ -218,24 +264,23 @@ class OnePlateValidationTests(unittest.TestCase):
             completed = type("Completed", (), {"returncode": 0, "stdout": "ok", "stderr": ""})()
 
             with patch.object(proof.batch, "PENDING_IMAGES_CSV", pending), patch.object(
-                proof.batch, "CONFIGURED_LEGACY_MACRO", configured
+                proof.batch, "CONFIGURED_MACRO", configured
             ), patch.object(proof, "PROOF_IMAGES_CSV", proof_csv), patch.object(
-                proof, "PROOF_LEGACY_MACRO", proof_macro
+                proof, "PROOF_MACRO", proof_macro
             ), patch.object(proof.subprocess, "run", return_value=completed) as run_mock:
-                built, selected = proof.prepare("plate2.jpg", legacy=True)
+                built, selected = proof.prepare("plate2.jpg")
 
             self.assertEqual(built, proof_macro)
             self.assertEqual(selected["Filename"], "plate2.jpg")
-            self.assertIn("--legacy", run_mock.call_args.args[0])
             self.assertIn(proof.batch.macro_path(proof_csv), proof_macro.read_text(encoding="utf-8"))
 
 
     def test_done_rerun_uses_authoritative_images_row_when_pending_is_empty(self) -> None:
-        with tempfile.TemporaryDirectory() as temp:
+        with local_tempdir() as temp:
             root = Path(temp)
             pending = root / "pending.csv"
             images = root / "images.csv"
-            configured = root / "legacy.ijm"
+            configured = root / "four-point.ijm"
             proof_csv = root / "proof.csv"
             proof_macro = root / "proof.ijm"
             pending.write_text("Filename,Experiment,Set,Type\n", encoding="utf-8")
@@ -248,13 +293,13 @@ class OnePlateValidationTests(unittest.TestCase):
             )()
             config = {"images_csv": str(images)}
             with patch.object(proof.batch, "PENDING_IMAGES_CSV", pending), patch.object(
-                proof.batch, "CONFIGURED_LEGACY_MACRO", configured
+                proof.batch, "CONFIGURED_MACRO", configured
             ), patch.object(proof, "PROOF_IMAGES_CSV", proof_csv), patch.object(
-                proof, "PROOF_LEGACY_MACRO", proof_macro
+                proof, "PROOF_MACRO", proof_macro
             ), patch.object(proof.subprocess, "run", return_value=completed), patch.object(
                 proof, "_prepare_completed_plate_macro", return_value=configured
             ), patch.object(proof.batch, "load_config", return_value=config):
-                built, selected = proof.prepare("plate.jpg", legacy=True, rerun_done=True)
+                built, selected = proof.prepare("plate.jpg", rerun_done=True)
         self.assertEqual(built, proof_macro)
         self.assertEqual(selected["Filename"], "Plate.JPG")
 

@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 from tools import preflight_batch
 from tools import run_existing_pillow_from_config as pillow_adapter
-from tools import run_full_column_batch_from_config as batch_adapter
+from tools import four_point_batch as batch_adapter
 from tools import workflow_controller
 
 
@@ -43,8 +43,6 @@ class ConfigDefaultsContractTests(unittest.TestCase):
             self.assertEqual((preflight["crop_width"], preflight["crop_height"]), (130, 546))
             self.assertEqual((pillow["crop_width"], pillow["crop_height"]), (130, 546))
             self.assertEqual((controller["crop_width"], controller["crop_height"]), ("130", "546"))
-            self.assertEqual(batch["alignment_tolerance"], 0.08)
-            self.assertEqual(controller["alignment_tolerance"], "0.08")
 
 
 if __name__ == "__main__":

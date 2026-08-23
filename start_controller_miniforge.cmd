@@ -18,10 +18,6 @@ if not exist "%PRIVATE_WIN_TEMP%" mkdir "%PRIVATE_WIN_TEMP%" 2>nul
 if not exist "%PRIVATE_JAVA_TEMP%" mkdir "%PRIVATE_JAVA_TEMP%" 2>nul
 if not exist "%TELEMETRY_DIR%" mkdir "%TELEMETRY_DIR%" 2>nul
 
-rem Clean up any stale ImageJ RMI stub files from crashed/prior runs
-del /f /q "%PRIVATE_JAVA_TEMP%\ImageJ*.stub" 2>nul
-del /f /q "%LOCALAPPDATA%\Temp\ImageJ*.stub" 2>nul
-
 set "TEMP=%PRIVATE_WIN_TEMP%"
 set "TMP=%PRIVATE_WIN_TEMP%"
 set "CAUTIOUS_PRIVATE_DATA_ROOT=%PRIVATE_ROOT%"
@@ -35,8 +31,8 @@ if "%JAVA_HOME%"=="" (
     )
 )
 
-rem Bind Java temp directory and ensure localhost binding for RMI
-set "JAVA_TOOL_OPTIONS=-Djava.io.tmpdir=%PRIVATE_JAVA_TEMP% -Djava.rmi.server.hostname=127.0.0.1"
+rem Keep Java temporary files outside the repository/image tree.
+set "JAVA_TOOL_OPTIONS=-Djava.io.tmpdir=%PRIVATE_JAVA_TEMP%"
 
 rem 1. Check if workflow-c or cautious-rotary-phone environment is active
 if /I "%CONDA_DEFAULT_ENV%"=="workflow-c" (

@@ -25,7 +25,6 @@ DEFAULTS = {
     "grid_csv": "",
     "images_csv": "",
     "condition_order_csv": "",
-    "alignment_tolerance": "0.08",
     "crop_width": "130",
     "crop_height": "546",
     "visibility_band": "50",
@@ -47,7 +46,6 @@ PILLOW_JOBS = {
 }
 
 PROCESSING_SETTINGS = [
-    ("Alignment peak tolerance", "alignment_tolerance"),
     ("Crop width", "crop_width"),
     ("Crop height", "crop_height"),
     ("Visibility outside band", "visibility_band"),
@@ -248,7 +246,6 @@ class Controller(tk.Tk):
 
         def save_and_close() -> None:
             try:
-                alignment_tolerance = float(self.vars["alignment_tolerance"].get())
                 crop_width = int(self.vars["crop_width"].get())
                 crop_height = int(self.vars["crop_height"].get())
                 visibility_band = float(self.vars["visibility_band"].get())
@@ -258,15 +255,12 @@ class Controller(tk.Tk):
                 if not all(
                     math.isfinite(value)
                     for value in (
-                        alignment_tolerance,
                         visibility_band,
                         visibility_black_offset,
                         percentile,
                     )
                 ):
                     raise ValueError("Processing settings must be finite numbers.")
-                if alignment_tolerance <= 0:
-                    raise ValueError("Alignment tolerance must be positive.")
                 if crop_width <= 0 or crop_height <= 0:
                     raise ValueError("Crop dimensions must be positive integers.")
                 if visibility_band < 1:
@@ -350,7 +344,7 @@ class Controller(tk.Tk):
             return
         exe_raw = self.vars["ahk_executable"].get().strip()
         exe = Path(exe_raw) if exe_raw else None
-        script = REPO_ROOT / "ahk" / "full_column_alignment_hotkeys.ah2"
+        script = REPO_ROOT / "ahk" / "fiji_workflow_hotkeys.ah2"
         if not exe or not exe.is_file():
             messagebox.showerror("AutoHotkey", "Select the AutoHotkey v2 executable first.")
             return

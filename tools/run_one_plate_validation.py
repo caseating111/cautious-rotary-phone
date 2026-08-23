@@ -7,22 +7,20 @@ from pathlib import Path
 
 try:
     from tools import roi_preset_gui
-    from tools import run_full_column_batch_from_config as batch
+    from tools import four_point_batch as batch
 except ModuleNotFoundError:
     import roi_preset_gui
-    import run_full_column_batch_from_config as batch
+    import four_point_batch as batch
 
 
 APP_DIR = batch.APP_DIR
 PROOF_IMAGES_CSV = APP_DIR / "one_plate_validation_images.csv"
-PROOF_MACRO = APP_DIR / "one_plate_validation.configured.ijm"
-PROOF_LEGACY_MACRO = APP_DIR / "one_plate_four_point_validation.configured.ijm"
-
-
-def open_window_titles() -> list[str]:
-    """Return top-level Windows window titles; other platforms need no desktop guard."""
-    if sys.platform != "win32":
-        return []
+PROOF_MACRO = APP_DIR / "one_plate_four_point_validation.configured.ijm"
+def proof_plate_is_open(filename: str) -> bool:
+    """Block only when the exact selected source plate window is already open in Fiji."""
+    wanted = Path(filename).name.strip().casefold()
+    if not wanted or sys.platform != "win32":
+        return False
 
     import ctypes
 
@@ -40,15 +38,7 @@ def open_window_titles() -> list[str]:
         return True
 
     user32.EnumWindows(callback_type(collect), 0)
-    return titles
-
-
-def proof_plate_is_open(filename: str) -> bool:
-    """Block only when the exact selected source plate window is already open in Fiji."""
-    wanted = Path(filename).name.strip().casefold()
-    if not wanted:
-        return False
-    return any(title.strip().casefold() == wanted for title in open_window_titles())
+    return any(title.strip().casefold() == wanted for title in titles)
 
 
 def read_pending_rows(path: Path) -> tuple[list[str], list[dict[str, str]]]:
@@ -77,14 +67,13 @@ def choose_pending_row(rows: list[dict[str, str]], filename: str | None = None) 
     return matches[0]
 
 
-def _prepare_completed_plate_macro(*, legacy: bool) -> Path:
-    config = batch.load_config(require_fiji=False, require_fiji_handoff_paths=not legacy)
-    batch.validate_runtime_files(config, require_fiji=False, legacy=legacy)
+def _prepare_completed_plate_macro() -> Path:
+    config = batch.load_config(require_fiji=False)
+    batch.validate_runtime_files(config, require_fiji=False)
     batch.validate_csvs(config)
-    if legacy:
-        batch.validate_legacy_grid_widths(config)
+    batch.validate_grid_widths(config)
     batch.ensure_crop_output_root(config)
-    return batch.build_legacy_macro(config) if legacy else batch.build_macro(config)
+    return batch.build_macro(config)
 
 
 def write_one_row_csv(path: Path, fieldnames: list[str], row: dict[str, str]) -> None:
@@ -140,61 +129,57 @@ def ensure_roi_click_patch(fiji: Path) -> bool:
         raise SystemExit(f"Could not patch ROI 1-click Tools safely: {exc}") from exc
 
 
-def prepare(filename: str | None = None, *, legacy: bool = False, rerun_done: bool = False) -> tuple[Path, dict[str, str]]:
+def prepare(filename: str | None = None, *, rerun_done: bool = False) -> tuple[Path, dict[str, str]]:
     args = [sys.executable, str(Path(batch.__file__).resolve()), "--prepare-only"]
     configured = batch.CONFIGURED_MACRO
     proof_macro = PROOF_MACRO
-    if legacy:
-        args.append("--legacy")
-        configured = batch.CONFIGURED_LEGACY_MACRO
-        proof_macro = PROOF_LEGACY_MACRO
 
     result = subprocess.run(args, capture_output=True, text=True, check=False)
     output = (result.stdout + result.stderr).strip()
     if result.returncode != 0:
         if (rerun_done or filename) and "All expected crops already exist" in output:
-            configured = _prepare_completed_plate_macro(legacy=legacy)
+            configured = _prepare_completed_plate_macro()
         else:
             raise SystemExit(output or "Batch preparation failed before one-plate validation.")
 
     fieldnames, rows = read_pending_rows(batch.PENDING_IMAGES_CSV)
     if rerun_done or (filename and not any((row.get("Filename") or "").strip() == filename.strip() for row in rows)):
-        config = batch.load_config(require_fiji=False, require_fiji_handoff_paths=not legacy)
+        config = batch.load_config(require_fiji=False)
         fieldnames, authoritative_rows = read_pending_rows(Path(config["images_csv"]))
         selected = choose_pending_row(authoritative_rows, filename)
-        configured = _prepare_completed_plate_macro(legacy=legacy)
+        configured = _prepare_completed_plate_macro()
     else:
         selected = choose_pending_row(rows, filename)
     write_one_row_csv(PROOF_IMAGES_CSV, fieldnames, selected)
 
     if not configured.is_file():
         raise SystemExit(f"Prepared macro not found: {configured}")
-    # build_legacy_macro() is the source of truth for the complete current
+    # build_macro() is the source of truth for the complete current
     # four-point interaction. The proof only narrows its metadata input.
     proof_text = patch_prepared_macro(configured.read_text(encoding="utf-8"), PROOF_IMAGES_CSV)
     proof_macro.write_text(proof_text, encoding="utf-8")
     return proof_macro, selected
 
 
-def run(filename: str | None = None, *, legacy: bool = False, rerun_done: bool = False) -> dict[str, str]:
+def run(filename: str | None = None, *, rerun_done: bool = False) -> dict[str, str]:
     if filename and proof_plate_is_open(filename):
         raise SystemExit(
             f"The selected proof plate is already open in Fiji: {Path(filename).name}. "
             "Finish or close that plate before launching the same proof again. Other open Fiji images do not block this action."
         )
 
-    config = batch.load_config(require_fiji=True, require_fiji_handoff_paths=not legacy)
+    config = batch.load_config(require_fiji=True)
     fiji = Path(config["fiji_executable"])
     if not fiji.is_file():
         raise SystemExit(f"Fiji executable not found: {fiji}")
 
-    if legacy and ensure_roi_click_patch(fiji):
+    if ensure_roi_click_patch(fiji):
         raise SystemExit(
             "ROI 1-click Tools was patched successfully so its saved rectangle and click-behaviour settings are restored automatically. "
             "Close/restart Fiji once so it reloads the patched toolset, then run the proof again."
         )
 
-    macro, selected = prepare(filename, legacy=legacy, rerun_done=rerun_done)
+    macro, selected = prepare(filename, rerun_done=rerun_done)
     command = [str(fiji), "--no-splash", "-macro", str(macro)]
     try:
         subprocess.Popen(command, cwd=fiji.parent)
@@ -208,12 +193,10 @@ def main() -> None:
 
     parser = argparse.ArgumentParser(description="Launch exactly one selected pending source image for validation.")
     parser.add_argument("--filename", help="exact pending source filename; default is the first authoritative pending row")
-    parser.add_argument("--legacy", action="store_true", help="use the four-point mathematical alignment route")
     args = parser.parse_args()
-    selected = run(args.filename, legacy=args.legacy)
-    route = "four-point" if args.legacy else "full-column"
+    selected = run(args.filename)
     print(
-        f"Launched one-plate {route} validation: "
+        "Launched one-plate four-point validation: "
         f"{selected.get('Filename', '')} | {selected.get('Experiment', '')}/"
         f"{selected.get('Set', '')}/{selected.get('Type', '')}"
     )

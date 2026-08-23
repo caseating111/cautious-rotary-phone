@@ -8,7 +8,7 @@
 Binding rules: root `AGENTS.md`, `docs/development/IMPLEMENTATION_DECISION_POLICY.md`, and the advisory cost boundary in `docs/development/AGENT_MODEL_ROUTING.md`. Optimize total user time-to-reliable-result, reuse mature tools first, preserve source pixels/manual alignment authority, prove small routes, avoid tunnel vision, and stop patch/retest escalation early.
 
 ## Current target environment
-The current required runtime environment is **Windows with Python 3.14**. The normal Python installation and Anaconda environment are both Python 3.14. Treat Windows + Python 3.14 as the authoritative compatibility/CI target for current development and release validation. Linux compatibility and Python 3.11 compatibility are not current requirements and must not delay routine implementation or desktop debugging. Preserve broader compatibility when it comes essentially for free, but do not spend development/user time maintaining or repeatedly validating it unless requirements change.
+The required runtime is **Windows + Miniforge/Conda**, with the named `workflow-c` environment on **Python 3.11**. Python 3.11 is intentional because required older Fiji/plugin integrations do not uniformly support newer Python releases. Preserve compatibility with newer Python when it is essentially free, but validate the integrated desktop path against Miniforge Python 3.11 first.
 
 ## Current alignment priority
 The established production-facing alignment route is the four-point mathematical alignment, not the experimental full-column detector. The four authoritative colony-centre references are R1C1, R1C(last), R5C1 and R5C(last) for the current basic CSV layouts. The complete 8 x N grid is interpolated mathematically from those four centres; there is no colony/peak detection in this route.
@@ -23,7 +23,7 @@ The four-point generator now emits that ROI 1-click/CLAHE/rotated-QC interaction
 
 After the four clicks, QC uses the same mathematical plate vectors as the grid: both centres and the displayed grid boxes/lines rotate or skew with the clicked plate geometry. Axis-aligned QC boxes at rotated centres are not acceptable.
 
-The old full-column detector/route is superseded for normal user-facing operation. Preserve useful historical code/evidence in retired/legacy areas where appropriate, but do not expose or reinvest in that route unless new evidence or an explicit task justifies it.
+The deprecated full-column detector/route and its dedicated scripts, tests and documentation have been removed. Do not reconstruct it from history unless the user explicitly requests that separate experiment.
 
 ## Fiji ownership/control endpoint
 The actual Fiji main-window title observed on the user's desktop is `(Fiji Is Just) ImageJ`.
@@ -61,10 +61,8 @@ Source pixels are not modified by crop export.
 
 Accepted grid coordinates are a durable reusable project asset rather than merely an immediate crop-export intermediate. Future processed-crop export, visibility, annotation and composition should consume saved geometry where their true prerequisites are satisfied instead of forcing repeated alignment.
 
-## Batch + fallback
-Current production work should preserve the proven four-point path and avoid reviving superseded detector/fallback UI routes merely because historical scripts remain in the repository.
-
-Where legacy batch scripts remain, treat them as compatibility/history unless `CURRENT_STATE`, the controller, or an explicit task identifies them as active. Do not broaden an obsolete route while the supported four-point path and Fiji ownership endpoint are the actual priorities.
+## Four-point batch
+`tools/four_point_batch.py` is the sole current Fiji macro-preparation route. The terms `legacy`, `fallback`, and `full-column` no longer select alternate alignment implementations.
 
 ## Preflight / CSV / metadata safety
 `tools/preflight_batch.py` remains the source/crop readiness authority: source mapping, grid availability, duplicate basenames/rows, crop freshness/readability/dimensions, output collisions, tree separation and plate-level resume state. Windows case-insensitive collisions are protected.
@@ -82,12 +80,8 @@ Automatic project layout remains explicit/confirmed: one selected image root can
 
 Global config remains useful and should stay available. A more local/project report destination, especially for preflight output, remains a future convenience rather than a blocker.
 
-## Launchers
-`start_controller.cmd` prefers an already-active named conda environment, then `call conda run` for the named environment, then Anaconda/base, then Windows `py`, then PATH `python`. `call` is required for Windows conda batch/cmd entry points so fallback execution returns to the launcher.
-
-`start_controller_no_anaconda.cmd` deliberately skips conda/Anaconda and uses Windows `py` then PATH `python`.
-
-Do not add an installer/environment manager unless concrete desktop evidence requires it.
+## Launcher
+`start_controller_miniforge.cmd` is the sole supported desktop launcher. It prefers an active `workflow-c` environment and known Miniforge environment paths. Recreate it from `environment.yml` when dependencies change; do not add parallel Anaconda/system-Python launch routes.
 
 ## Established Pillow outputs
 `tools/run_existing_pillow_from_config.py` is the supported entry for `matrices`, `all-strains`, `all-strains-dedup` and `label-individual`.

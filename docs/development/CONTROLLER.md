@@ -2,9 +2,9 @@
 
 `tools/workflow_controller.py` is intentionally orchestration-only. The active Windows launcher uses `tools/workflow_controller_extended.py`, which subclasses that base controller and adds lightweight project/output conveniences. Paths/settings are stored in `~/.cautious-rotary-phone/config.json`; Fiji, AHK, ROI 1-click Tools and Pillow remain the processing tools.
 
-Current required runtime target is **Windows + Python 3.14**. The user's normal Python and Anaconda environments are both Python 3.14. Linux/Python 3.11 compatibility is not a current requirement and should not delay controller/Fiji debugging.
+Current required runtime target is **Windows + Miniforge/Conda `workflow-c` on Python 3.11**. This version is intentional for older plugin compatibility.
 
-Current controls include CSV validation/metadata review, ROI presets, Fiji helpers, batch preflight, one-plate four-point proof, full-column/legacy batch routes, the safe staged Pillow jobs, focused/custom composition, preferred-WT output, processing-log navigation, AHK start/stop, and direct opening of routine folders.
+Current controls include CSV validation/metadata review, ROI presets, Fiji helpers, batch preflight, one-plate four-point proof, safe staged Pillow jobs, focused/custom composition, preferred-WT output, processing-log navigation, AHK start/stop, and direct opening of routine folders.
 
 ## Automatic project layout
 
@@ -48,17 +48,15 @@ Current proof behavior:
 
 Existing-Fiji reuse remains a real desktop validation point. Repeated launcher invocation has produced delayed status windows and Macro Runner lifecycle problems, so do not claim ownership/control is proven until the architecture proof in `docs/research/fiji-four-point-runtime.md` succeeds.
 
-## Batch preflight and alignment routes
+## Batch preflight and alignment route
 
 Batch preflight keeps modal feedback short and writes the detailed report to the configured/global application area. A project-local report destination is a future convenience, not a current blocker.
 
-For **Run full-column batch**, the controller runs `run_full_column_batch_from_config.py --prepare-only` synchronously first. CSV validation, preflight, pending-image generation, source-marker checks and configured-macro construction complete before AHK/Fiji launch. The full-column detector/profile route is currently alternate/experimental; do not spend more effort on it before the four-point route is proven.
-
-**Run 4-point fallback** preserves the production four-point macro lineage and its original 10/12-column contract. Once the one-plate proof succeeds, the full four-point batch interaction should be updated to match the proven ROI 1-click/visibility/QC behavior exactly rather than independently redesigned.
+`tools/four_point_batch.py --prepare-only` validates CSVs, runs preflight, builds the pending list, checks the output root and generates the single supported four-point macro. The one-plate launcher narrows that prepared macro to one selected source.
 
 ## AHK v2 helper
 
-The alignment helper is AutoHotkey **v2** and must stay thin. It recognizes placement dialogs for both alignment routes, uses a bounded three-second catch-up scan to move delayed Java dialogs upper-left, positions the already-visible Fiji toolbar upper-right, and hides/lowers the Jaunch launcher status window. It is convenience window management, not Fiji process/session authority.
+`ahk/fiji_workflow_hotkeys.ah2` is AutoHotkey **v2** and must stay thin. It recognizes four-point placement dialogs, uses a bounded three-second catch-up scan to move delayed Java dialogs upper-left, positions the already-visible Fiji toolbar upper-right, and hides/lowers the Jaunch launcher status window. It is convenience window management, not Fiji process/session authority.
 
 Z advances/accepts recognized dialogs, X selects Retry on either `Alignment QC` or `Full-grid QC`, and Esc exits the helper. Do not reintroduce AHK v1 syntax; v2 output variables such as `WinGetPos` outputs require `&`.
 
@@ -68,15 +66,6 @@ Pillow output jobs run through `tools/run_existing_pillow_from_config.py`. The w
 
 The retired direct matrix launcher remains intentionally absent; the controller must not bypass validated staging. Focused/custom composition stays a thin adapter over the mature renderer rather than becoming a replacement figure editor.
 
-## Windows launcher order
+## Windows launcher
 
-Root `start_controller.cmd` is the thin Windows double-click entry point. It tries, in order:
-1. an already-active `cautious-rotary-phone` conda environment;
-2. `call conda run -n cautious-rotary-phone`;
-3. Anaconda `base` via `call conda run`;
-4. Windows `py`;
-5. PATH `python`.
-
-Using `call` matters because Windows Anaconda commonly exposes `conda` through a batch/cmd entry point; without it, control may never return to later fallbacks.
-
-`start_controller_no_anaconda.cmd` deliberately skips conda/Anaconda and uses Windows `py` then PATH `python`.
+Root `start_controller_miniforge.cmd` is the supported double-click entry point. It uses an active `workflow-c` environment or the known Miniforge environment Python and reports how to recreate the environment from `environment.yml` if unavailable.

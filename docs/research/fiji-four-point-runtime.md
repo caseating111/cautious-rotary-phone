@@ -80,6 +80,11 @@ Current official PyImageJ guidance documents Python-hosted interactive initializ
 
 Jaunch/Fiji documents `--no-splash`, but no supported option was found for suppressing the separate observed `Launching Fiji...` status window. The bounded AHK hide/lower rule is therefore only a UI workaround. It must not be treated as evidence that launcher reuse or macro delivery is reliable.
 
+Current official route candidates worth proving first are now:
+- `imagej.init(mode="interactive")` plus `ij.ui().showUI()` for an interactive Python-hosted GUI;
+- Fiji/Jaunch `--python` launch mode as the current official Fiji-side Python entry point;
+- a direct current-supported script/command entry point, if it can reuse the intended GUI session.
+
 ## Endpoint debugging / failure history
 
 ### Route 1 — ROI 1-click adapter applied in both production and proof preparation

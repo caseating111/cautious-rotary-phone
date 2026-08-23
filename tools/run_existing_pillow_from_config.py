@@ -125,7 +125,7 @@ def validate_source_readiness_if_configured(config: dict) -> None:
         return
     lines, problems, pending_rows = build_batch_report(
         config,
-        require_full_column_geometry=False,
+        require_grid_interpolation=False,
         require_fiji_handoff_paths=False,
     )
     if problems:

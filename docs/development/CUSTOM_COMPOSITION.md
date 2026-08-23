@@ -84,7 +84,7 @@ Do not create a parallel long-term workbook while this is deferred.
 
 `tools/custom_matrix_gui_recorded.py` is the current user-facing surface. It adds selection restoration, detailed availability, raw/presentation mode, representative preview, prior-recipe reopening and processing-log access while remaining a separate thin GUI launched by the extended controller.
 
-`tools/workflow_controller_extended.py` subclasses the original controller and adds only **Custom matrices** and **Preferred WT source** entry points. `start_controller.cmd` launches this extension. `start_custom_matrix.cmd` remains a direct launcher.
+`tools/workflow_controller_extended.py` subclasses the base controller and exposes **Custom matrices** and **Preferred WT source** as applets. `start_controller_miniforge.cmd` launches this controller; there is no parallel direct launcher.
 
 ## Reuse / external-tool notes
 Do not build a freeform figure designer into the controller. Pillow remains the deterministic regular-layout tool. If later presentation work needs arbitrary figure rearrangement, investigate mature Fiji/ImageJ figure tooling such as QuickFigures as an optional handoff instead of reproducing its capabilities.

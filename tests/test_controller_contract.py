@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import tempfile
+import shutil
 import unittest
 from pathlib import Path
 
@@ -13,7 +13,7 @@ from tools.workflow_controller import (
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CONTROLLER = REPO_ROOT / "tools" / "workflow_controller.py"
-AHK_HELPER = REPO_ROOT / "ahk" / "full_column_alignment_hotkeys.ah2"
+AHK_HELPER = REPO_ROOT / "ahk" / "fiji_workflow_hotkeys.ah2"
 
 
 class ControllerContractTests(unittest.TestCase):
@@ -73,11 +73,11 @@ class ControllerContractTests(unittest.TestCase):
         self.assertIn("Processing settings must be finite numbers.", settings_block)
         self.assertLess(settings_block.index("math.isfinite"), settings_block.index("self.save("))
 
-    def test_single_hotkey_helper_covers_full_column_and_four_point_dialogs(self) -> None:
+    def test_single_hotkey_helper_covers_four_point_dialogs(self) -> None:
         text = AHK_HELPER.read_text(encoding="utf-8")
-        for title in ("1 / 2", "2 / 2", "Alignment QC", "Full-grid QC", "1 / 4", "2 / 4", "3 / 4", "4 / 4", "ALL DONE"):
+        for title in ("Full-grid QC", "1 / 4", "2 / 4", "3 / 4", "4 / 4", "ALL DONE"):
             self.assertIn(f'"{title}"', text)
-        self.assertIn('#HotIf WinExist("Alignment QC") || WinExist("Full-grid QC")', text)
+        self.assertIn('#HotIf WinExist("Full-grid QC")', text)
         self.assertIn("Esc::ExitApp", text)
 
     def test_hotkey_shell_hook_only_moves_new_placement_dialogs(self) -> None:
@@ -114,8 +114,10 @@ class ControllerContractTests(unittest.TestCase):
         self.assertIn("WinMove(10, 10", text)
 
     def test_project_csv_sibling_discovery_uses_only_exact_existing_names(self) -> None:
-        with tempfile.TemporaryDirectory() as temp:
-            root = Path(temp)
+        root = REPO_ROOT / ".local-test-telemetry" / "controller-contract-temp"
+        shutil.rmtree(root, ignore_errors=True)
+        root.mkdir(parents=True, exist_ok=True)
+        try:
             grid = root / "grid.csv"
             images = root / "images.csv"
             unrelated = root / "condition-order.csv"
@@ -129,6 +131,8 @@ class ControllerContractTests(unittest.TestCase):
             self.assertEqual(found["images_csv"], images)
             self.assertNotIn("condition_order_csv", found)
             self.assertEqual(PROJECT_CSV_FILES["condition_order_csv"], "condition_order.csv")
+        finally:
+            shutil.rmtree(root, ignore_errors=True)
 
     def test_csv_browse_autofill_only_targets_blank_sibling_fields(self) -> None:
         text = CONTROLLER.read_text(encoding="utf-8")

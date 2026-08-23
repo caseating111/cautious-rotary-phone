@@ -263,7 +263,7 @@ class ExtendedController(Controller):
             started_ahk_here = bool(self.ahk_process and self.ahk_process.poll() is None)
 
         try:
-            selected = one_plate_validation.run(filename, legacy=True, rerun_done=rerun_done)
+            selected = one_plate_validation.run(filename, rerun_done=rerun_done)
         except SystemExit as exc:
             if started_ahk_here:
                 self.stop_ahk()

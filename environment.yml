@@ -1,6 +1,9 @@
-name: cautious-rotary-phone
+name: workflow-c
 channels:
-  - defaults
+  - conda-forge
 dependencies:
-  - python>=3.11
+  - python=3.11
   - pillow
+  - numpy
+  - pandas
+  - openpyxl
