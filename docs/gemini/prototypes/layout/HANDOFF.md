@@ -1,193 +1,119 @@
 # Grid/layout derivation prototype handoff
 
-Status: Planned
+Status: READY FOR INTEGRATION
+Endpoint: Derive canonical PlateLayout v1 from normalized V10 project metadata or specification dictionaries without image pixels or Fiji dependencies.
+Branch: `gemini-layout`
+Commit: pending
 
-## Goal
+## What was proven
 
-Derive a deterministic `PlateLayout` from normalized project/annotation metadata without depending on Fiji, image pixels, or the current controller. This component translates annotation profile structure (`Pos`, vertical labels, strain-profile `Order`) into logical grid dimensions and row bands that downstream alignment, cropping, adjustment and annotation tools can use.
+1. **8x12 Single-Band Derivation**:
+   - Vertical profile positions 1–8 determine `grid_rows=8`.
+   - Strain profile positions 1–12 determine `grid_cols=12`.
+   - 1 strain band spanning all 8 physical rows with distinct column positions 1..12.
+2. **8x10 Two-Band Even Row Allocation**:
+   - `Order=1` maps upper strain band to rows 1–4.
+   - `Order=2` maps lower strain band to rows 5–8.
+   - Overall grid width remains 10 columns without multiplying or distorting geometry.
+3. **Manual / Explicit Row-Band Overrides**:
+   - Explicit `row_band_overrides` (e.g. rows 1–2 for Band 1, rows 3–8 for Band 2) cleanly override default even splitting without altering column labels.
+4. **Widest-Band-Wins Global Column Width**:
+   - When strain bands have unequal widths (e.g. Band 1 width 10, Band 2 width 4), overall `grid_cols` is set to 10 (max width).
+5. **Preservation of Local vs Global Dimensions**:
+   - Shorter bands retain their local occupied column count (4 labels) without padding or shrinking the global grid.
+6. **Pos Authority & Repeated Labels**:
+   - Vertical labels with repeated display values (e.g. `0, -1, -2, -3, 0, -1, -2, -3`) produce distinct physical rows indexed 1..8 based strictly on `Pos`.
+7. **Explicit Validation & Error Reporting**:
+   - Ambiguous row splits (e.g. 7 rows across 2 bands without override), duplicate within-band `Pos` values, overlapping row allocations, or missing labels raise descriptive `ValueError`s rather than silently guessing.
+8. **Schema Conformance**:
+   - Validated strictly against `contracts/plate_layout.schema.json` v1.
 
-Primary interface:
+## What was NOT proven
 
-`derive_plate_layout(project, image_uid) -> PlateLayout`
+- Multiple vertical profiles per annotation set (out of scope for current workflow).
+- Out-of-scope `other` annotation profiles (ignored).
 
-## Core rules
+## Public interface
 
-### Rows
+- `derive_plate_layout(project_or_path: Union[dict, str], image_uid: Optional[str] = None, layout_id: Optional[str] = None, row_band_overrides: Optional[Any] = None) -> dict`: Returns `PlateLayout` v1 dict.
+- `derive_plate_layout_from_spec(layout_id: str, vertical_labels: list[dict], strain_bands_spec: list[dict], row_band_overrides: Optional[list] = None) -> dict`: Derives `PlateLayout` v1 from raw specification lists.
+- `validate_plate_layout(layout: dict) -> bool`: Validates dictionary against `plate_layout.schema.json` v1.
 
-For the current workflow, one vertical profile defines the physical row count. Its `Pos` values determine row ordering/occupation. Example: positions 1-8 mean an 8-row physical grid, regardless of repeated label text such as `0, -1, -2, -3, 0, -1, -2, -3`.
+## Input contract
 
-Do not infer row count from unique label values; repeated labels still occupy separate physical rows.
+- `project_model` dictionary or path to V10 Excel workbook (`.xlsm` / `.xlsx`).
+- Optional `image_uid` or `layout_id` string locator.
+- Optional `row_band_overrides` list of `(row_start, row_end)` tuples.
 
-Current semantics support one vertical profile. Ignore workbook vertical-profile `Set` values. Multiple vertical-profile assignments should be reported as unsupported/ambiguous rather than guessed.
+## Output contract / Shared schemas used
 
-### Columns
+- `contracts/plate_layout.schema.json` (version 1)
 
-Each strain profile's highest/extent of valid `Pos` defines that profile's logical width. The **widest assigned strain profile defines overall `grid_cols`**.
+## Fixture(s)
 
-Examples:
+- `fixtures/v10/v10_sample_synthetic_sanitized.xlsx`
 
-- one strain profile with positions 1-12 -> 12 columns;
-- two profiles where one has positions 1-10 and another 1-4 -> overall grid width remains 10;
-- two profiles each positions 1-10 -> 10 columns.
+## Verification command(s)
 
-Do not add profile widths together when profiles occupy different row bands.
+```powershell
+.\docs\gemini\run_gemini_prototype.ps1 docs\gemini\prototypes\layout\test_derive_layout.py
+# or: python docs/gemini/prototypes/layout/test_derive_layout.py
+```
 
-### Multiple strain profiles / row bands
+## Verification result
 
-When an annotation set has multiple strain profiles, assignment `Order` defines top-to-bottom physical ordering:
+```text
+[PASS] test_single_profile_8x12
+[PASS] test_two_profile_8x10_even_split
+[PASS] test_manual_row_band_override
+[PASS] test_widest_band_wins_overall_cols
+[PASS] test_unequal_band_widths_local_vs_global
+[PASS] test_repeated_vertical_labels_distinct_pos
+[PASS] test_ambiguous_and_invalid_inputs_fail_clearly
+[PASS] test_contract_schema_conformance
 
-- `Order=1` -> upper band;
-- `Order=2` -> next band;
-- later orders continue downward.
+ALL 8 PLATE LAYOUT DERIVATION PROOF TESTS PASSED.
+```
 
-**Default mapping policy:** when the total physical row count divides evenly across the number of ordered strain profiles, distribute rows evenly. For the currently required 8-row/two-profile case, this means rows 1-4 and rows 5-8.
+## Dependencies & external software
 
-**Override policy:** equal division is a practical default, not an immutable scientific rule. `PlateLayout` or its derivation request must allow an explicit/manual row-band override later. If the total rows do not divide evenly, explicit assignment metadata exists, or the user supplies a manual mapping, use/report that instead of forcing equal division.
+- Tested & verified runtime: **Python 3.11 (Miniforge Conda `workflow-c` environment)** and **Python 3.14**
+- Python standard library (`os`, `sys`, `typing`)
+- Internal dependency: `docs/gemini/prototypes/v10/adapter.py`
+- External software/plugins required: None.
 
-Do not infer row bands from strain label text.
+## Known limitations
 
-## Required cases
+- Only single vertical profile per annotation set is supported (current contract standard).
 
-### Single-profile 8 x 12
+## Failed / abandoned routes relevant to integration
 
-- vertical profile positions 1-8 -> `grid_rows=8`;
-- strain profile positions 1-12 -> `grid_cols=12`;
-- one strain band spans rows 1-8;
-- strain positions map columns 1-12.
+- Inferring row count from unique label strings: Discarded because repeated dilution labels (`0, -1, -2, -3`) represent multiple distinct physical rows.
+- Summing column widths across multi-band strain profiles: Discarded because bands represent top-to-bottom row splits, not side-by-side columns.
 
-This represents the 14.08.26 / 15.08.26 style case.
+## Human / manual validation still required
 
-### Two-profile 8 x 10
+- None for logical layout derivation. Downstream visual validation applies when rendering annotations onto images.
 
-- vertical profile positions 1-8 -> 8 rows;
-- strain profile A positions 1-10, `Order=1` -> default rows 1-4;
-- strain profile B positions 1-10, `Order=2` -> default rows 5-8;
-- overall grid width = 10;
-- an explicit alternative row-band mapping can override the default.
+## Files the integrator should inspect
 
-This represents the 16.08.26 style case.
+- `docs/gemini/prototypes/layout/derive_layout.py`: Core standalone PlateLayout derivation module.
+- `docs/gemini/prototypes/layout/test_derive_layout.py`: 8 unit tests covering all required single, multi-band, override, and edge cases.
+- `contracts/plate_layout.schema.json`: PlateLayout v1 schema.
 
-### Unequal widths across bands
+## Files the integrator normally should NOT need to inspect
 
-Example:
+- `fixtures/v10/`: Test fixtures.
 
-- upper band positions 1-10;
-- lower band positions 1-4;
-- overall `grid_cols=10`;
-- lower band remains a 4-column band within that wider logical grid rather than forcing the whole grid to 4 columns.
+## Recommended integration / adaptation
 
-Preserve each band's own width separately from `grid_cols`.
+- `derive_layout.py` can be imported directly by downstream applets (`annotation`, `visibility_adjustment`, `crops`, `controller`):
+  ```python
+  from derive_layout import derive_plate_layout
+  
+  layout = derive_plate_layout(project_model, image_uid="E1_14.08.26_24h_I001")
+  ```
 
-## Label ordering
+## Contract changes proposed
 
-- `Pos` is authoritative for within-profile logical order.
-- Labels may repeat; repeated text does not collapse positions.
-- Missing/duplicate positions that prevent deterministic ordering should be surfaced clearly.
-- Do not sort label text alphabetically.
-- Preserve display text exactly; normalized comparison keys may be separate if needed.
-
-## Grid coordinates as reusable project state
-
-The logical `PlateLayout` and the later measured pixel grid are distinct but should join cleanly.
-
-The production four-click route currently determines real image grid coordinates very well. Once those coordinates are registered for an image, downstream operations should be able to consume them later without rerunning alignment, including:
-
-- whole-plate visibility adjustment using the grid area as the measurement ROI;
-- crop export from raw/unprocessed images;
-- later crop export from processed images;
-- automatic annotation placement;
-- matrix/composition selection.
-
-Do not design the coordinate result as a transient side effect of crop export. A later integration should be able to run `align/register now, export later`.
-
-The exact persisted pixel-coordinate schema may be a separate contract from logical `PlateLayout`; propose a narrow contract if needed rather than overloading logical metadata with image-runtime details.
-
-## Relationship to four-click alignment
-
-This prototype does **not** replace or reimplement the current Fiji four-click route. It provides logical geometry metadata that can later inform and consume alignment results:
-
-- overall row/column counts;
-- widest overall width;
-- which rows belong to which strain profile;
-- local width of each band;
-- logical row/column identities.
-
-Do not bake the current choice of clicked reference rows/columns into the `PlateLayout` contract. The working production alignment route remains authoritative and may choose suitable reference points independently.
-
-## Basic CSV versus V10
-
-The current basic CSV route has simpler semantics and need not implement V10 `Set`/annotation-set/profile-order behavior. This component is for the richer canonical model and should not force V10 layout semantics back into the basic CSV workflow.
-
-## Suggested `PlateLayout` information
-
-The exact schema is governed by `contracts/plate_layout.schema.json`, but the model should be able to represent at least:
-
-- `layout_id` / annotation-set identity;
-- `grid_rows`;
-- `grid_cols`;
-- ordered vertical positions/labels;
-- strain bands;
-- for each strain band: assignment order, profile identity, row start/end, local column count, ordered strain positions/labels;
-- whether row bands came from default even distribution or an explicit override;
-- enough logical row/column information for downstream annotation, composition, and alignment integration without reopening V10.
-
-If the current schema cannot represent unequal band widths or explicit row-band overrides cleanly, propose a minimal contract revision.
-
-## Validation/failure behavior
-
-Report rather than guess when any of these prevent deterministic layout derivation:
-
-- no vertical profile when row count is required;
-- more than one active vertical profile under current semantics;
-- zero/invalid positions;
-- duplicate conflicting `Pos` values;
-- multiple strain profiles without unique usable `Order` values;
-- row count cannot be mapped by the default and no explicit override exists;
-- annotation set references to missing profiles.
-
-Harmless gaps may be represented if they have a clear logical meaning, but do not silently renumber user positions.
-
-## Implementation posture
-
-- Pure Python/model logic is appropriate here; no image-processing dependency should be required.
-- Keep the component deterministic and easy to synthetic-test.
-- Do not create GUI/controller dependencies.
-- Do not over-generalize for hypothetical plate geometries before the required cases work.
-
-## Out of scope
-
-- pixel detection/alignment implementation;
-- Fiji ROI creation;
-- physical plate rotation estimation;
-- annotation rendering;
-- composition/image cropping;
-- multiple vertical-profile-set behavior;
-- arbitrary scientific interpretation of ambiguous row-band allocations.
-
-## Success criteria
-
-The prototype is `Proven` when targeted synthetic tests demonstrate:
-
-1. 8x12 single-band derivation;
-2. 8x10 two-band derivation using `Order` and default even row distribution;
-3. explicit/manual row-band override;
-4. widest-band-wins overall columns;
-5. unequal-width bands preserve both overall and local widths;
-6. repeated vertical label text still yields separate rows via `Pos`;
-7. ambiguous inputs fail/report clearly rather than guessing;
-8. output validates against the shared `PlateLayout` contract or a narrowly proposed revision.
-
-## Completion record
-
-When proven, update with:
-
-- Branch:
-- Commit:
-- Interface: `derive_plate_layout(project, image_uid) -> PlateLayout`
-- Tests:
-- Dependencies:
-- Proven cases:
-- Default/override row-band behavior:
-- Known limitations:
-- Contract changes proposed:
-- Integration/cherry-pick notes:
+- None. Strictly conforms to `plate_layout.schema.json` v1.
