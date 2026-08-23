@@ -25,7 +25,7 @@ Do not reconstruct project history or read the whole repository by default.
 
 - Active integration branch: `workflow-C`.
 - `workflow-dev` is a pre-Codex development line/snapshot; do not advance it in parallel with routine `workflow-C` work.
-- Current runtime/CI target: **Windows + Python 3.14**.
+- Current runtime/CI target: **Windows + Miniforge `workflow-c` Python 3.11**.
 - AutoHotkey contract: **AHK v2 only**.
 - GitHub is the durable remote/source of truth; the local checkout is the normal Codex working copy.
 - SDL-MCP shell/CLI retrieval can be used when helpful. Native Codex MCP database initialization has been unreliable; do not spend product-development time repairing it unless explicitly tasked.

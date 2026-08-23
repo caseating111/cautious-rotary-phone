@@ -24,16 +24,44 @@ RememberWorkflowSource(title)
     if !PlacementDialogTitle(title)
         return
     parts := StrSplit(title, " -- ")
-    if (parts.Length >= 3)
+    if (parts.Length >= 3) {
         WorkflowSourceTitle := parts[3]
+        if HideSourceDuringAlignment() {
+            if source := WinExist(WorkflowSourceTitle " ahk_class SunAwtFrame ahk_exe fiji-windows-x64.exe")
+                try WinHide("ahk_id " source)
+        }
+    }
 }
-
+HideSourceDuringAlignment()
+{
+    configPath := EnvGet("USERPROFILE") "\\.cautious-rotary-phone\\config.json"
+    try {
+        settings := FileRead(configPath)
+    } catch {
+        return true
+    }
+    return InStr(settings, '"hide_source_during_alignment": "0"') = 0
+}
+WriteBatchControl(action)
+{
+    controlPath := EnvGet("USERPROFILE") "\\.cautious-rotary-phone\\four_point_control.request"
+    try {
+        FileDelete(controlPath)
+    } catch {
+    }
+    try {
+        FileAppend(action, controlPath, "UTF-8")
+    } catch {
+    }
+}
 ClearFijiOnCancel()
 {
     configPath := EnvGet("USERPROFILE") "\\.cautious-rotary-phone\\config.json"
-    try settings := FileRead(configPath)
-    catch
+    try {
+        settings := FileRead(configPath)
+    } catch {
         return true
+    }
     return InStr(settings, '"clear_fiji_on_cancel": "0"') = 0
 }
 
@@ -191,6 +219,11 @@ MoveKnownWorkflowWindowsOnce()
 StartWorkflowWindowWatch()
 {
     global WorkflowWindowWatchDeadline := A_TickCount + 10000
+    ; First pass is immediate; two short catch-up passes reduce visible Java
+    ; window popping before the existing bounded 100 ms watcher takes over.
+    MoveKnownWorkflowWindowsOnce()
+    SetTimer(MoveKnownWorkflowWindowsOnce, -25)
+    SetTimer(MoveKnownWorkflowWindowsOnce, -75)
     SetTimer(CatchUpWorkflowWindows, 100)
 }
 
@@ -259,8 +292,10 @@ z::
             WinActivate(hwnd)
             if WinWaitActive(hwnd, , 0.5)
                 Send("{Enter}")
-            if title = "ALL DONE"
+            if title = "ALL DONE" {
                 ArmDuplicatePromptCancellation()
+                WriteBatchControl("complete")
+            }
             return
         }
     }
@@ -282,6 +317,7 @@ c::
             WinActivate(hwnd)
             if WinWaitActive(hwnd, , 0.5)
                 Send("{Esc}")
+            WriteBatchControl("cancel")
             ArmDuplicatePromptCancellation()
             SetTimer(ClearCancelledWorkflowWindows, -250)
             return
@@ -290,6 +326,24 @@ c::
 }
 #HotIf
 
+; X before click 4 restarts only the current plate. The controller-owned batch
+; wrapper relaunches the same session and skips exports already completed there.
+#HotIf FijiWorkflowDialog("1 / 4") || FijiWorkflowDialog("2 / 4") || FijiWorkflowDialog("3 / 4")
+x::
+{
+    for title in ["1 / 4", "2 / 4", "3 / 4"]
+    {
+        if hwnd := FijiWorkflowDialog(title)
+        {
+            WriteBatchControl("restart")
+            WinActivate(hwnd)
+            if WinWaitActive(hwnd, , 0.5)
+                Send("{Esc}")
+            return
+        }
+    }
+}
+#HotIf
 ; X selects Retry on either QC dialog. Both dialogs default to Accept;
 ; Down selects Retry, Enter confirms.
 #HotIf FijiWorkflowDialog("Alignment QC") || FijiWorkflowDialog("Full-grid QC")

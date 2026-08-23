@@ -3,49 +3,32 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
-
 class WindowsLauncherContractTests(unittest.TestCase):
-    def test_controller_calls_batch_conda_and_keeps_python_314_fallbacks(self) -> None:
+    def test_controller_is_miniforge_first_with_safe_availability_fallbacks(self) -> None:
         text = (REPO_ROOT / "start_controller.cmd").read_text(encoding="utf-8").lower()
+        self.assertIn(r"%userprofile%\.conda\envs\workflow-c\python.exe", text)
+        self.assertIn(r"c:\programdata\miniforge3\envs\workflow-c\python.exe", text)
+        self.assertIn("-n workflow-c python", text)
+        self.assertIn("py -3.11", text)
+        self.assertIn("no alternate python was started", text)
+        self.assertNotIn("-n cautious-rotary-phone", text)
+        self.assertNotIn("-n base", text)
+        self.assertNotIn("py -3.14", text)
 
-        named = "call conda run --no-capture-output -n cautious-rotary-phone python"
-        base = "call conda run --no-capture-output -n base python"
-        py_launcher = "where py >nul 2>nul"
-        py_314 = "py -3.14 tools\\workflow_controller_extended.py"
-        path_python = "python tools\\workflow_controller_extended.py"
-
-        self.assertIn(named, text)
-        self.assertIn(base, text)
-        self.assertIn(py_launcher, text)
-        self.assertIn(py_314, text)
-        self.assertIn(path_python, text)
-        self.assertNotIn("py -3 tools\\workflow_controller_extended.py", text)
-        self.assertLess(text.index(named), text.index(base))
-        self.assertLess(text.index(base), text.index(py_launcher))
-
-    def test_custom_matrix_launcher_also_calls_conda_batch_entrypoint_and_python_314(self) -> None:
+    def test_custom_matrix_is_miniforge_first_and_uses_same_workflow_environment(self) -> None:
         text = (REPO_ROOT / "start_custom_matrix.cmd").read_text(encoding="utf-8").lower()
-        self.assertIn(
-            "call conda run --no-capture-output -n cautious-rotary-phone python",
-            text,
-        )
-        self.assertIn("call conda run --no-capture-output -n base python", text)
-        self.assertIn("py -3.14 tools\\custom_matrix_gui_recorded.py", text)
-        self.assertNotIn("py -3 tools\\custom_matrix_gui_recorded.py", text)
+        self.assertIn(r"%userprofile%\.conda\envs\workflow-c\python.exe", text)
+        self.assertIn("-n workflow-c python", text)
+        self.assertIn("py -3.11", text)
+        self.assertNotIn("-n cautious-rotary-phone", text)
+        self.assertNotIn("py -3.14", text)
 
-    def test_no_anaconda_controller_launcher_skips_conda_and_requests_python_314(self) -> None:
-        text = (REPO_ROOT / "start_controller_no_anaconda.cmd").read_text(encoding="utf-8").lower()
-        self.assertNotIn("conda run", text)
-        self.assertNotIn("where conda", text)
-        self.assertIn("where py >nul 2>nul", text)
-        self.assertIn("py -3.14 tools\\workflow_controller_extended.py", text)
-        self.assertNotIn("py -3 tools\\workflow_controller_extended.py", text)
-        self.assertIn("where python >nul 2>nul", text)
-        self.assertIn("python tools\\workflow_controller_extended.py", text)
-
+    def test_private_launcher_delegates_to_unified_launcher(self) -> None:
+        text = (REPO_ROOT / "start_controller_private_test.cmd").read_text(encoding="utf-8").lower()
+        self.assertIn('call "%~dp0start_controller.cmd"', text)
+        self.assertNotIn("start_controller_no_anaconda.cmd", text)
 
 if __name__ == "__main__":
     unittest.main()

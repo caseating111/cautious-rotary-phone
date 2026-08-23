@@ -104,14 +104,10 @@ class ControllerExtensionContractTests(unittest.TestCase):
         self.assertIn("tools\\workflow_controller_extended.py", text)
         self.assertNotIn("tools\\workflow_controller.py", text)
 
-    def test_miniforge_starter_uses_extended_controller_and_privacy_defaults(self) -> None:
-        miniforge_starter = REPO_ROOT / "start_controller_miniforge.cmd"
-        self.assertTrue(miniforge_starter.is_file())
-        text = miniforge_starter.read_text(encoding="utf-8")
-        self.assertIn("tools\\workflow_controller_extended.py", text)
+    def test_private_launcher_delegates_to_unified_controller_launcher(self) -> None:
+        text = (REPO_ROOT / "start_controller_private_test.cmd").read_text(encoding="utf-8")
+        self.assertIn("start_controller.cmd", text)
         self.assertIn("PRIVATE_ROOT=C:\\LocalWorkflowData", text)
-        self.assertIn("-Djava.rmi.server.hostname=127.0.0.1", text)
-
 
 if __name__ == "__main__":
     unittest.main()

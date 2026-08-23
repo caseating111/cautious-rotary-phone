@@ -7,7 +7,7 @@ This snapshot packages the current `workflow-dev` workflow for practical desktop
 - Extended Tkinter controller as the normal controller surface.
 - Windows launchers with robust Python fallbacks:
   - `start_controller.cmd`: active named conda environment -> named conda environment -> Anaconda `base` -> Windows `py` -> PATH `python`.
-  - `start_controller_no_anaconda.cmd`: explicitly skips conda/Anaconda and tries Windows `py` then PATH `python`.
+  - `start_controller.cmd`: unified Miniforge-first controller launcher with compatibility fallbacks only when Miniforge is unavailable.
   - `start_custom_matrix.cmd`: the same fallback principle for focused composition.
 - Automatic project layout from one selected Image root:
   - editable prefix, defaulting to `dd.mm.yy`;
@@ -46,7 +46,7 @@ Static/contract and synthetic tests cover the new project layout, launcher behav
 
 Three practical checks remain deliberately small:
 
-1. **Windows launch smoke test**: confirm `start_controller.cmd` launches after the Anaconda installation. If it does not, capture the concrete console error. `start_controller_no_anaconda.cmd` is provided as the direct non-conda alternative.
+1. **Windows launch smoke test**: confirm `start_controller.cmd` launches after the Anaconda installation. If it does not, capture the concrete console error. the launcher reports the original failure without switching Python runtimes.
 2. **Project-layout smoke test**: use a disposable/small representative source folder, confirm the shown destination, and verify it moves intact into `Raw` while output paths are configured automatically. Do not use a large irreplaceable tree as the first desktop test.
 3. **One representative real Fiji plate** through the full-column route: first column, last column, full-grid QC, crop handoff; allow at most one sensible retry. If native peak selection is poor after that, use the preserved four-point route and evaluate mature BAR Find Peaks rather than entering repeated custom-detector patch cycles.
 
@@ -63,7 +63,7 @@ If the first full-column plate succeeds, one same-sized second plate is sufficie
 
 ## First use
 
-1. Try `start_controller.cmd`. If Anaconda interferes, try `start_controller_no_anaconda.cmd` and report the console output from whichever fails.
+1. Try `start_controller.cmd`. If it fails, report the console output; it will not switch runtimes after a controller error.
 2. Select an Image root. Review the proposed project destination before accepting the move.
 3. Confirm or select the project CSVs, then run CSV validation and Batch preflight.
 4. Use standard/focused Pillow outputs as needed from validated current crops.

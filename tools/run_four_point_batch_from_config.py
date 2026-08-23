@@ -4,9 +4,12 @@ import argparse
 import csv
 import json
 import math
+import os
 import subprocess
 import sys
 import tempfile
+import time
+import uuid
 from pathlib import Path
 
 try:
@@ -22,10 +25,15 @@ SOURCE_MACRO = REPO_ROOT / "existing scripts clean" / "roibox RUN ALL IN PARENT.
 VALIDATOR = REPO_ROOT / "tools" / "validate_project_csvs.py"
 PREFLIGHT = REPO_ROOT / "tools" / "preflight_batch.py"
 PREFLIGHT_REPORT = APP_DIR / "last_preflight.txt"
-PENDING_IMAGES_CSV = APP_DIR / "pending_images.csv"
+# Generated Fiji handoff. Its first two fields are the exact source identity.
+PENDING_IMAGES_TSV = APP_DIR / "pending_images.tsv"
 CONFIGURED_FOUR_POINT_MACRO = APP_DIR / "four_point_batch.configured.ijm"
 FOUR_POINT_STATE_FILE = APP_DIR / "four_point_run.state.txt"
 REPLACEMENT_MANIFEST = APP_DIR / "four_point_batch_replacement_manifest.tsv"
+CONTROL_REQUEST_FILE = APP_DIR / "four_point_control.request"
+RESUME_MARKER_FILE = APP_DIR / "four_point_resume.marker"
+ACTIVE_BATCH_FILE = APP_DIR / "four_point_batch.active"
+OWNED_FIJI_PIDS_FILE = APP_DIR / "four_point_owned_fiji_pids.txt"
 
 START_MARKER = "        // ====================================================\n        // IDENTIFY CURRENT PLATE"
 END_MARKER = "        setBatchMode(false);"
@@ -130,7 +138,7 @@ def run_preflight(*, allow_empty: bool = False) -> int:
         "--report",
         str(PREFLIGHT_REPORT),
         "--pending-images-csv",
-        str(PENDING_IMAGES_CSV),
+        str(PENDING_IMAGES_TSV.with_suffix(".csv")),
     ]
     if not require_fiji_handoff_paths:
         args.append("--no-fiji-handoff-path-rules")
@@ -139,7 +147,7 @@ def run_preflight(*, allow_empty: bool = False) -> int:
     if result.returncode != 0:
         raise SystemExit(output or f"Batch preflight failed. See {PREFLIGHT_REPORT}")
 
-    with PENDING_IMAGES_CSV.open("r", encoding="utf-8-sig", newline="") as handle:
+    with PENDING_IMAGES_TSV.with_suffix(".csv").open("r", encoding="utf-8-sig", newline="") as handle:
         pending = sum(1 for _ in csv.DictReader(handle))
     if pending == 0 and not allow_empty:
         raise SystemExit(f"All expected crops already exist. See {PREFLIGHT_REPORT}")
@@ -147,19 +155,24 @@ def run_preflight(*, allow_empty: bool = False) -> int:
 
 
 def restrict_pending_to_subfolder(config: dict, subfolder: str | None, *, include_completed: bool = False) -> list[dict[str, str]]:
-    """Write scoped rows, optionally including completed plates for replacement."""
+    """Write an exact folder + filename handoff, optionally including completed plates."""
     run_preflight(allow_empty=include_completed)
-    with PENDING_IMAGES_CSV.open("r", encoding="utf-8-sig", newline="") as handle:
+    pending_csv = PENDING_IMAGES_TSV.with_suffix(".csv")
+    with pending_csv.open("r", encoding="utf-8-sig", newline="") as handle:
         rows = list(csv.DictReader(handle))
+    sources = preflight_batch.discover_sources(Path(config["image_root"]))
+    source_by_name = {path.name.casefold(): path for path in sources}
+
     if include_completed:
-        source_names = {path.name.casefold() for path in preflight_batch.discover_sources(Path(config["image_root"]))}
         with Path(config["images_csv"]).open("r", encoding="utf-8-sig", newline="") as handle:
-            rows = [row for row in csv.DictReader(handle) if (row.get("Filename") or "").casefold() in source_names]
+            rows = [
+                row for row in csv.DictReader(handle)
+                if (row.get("Filename") or "").casefold() in source_by_name
+            ]
     if subfolder:
         wanted = subfolder.casefold()
         source_names = {
-            path.name.casefold()
-            for path in preflight_batch.discover_sources(Path(config["image_root"]))
+            path.name.casefold() for path in sources
             if path.parent.name.casefold() == wanted
         }
         if not source_names:
@@ -167,12 +180,28 @@ def restrict_pending_to_subfolder(config: dict, subfolder: str | None, *, includ
         rows = [row for row in rows if (row.get("Filename") or "").casefold() in source_names]
     if not rows:
         raise SystemExit("No eligible images match the selected subfolder." if subfolder else "No eligible images remain.")
-    with PENDING_IMAGES_CSV.open("w", encoding="utf-8-sig", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=["Filename", "Experiment", "Set", "Type"])
-        writer.writeheader()
-        writer.writerows(rows)
-    return rows
 
+    scoped_rows: list[dict[str, str]] = []
+    for row in rows:
+        source = source_by_name.get((row.get("Filename") or "").casefold())
+        if source is None:
+            raise SystemExit(f"Selected pending image is not under image_root: {row.get('Filename', '')}")
+        values = [source.parent.name, row.get("Filename", ""), row.get("Experiment", ""), row.get("Set", ""), row.get("Type", "")]
+        if any("\t" in value or "\r" in value or "\n" in value for value in values):
+            raise SystemExit("Folder and image metadata used for Fiji batch handoff may not contain tabs or line breaks.")
+        scoped_rows.append(
+            {"Folder": values[0], "Filename": values[1], "Experiment": values[2], "Set": values[3], "Type": values[4]}
+        )
+
+    with PENDING_IMAGES_TSV.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=["Folder", "Filename", "Experiment", "Set", "Type"],
+            delimiter="\t",
+        )
+        writer.writeheader()
+        writer.writerows(scoped_rows)
+    return scoped_rows
 def ensure_crop_output_root(config: dict) -> Path:
     root = Path(config["crop_output"])
     try:
@@ -201,13 +230,21 @@ def replace_once(source: str, old: str, new: str) -> str:
     return source.replace(old, new, 1)
 
 
-def configure_source_settings(source: str, config: dict, replacement_manifest: Path | None = None) -> str:
+def configure_source_settings(source: str, config: dict, replacement_manifest: Path | None = None, state_file: Path | None = None) -> str:
+    batch_qc = str(config.get("batch_grid_qc", "1")).casefold() not in {"0", "false", "no", "off"}
+    hide_source = str(config.get("hide_source_during_alignment", "1")).casefold() not in {"0", "false", "no", "off"}
+    source = replace_once(
+        source,
+        'replacementManifest = "path here";',
+        'replacementManifest = "path here";' + "\n" + 'controlFile = "path here";',
+    )
     replacements = {
         'gridFile   = "path here";': f'gridFile   = "{macro_path(config["grid_csv"])}";',
-        'imagesFile = "path here";': f'imagesFile = "{macro_path(PENDING_IMAGES_CSV)}";',
-        'stateFile  = "path here";': f'stateFile  = "{macro_path(FOUR_POINT_STATE_FILE)}";',
+        'imagesFile = "path here";': f'imagesFile = "{macro_path(PENDING_IMAGES_TSV)}";',
+        'stateFile  = "path here";': f'stateFile  = "{macro_path(state_file or FOUR_POINT_STATE_FILE)}";',
         'replacementManifest = "path here";': f'replacementManifest = "{macro_path(replacement_manifest)}";' if replacement_manifest else 'replacementManifest = "";',
-        'inputRoot  = "path here";': f'inputRoot  = "{macro_path(config["image_root"])}";',
+        'controlFile = "path here";': f'controlFile = "{macro_path(CONTROL_REQUEST_FILE)}";',
+        'inputRoot  = "path here";': f'batchGridQC = {1 if batch_qc else 0};\nhideSourceDuringAlignment = {1 if hide_source else 0};\nresumeBatch = File.exists("{macro_path(RESUME_MARKER_FILE)}");\ninputRoot  = "{macro_path(config["image_root"])}";',
         'outputRoot = "path here";': f'outputRoot = "{macro_path(config["crop_output"])}";',
         "CROP_W = 130;": f'CROP_W = {config["crop_width"]};',
         "CROP_H = 546;": f'CROP_H = {config["crop_height"]};',
@@ -216,6 +253,37 @@ def configure_source_settings(source: str, config: dict, replacement_manifest: P
         source = replace_once(source, old, new)
     return source
 
+def enhance_metadata_lookup(source: str) -> str:
+    """Bind batch metadata to folder + filename, never just a basename."""
+    start_marker = "        // LOOK UP IMAGE IN images.csv BEFORE OPENING IT"
+    end_marker = "        // In controller use, absence normally means this source is already"
+    start = source.find(start_marker)
+    end = source.find(end_marker, start)
+    if start < 0 or end < 0:
+        raise SystemExit("Legacy metadata lookup markers changed; refusing to generate an unsafe batch macro.")
+    lookup = '''        // LOOK UP THIS EXACT SOURCE IN THE GENERATED TSV HANDOFF.
+        experiment = "";
+        setName = "";
+        typeName = "";
+        sourcePrefix = toLowerCase(cleanFolderName + "\\t" + fileName + "\\t");
+        for (i = 1; i < imgLines.length; i++) {
+            line = replace(imgLines[i], "\\r", "");
+            if (!startsWith(toLowerCase(line), sourcePrefix))
+                continue;
+            metadata = split(substring(line, lengthOf(sourcePrefix)), "\\t");
+            experiment = clean(metadata[0]);
+            setName = clean(metadata[1]);
+            typeName = clean(metadata[2]);
+            break;
+        }
+        stateKey = cleanFolderName + "/" + fileName;
+        if (resumeBatch && recordedRun(stateKey) > 0) {
+            print("RESUME SKIP - already exported this batch: " + stateKey);
+            continue;
+        }
+
+'''
+    return source[:start] + lookup + source[end:]
 
 def enhance_four_point_macro(source: str) -> str:
     """Keep the mature four-point math/export, replacing only its interaction block."""
@@ -239,6 +307,7 @@ def enhance_four_point_macro(source: str) -> str:
             selectWindow(sourceTitle);
         }
         run("Duplicate...", "title=__alignment_view__");
+
         getDimensions(viewW, viewH, viewC, viewZ, viewT);
         run("Select None");
         roiBoxW = parseFloat(call("ij.Prefs.get", "rect.width", 108));
@@ -374,18 +443,21 @@ def enhance_four_point_macro(source: str) -> str:
             // GenericDialog only places a choice beside its own label. Keep the
             // entire instruction on that single compact row rather than adding
             // a vertically separate message row.
-            Dialog.create("Full-grid QC -- Inspect 8R x " + gridCols + "C grid -- Z=ACCEPT, X=RETRY, C=CANCEL");
-            Dialog.addChoice(
-                "ACCEPT: Export crops and save grid coordinates. [+] RETRY: Repeat four-point calibration.",
-                newArray("ACCEPT", "RETRY"),
-                "ACCEPT"
-            );
-            Dialog.show();
-            qcAction = Dialog.getChoice();
-            if (qcAction == "ACCEPT") {
-                accepted = 1;
+            if (batchGridQC) {
+                Dialog.create("Full-grid QC -- Inspect 8R x " + gridCols + "C grid -- Z=ACCEPT, X=RETRY, C=CANCEL");
+                Dialog.addChoice(
+                    "ACCEPT: Export crops and save grid coordinates. [+] RETRY: Repeat four-point calibration.",
+                    newArray("ACCEPT", "RETRY"),
+                    "ACCEPT"
+                );
+                Dialog.show();
+                qcAction = Dialog.getChoice();
+                if (qcAction == "ACCEPT")
+                    accepted = 1;
+                else
+                    Overlay.remove;
             } else {
-                Overlay.remove;
+                accepted = 1;
             }
         }
 
@@ -395,16 +467,95 @@ def enhance_four_point_macro(source: str) -> str:
         archiveReplacementCrops(cleanFolderName, fileName);
 
 '''
+    completion_marker = '''showMessage(
+    "ALL DONE",
+    "Processed images: " + processedImages + "\\n" +
+    "Not listed / not pending: " + notListedImages + "\\n" +
+    "Skipped after metadata match: " + skippedImages + "\\n\\n" +
+    "Outputs saved under:\\n" +
+    outputRoot
+);
+'''
+    if completion_marker not in source:
+        raise SystemExit("Legacy completion dialog changed; refusing to guess where to release the batch wrapper.")
+    source = source.replace(completion_marker, completion_marker + 'File.saveString("complete\\n", controlFile);\n', 1)
     return source[:start] + block + source[export:]
 
 
-def build_four_point_macro(config: dict, replacement_manifest: Path | None = None) -> Path:
-    source = configure_source_settings(SOURCE_MACRO.read_text(encoding="utf-8"), config, replacement_manifest)
+def build_four_point_macro(config: dict, replacement_manifest: Path | None = None, state_file: Path | None = None) -> Path:
+    source = configure_source_settings(SOURCE_MACRO.read_text(encoding="utf-8"), config, replacement_manifest, state_file)
+    source = enhance_metadata_lookup(source)
     source = enhance_four_point_macro(source)
     APP_DIR.mkdir(parents=True, exist_ok=True)
     CONFIGURED_FOUR_POINT_MACRO.write_text(source, encoding="utf-8")
     return CONFIGURED_FOUR_POINT_MACRO
 
+
+def remember_owned_fiji_process(pid: int) -> None:
+    OWNED_FIJI_PIDS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with OWNED_FIJI_PIDS_FILE.open("a", encoding="utf-8") as handle:
+        handle.write(f"{pid}\n")
+
+def control_request() -> str:
+    try:
+        return CONTROL_REQUEST_FILE.read_text(encoding="utf-8").strip().casefold()
+    except FileNotFoundError:
+        return ""
+
+
+def kill_process_tree(process: subprocess.Popen) -> None:
+    if process.poll() is None:
+        subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"], capture_output=True, check=False)
+
+
+def run_fiji_batch(fiji: Path, macro: Path, session_state: Path) -> None:
+    """Supervise only the Fiji process tree launched for this batch."""
+    ACTIVE_BATCH_FILE.parent.mkdir(parents=True, exist_ok=True)
+    ACTIVE_BATCH_FILE.write_text(f"{os.getpid()}\n", encoding="utf-8")
+    # These are runtime-only files created for this batch; historical state is
+    # never touched. They are removed on completion, cancellation, or error.
+    for path in (CONTROL_REQUEST_FILE, RESUME_MARKER_FILE):
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            pass
+    try:
+        while True:
+            process = subprocess.Popen([str(fiji), "--no-splash", "-macro", str(macro)])
+            remember_owned_fiji_process(process.pid)
+            restart = False
+            while process.poll() is None:
+                request = control_request()
+                if request in {"cancel", "restart", "complete"}:
+                    if request == "complete":
+                        return
+                    if request == "restart":
+                        RESUME_MARKER_FILE.write_text("resume\n", encoding="utf-8")
+                        restart = True
+                    kill_process_tree(process)
+                    break
+                time.sleep(0.1)
+            process.wait()
+            # Escape can close Fiji before the polling loop observes X. Read the
+            # persisted request once more before deciding whether to restart.
+            final_request = control_request()
+            if final_request == "restart":
+                restart = True
+            if final_request == "complete":
+                return
+            try:
+                CONTROL_REQUEST_FILE.unlink()
+            except FileNotFoundError:
+                pass
+            if restart:
+                continue
+            return
+    finally:
+        for path in (CONTROL_REQUEST_FILE, RESUME_MARKER_FILE, ACTIVE_BATCH_FILE, session_state):
+            try:
+                path.unlink()
+            except FileNotFoundError:
+                pass
 
 def main() -> None:
     parser = argparse.ArgumentParser()
@@ -430,7 +581,8 @@ def main() -> None:
     if args.replace_existing_crops:
         crop_replacement_manifest.write_manifests(config, rows, REPLACEMENT_MANIFEST)
         replacement_manifest = REPLACEMENT_MANIFEST
-    macro = build_four_point_macro(config, replacement_manifest)
+    session_state = APP_DIR / f"four_point_session_{uuid.uuid4().hex}.state.txt"
+    macro = build_four_point_macro(config, replacement_manifest, session_state)
 
     if args.prepare_only:
         action = "replacement-ready" if args.replace_existing_crops else "pending"
@@ -438,7 +590,8 @@ def main() -> None:
         return
 
     fiji = Path(config["fiji_executable"])
-    subprocess.Popen([str(fiji), "-macro", str(macro)])
+    run_fiji_batch(fiji, macro, session_state)
+
 
 
 if __name__ == "__main__":

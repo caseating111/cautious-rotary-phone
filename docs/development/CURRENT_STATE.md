@@ -8,7 +8,7 @@
 Binding rules: root `AGENTS.md`, `docs/development/IMPLEMENTATION_DECISION_POLICY.md`, and the advisory cost boundary in `docs/development/AGENT_MODEL_ROUTING.md`. Optimize total user time-to-reliable-result, reuse mature tools first, preserve source pixels/manual alignment authority, prove small routes, avoid tunnel vision, and stop patch/retest escalation early.
 
 ## Current target environment
-The current required runtime environment is **Windows with Python 3.14**. The normal Python installation and Anaconda environment are both Python 3.14. Treat Windows + Python 3.14 as the authoritative compatibility/CI target for current development and release validation. Linux compatibility and Python 3.11 compatibility are not current requirements and must not delay routine implementation or desktop debugging. Preserve broader compatibility when it comes essentially for free, but do not spend development/user time maintaining or repeatedly validating it unless requirements change.
+The current required runtime environment is **Windows with the Miniforge `workflow-c` Python 3.11 environment**. The unified controller and Custom matrices launchers prefer that exact environment. Other Python installations are availability fallbacks only; they must never replace the selected runtime after a controller/batch failure or Ctrl+C.
 
 ## Current alignment priority
 The established production-facing alignment route is the four-point mathematical alignment, not the experimental full-column detector. The four authoritative colony-centre references are R1C1, R1C(last), R5C1 and R5C(last) for the current basic CSV layouts. The complete 8 x N grid is interpolated mathematically from those four centres; there is no colony/peak detection in this route.
@@ -83,9 +83,9 @@ Automatic project layout remains explicit/confirmed: one selected image root can
 Global config remains useful and should stay available. A more local/project report destination, especially for preflight output, remains a future convenience rather than a blocker.
 
 ## Launchers
-`start_controller.cmd` prefers an already-active named conda environment, then `call conda run` for the named environment, then Anaconda/base, then Windows `py`, then PATH `python`. `call` is required for Windows conda batch/cmd entry points so fallback execution returns to the launcher.
+`start_controller.cmd` is the unified production launcher: it prefers direct Miniforge `workflow-c` Python 3.11 (user-local then ProgramData), then checks conda `workflow-c`, Python 3.11, and PATH Python only when the preferred runtime is unavailable. Once a controller starts, its exit—including Ctrl+C—never triggers another interpreter.
 
-`start_controller_no_anaconda.cmd` deliberately skips conda/Anaconda and uses Windows `py` then PATH `python`.
+`start_controller_private_test.cmd` remains a privacy-test wrapper: it sets external temporary paths, then calls the unified Miniforge-first production launcher.
 
 Do not add an installer/environment manager unless concrete desktop evidence requires it.
 

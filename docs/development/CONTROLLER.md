@@ -2,9 +2,9 @@
 
 `tools/workflow_controller.py` is intentionally orchestration-only. The active Windows launcher uses `tools/workflow_controller_extended.py`, which subclasses that base controller and adds lightweight project/output conveniences. Paths/settings are stored in `~/.cautious-rotary-phone/config.json`; Fiji, AHK, ROI 1-click Tools and Pillow remain the processing tools.
 
-Current required runtime target is **Windows + Python 3.14**. The user's normal Python and Anaconda environments are both Python 3.14. Linux/Python 3.11 compatibility is not a current requirement and should not delay controller/Fiji debugging.
+Current required runtime target is **Windows + Miniforge `workflow-c` Python 3.11**. The unified launcher chooses that runtime first; fallback interpreters are used only if it is unavailable.
 
-Current controls include CSV validation/metadata review, ROI presets, Fiji helpers, batch preflight, one-plate four-point proof, full-column/legacy batch routes, the safe staged Pillow jobs, focused/custom composition, preferred-WT output, processing-log navigation, AHK start/stop, and direct opening of routine folders.
+Current controls include CSV validation/metadata review, ROI presets, batch preflight, single-image and batch four-point alignment/export, the safe staged Pillow jobs, focused/custom composition, preferred-WT output, processing-log navigation, runtime reset/reboot controls, and direct opening of routine folders.
 
 ## Automatic project layout
 
@@ -52,9 +52,7 @@ Existing-Fiji reuse remains a real desktop validation point. Repeated launcher i
 
 Batch preflight keeps modal feedback short and writes the detailed report to the configured/global application area. A project-local report destination is a future convenience, not a current blocker.
 
-For **Run full-column batch**, the controller runs `run_full_column_batch_from_config.py --prepare-only` synchronously first. CSV validation, preflight, pending-image generation, source-marker checks and configured-macro construction complete before AHK/Fiji launch. The full-column detector/profile route is currently alternate/experimental; do not spend more effort on it before the four-point route is proven.
-
-**Run 4-point fallback** preserves the production four-point macro lineage and its original 10/12-column contract. Once the one-plate proof succeeds, the full four-point batch interaction should be updated to match the proven ROI 1-click/visibility/QC behavior exactly rather than independently redesigned.
+The active batch route is **Run all 4-point** or **Run subfolder**. It prepares the current four-point macro, starts the AHK helper when needed, and launches the configured Fiji executable. Batch controls retain Skip done, accepted-grid replacement, optional grid QC, source hiding, cancellation cleanup, and explicit stale-marker reset.
 
 ## AHK v2 helper
 
@@ -68,15 +66,8 @@ Pillow output jobs run through `tools/run_existing_pillow_from_config.py`. The w
 
 The retired direct matrix launcher remains intentionally absent; the controller must not bypass validated staging. Focused/custom composition stays a thin adapter over the mature renderer rather than becoming a replacement figure editor.
 
-## Windows launcher order
+## Windows launchers
 
-Root `start_controller.cmd` is the thin Windows double-click entry point. It tries, in order:
-1. an already-active `cautious-rotary-phone` conda environment;
-2. `call conda run -n cautious-rotary-phone`;
-3. Anaconda `base` via `call conda run`;
-4. Windows `py`;
-5. PATH `python`.
+`start_controller.cmd` is the single production controller launcher. It uses Miniforge `workflow-c` Python 3.11 first, with availability-only compatible fallbacks. A failure or Ctrl+C ends that launch cleanly; it does not start another interpreter.
 
-Using `call` matters because Windows Anaconda commonly exposes `conda` through a batch/cmd entry point; without it, control may never return to later fallbacks.
-
-`start_controller_no_anaconda.cmd` deliberately skips conda/Anaconda and uses Windows `py` then PATH `python`.
+`start_controller_private_test.cmd` sets isolated temporary paths for image-blind validation, then delegates to the same production launcher. `start_custom_matrix.cmd` is separate because it opens the Custom matrices mini-app, but follows the same Miniforge-first selection policy.

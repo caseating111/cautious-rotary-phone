@@ -18,7 +18,7 @@ except ModuleNotFoundError:
 
 
 APP_DIR = batch.APP_DIR
-PROOF_IMAGES_CSV = APP_DIR / "one_plate_validation_images.csv"
+PROOF_IMAGES_TSV = APP_DIR / "one_plate_validation_images.tsv"
 FOUR_POINT_PLATE_MACRO = APP_DIR / "one_plate_four_point.configured.ijm"
 REPLACEMENT_MANIFEST = APP_DIR / "one_plate_crop_replacements.tsv"
 
@@ -59,7 +59,7 @@ def read_pending_rows(path: Path) -> tuple[list[str], list[dict[str, str]]]:
     if not path.is_file():
         raise SystemExit(f"Prepared pending-image list not found: {path}")
     with path.open("r", encoding="utf-8-sig", newline="") as handle:
-        reader = csv.DictReader(handle)
+        reader = csv.DictReader(handle, delimiter=delimiter)
         if not reader.fieldnames:
             raise SystemExit(f"Prepared pending-image list has no header: {path}")
         return list(reader.fieldnames), [dict(row) for row in reader]
@@ -90,24 +90,27 @@ def _prepare_completed_plate_macro() -> Path:
     return batch.build_four_point_macro(config)
 
 
-def write_one_row_csv(path: Path, fieldnames: list[str], row: dict[str, str]) -> None:
+def write_one_row_tsv(path: Path, row: dict[str, str]) -> None:
+    fieldnames = ["Folder", "Filename", "Experiment", "Set", "Type"]
+    values = {key: row.get(key, "") for key in fieldnames}
+    if any("\t" in value or "\r" in value or "\n" in value for value in values.values()):
+        raise SystemExit("One-plate Fiji handoff metadata may not contain tabs or line breaks.")
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer = csv.DictWriter(handle, fieldnames=fieldnames, delimiter="\t")
         writer.writeheader()
-        writer.writerow({key: row.get(key, "") for key in fieldnames})
-
+        writer.writerow(values)
 
 def patch_prepared_macro(
     source: str,
-    proof_csv: Path,
+    proof_tsv: Path,
     replacement_manifest: Path | None = None,
     source_folder: str | None = None,
 ) -> str:
     import re
 
-    old = f'imagesFile = "{batch.macro_path(batch.PENDING_IMAGES_CSV)}";'
-    new = f'imagesFile = "{batch.macro_path(proof_csv)}";'
+    old = f'imagesFile = "{batch.macro_path(batch.PENDING_IMAGES_TSV)}";'
+    new = f'imagesFile = "{batch.macro_path(proof_tsv)}";'
     if source.count(old) != 1:
         raise SystemExit(
             "Prepared macro no longer contains exactly one pending-images path; refusing to guess where to patch."
@@ -184,7 +187,7 @@ def prepare(filename: str | None = None, *, rerun_done: bool = False, replace_ex
         else:
             raise SystemExit(output or "Batch preparation failed before one-plate validation.")
 
-    fieldnames, rows = read_pending_rows(batch.PENDING_IMAGES_CSV)
+    fieldnames, rows = read_pending_rows(batch.PENDING_IMAGES_TSV, delimiter="\t")
     if rerun_done or replace_existing:
         config = batch.load_config(require_fiji=False, require_fiji_handoff_paths=False)
         fieldnames, authoritative_rows = read_pending_rows(Path(config["images_csv"]))
@@ -192,7 +195,6 @@ def prepare(filename: str | None = None, *, rerun_done: bool = False, replace_ex
         configured = _prepare_completed_plate_macro()
     else:
         selected = choose_pending_row(rows, filename)
-    write_one_row_csv(PROOF_IMAGES_CSV, fieldnames, selected)
 
     if not configured.is_file():
         raise SystemExit(f"Prepared macro not found: {configured}")
@@ -206,13 +208,16 @@ def prepare(filename: str | None = None, *, rerun_done: bool = False, replace_ex
     ]
     if len(matching_sources) != 1:
         raise SystemExit(f"Selected source is not uniquely present under image_root: {selected['Filename']}")
+    handoff_row = {"Folder": matching_sources[0].parent.name, "Filename": selected.get("Filename", ""), "Experiment": selected.get("Experiment", ""), "Set": selected.get("Set", ""), "Type": selected.get("Type", "")}
+    write_one_row_tsv(PROOF_IMAGES_TSV, handoff_row)
+
     manifest = None
     if replace_existing:
         crop_replacement_manifest.write_manifest(config, selected, REPLACEMENT_MANIFEST)
         manifest = REPLACEMENT_MANIFEST
     proof_text = patch_prepared_macro(
         configured.read_text(encoding="utf-8"),
-        PROOF_IMAGES_CSV,
+        PROOF_IMAGES_TSV,
         manifest,
         matching_sources[0].parent.name,
     )

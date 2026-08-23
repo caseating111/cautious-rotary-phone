@@ -62,7 +62,7 @@ That directory must contain text/JSON/CSV/log/geometry data only. Never place sc
 
 ## Temp redirection and default launch path
 
-For privacy-sensitive controller tests, use `start_controller_private_test.cmd` by default. It sets process-local `TEMP`, `TMP`, and Java `java.io.tmpdir` to the external `C:\LocalWorkflowData\PrivateTemp` tree and then invokes the **non-Anaconda Windows Python 3.14 launcher** (`start_controller_no_anaconda.cmd`). Child processes launched by the controller inherit these locations.
+For privacy-sensitive controller tests, use `start_controller_private_test.cmd` by default. It sets process-local `TEMP`, `TMP`, and Java `java.io.tmpdir` to the external `C:\LocalWorkflowData\PrivateTemp` tree and then invokes the **unified Miniforge-first controller launcher** (`start_controller.cmd`). Child processes launched by the controller inherit these locations.
 
 Do not use Anaconda/conda for the default private-test route. Anaconda integration is deferred unless the user explicitly requests it later.
 

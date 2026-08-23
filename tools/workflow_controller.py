@@ -35,6 +35,8 @@ DEFAULTS = {
     "replace_existing_crops": "0",
     "skip_done": "1",
     "clear_fiji_on_cancel": "1",
+    "batch_grid_qc": "1",
+    "hide_source_during_alignment": "1",
 }
 
 PROJECT_CSV_FILES = {

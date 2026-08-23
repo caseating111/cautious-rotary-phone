@@ -202,7 +202,7 @@ Measure the effect on one or two real tasks before making any candidate mandator
 - Do **not** install new Codex/context/orchestration tools yet; the user is deciding the migration setup.
 - Preserve the current code and evidence until the user says to begin implementation/Codex migration.
 - When migration begins, Codex should read `AGENTS.md`, `docs/development/IMPLEMENTATION_DECISION_POLICY.md`, `docs/development/CURRENT_STATE.md`, and this file first.
-- Runtime target remains Windows + Python 3.14.
+- Runtime target is Windows + Miniforge `workflow-c` Python 3.11.
 - AutoHotkey requirement remains **AHK v2 only**; no AHK v1 compatibility is needed.
 - Continue to prefer the mature four-point Fiji + ROI 1-click route rather than returning to detector development.
 - Fix desktop failures narrowly and verify the generated ImageJ macro itself before asking the user for another test.

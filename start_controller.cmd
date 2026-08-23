@@ -1,42 +1,65 @@
 @echo off
 setlocal
+set "CAUTIOUS_CONTROLLER_LAUNCHER=1"
 cd /d "%~dp0"
 
-rem Prefer the repository's named conda environment when it is already active.
-if /I "%CONDA_DEFAULT_ENV%"=="cautious-rotary-phone" (
-    python tools\workflow_controller_extended.py
-    if not errorlevel 1 exit /b 0
-    echo.
-    echo Active cautious-rotary-phone environment failed; trying other Python routes.
-)
+rem Production runtime: Miniforge workflow-c (Python 3.11).  Candidate
+rem fallbacks are used only when this runtime is unavailable, never after a
+rem controller error or Ctrl+C.
+set "WORKFLOW_PY=%USERPROFILE%\.conda\envs\workflow-c\python.exe"
+if exist "%WORKFLOW_PY%" goto :run_direct
+set "WORKFLOW_PY=C:\ProgramData\miniforge3\envs\workflow-c\python.exe"
+if exist "%WORKFLOW_PY%" goto :run_direct
 
-rem Otherwise use the named conda environment if conda is available.
-rem conda is commonly a .bat/.cmd entry point on Windows, so CALL is required
-rem or this launcher may never regain control to reach the Python fallbacks.
 where conda >nul 2>nul
 if not errorlevel 1 (
-    call conda run --no-capture-output -n cautious-rotary-phone python tools\workflow_controller_extended.py
-    if not errorlevel 1 exit /b 0
-    echo.
-    echo Named conda environment was unavailable or failed; trying Anaconda base.
-    call conda run --no-capture-output -n base python tools\workflow_controller_extended.py
-    if not errorlevel 1 exit /b 0
-    echo.
-    echo Anaconda base could not run the controller; trying Python 3.14 via the Windows launcher.
+    call conda run --no-capture-output -n workflow-c python -c "import PIL, tkinter" >nul 2>nul
+    if not errorlevel 1 goto :run_conda
 )
-
 where py >nul 2>nul
 if not errorlevel 1 (
-    py -3.14 tools\workflow_controller_extended.py
-    if not errorlevel 1 exit /b 0
+    py -3.11 -c "import PIL, tkinter" >nul 2>nul
+    if not errorlevel 1 goto :run_py311
+)
+where python >nul 2>nul
+if not errorlevel 1 (
+    python -c "import PIL, tkinter" >nul 2>nul
+    if not errorlevel 1 goto :run_path
 )
 
-rem Last fallback for systems where python.exe itself is on PATH.
+echo.
+echo No compatible Python with Pillow and Tkinter was found.
+echo Expected Miniforge workflow-c Python 3.11 at:
+echo %USERPROFILE%\.conda\envs\workflow-c\python.exe
+pause
+exit /b 1
+
+:run_direct
+"%WORKFLOW_PY%" tools\workflow_controller_extended.py
+goto :finish
+:run_conda
+call conda run --no-capture-output -n workflow-c python tools\workflow_controller_extended.py
+goto :finish
+:run_py311
+py -3.11 tools\workflow_controller_extended.py
+goto :finish
+:run_path
 python tools\workflow_controller_extended.py
-if errorlevel 1 (
+
+:finish
+set "CONTROLLER_EXIT=%ERRORLEVEL%"
+call :exit_if_controller_requested
+if not errorlevel 1 exit /b 0
+if not "%CONTROLLER_EXIT%"=="0" (
     echo.
-    echo Could not start the controller. Current supported target is Windows with Python 3.14.
+    echo Controller stopped with exit code %CONTROLLER_EXIT%. No alternate Python was started.
     pause
-    exit /b 1
 )
-exit /b 0
+exit /b %CONTROLLER_EXIT%
+
+:exit_if_controller_requested
+if exist "%USERPROFILE%\.cautious-rotary-phone\controller_close.request" (
+    del /q "%USERPROFILE%\.cautious-rotary-phone\controller_close.request"
+    exit /b 0
+)
+exit /b 1

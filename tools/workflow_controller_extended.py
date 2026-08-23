@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import tkinter as tk
 import subprocess
 import sys
@@ -14,7 +15,7 @@ try:
     from tools import run_one_plate_validation as one_plate_validation
     from tools import standard_pillow_preview
     from tools.output_processing_records import write_output_records
-    from tools.workflow_controller import Controller, PILLOW_JOBS, PROJECT_CSV_FILES
+    from tools.workflow_controller import Controller, PILLOW_JOBS, PROJECT_CSV_FILES, REPO_ROOT
 except ModuleNotFoundError:
     import project_csv_discovery
     import project_layout
@@ -22,8 +23,41 @@ except ModuleNotFoundError:
     import run_one_plate_validation as one_plate_validation
     import standard_pillow_preview
     from output_processing_records import write_output_records
-    from workflow_controller import Controller, PILLOW_JOBS, PROJECT_CSV_FILES
+    from workflow_controller import Controller, PILLOW_JOBS, PROJECT_CSV_FILES, REPO_ROOT
 
+
+APP_RUNTIME_DIR = Path.home() / ".cautious-rotary-phone"
+ACTIVE_BATCH_FILE = APP_RUNTIME_DIR / "four_point_batch.active"
+CONTROL_REQUEST_FILE = APP_RUNTIME_DIR / "four_point_control.request"
+RESUME_MARKER_FILE = APP_RUNTIME_DIR / "four_point_resume.marker"
+OWNED_FIJI_PIDS_FILE = APP_RUNTIME_DIR / "four_point_owned_fiji_pids.txt"
+CLOSE_REQUEST_FILE = APP_RUNTIME_DIR / "controller_close.request"
+
+def active_batch_marker() -> bool:
+    """Return true only for a live runner; discard stale crash leftovers."""
+    try:
+        pid = int(ACTIVE_BATCH_FILE.read_text(encoding="utf-8").strip())
+        os.kill(pid, 0)
+    except (FileNotFoundError, OSError, ValueError):
+        try:
+            ACTIVE_BATCH_FILE.unlink()
+        except FileNotFoundError:
+            pass
+        return False
+    return True
+
+def owned_fiji_pids() -> set[int]:
+    try:
+        return {int(line) for line in OWNED_FIJI_PIDS_FILE.read_text(encoding="utf-8").splitlines() if line.strip()}
+    except (FileNotFoundError, ValueError):
+        return set()
+
+
+def terminate_owned_fiji(pid: int) -> None:
+    probe = subprocess.run(["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"], capture_output=True, text=True, check=False)
+    if "fiji-windows-x64.exe" not in probe.stdout.casefold():
+        return
+    subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True, check=False)
 
 STANDARD_OUTPUT_TYPES = {
     "matrices": "matrices",
@@ -40,98 +74,177 @@ class ExtendedController(Controller):
         self.replace_existing_crops = tk.BooleanVar(value=self.config_bool("replace_existing_crops", False))
         self.skip_done = tk.BooleanVar(value=self.config_bool("skip_done", True))
         self.clear_fiji_on_cancel = tk.BooleanVar(value=self.config_bool("clear_fiji_on_cancel", True))
+        self.batch_grid_qc = tk.BooleanVar(value=self.config_bool("batch_grid_qc", True))
+        self.hide_source_during_alignment = tk.BooleanVar(value=self.config_bool("hide_source_during_alignment", True))
         self.batch_subfolder = tk.StringVar()
         self.project_prefix = tk.StringVar(value=project_layout.default_prefix())
         self.fiji_processes: list[subprocess.Popen] = []
-        for variable in (self.preview_standard_outputs, self.replace_existing_crops, self.skip_done, self.clear_fiji_on_cancel):
+        for variable in (self.preview_standard_outputs, self.replace_existing_crops, self.skip_done, self.clear_fiji_on_cancel, self.batch_grid_qc, self.hide_source_during_alignment):
             variable.trace_add("write", self.save_toggle_settings)
 
-        project_frame = ttk.Frame(self)
-        project_frame.grid(row=18, column=0, columnspan=3, sticky="ew", padx=5, pady=(6, 3))
-        ttk.Label(project_frame, text="Project prefix").pack(side="left")
-        ttk.Entry(project_frame, textvariable=self.project_prefix, width=18).pack(side="left", padx=(6, 8))
-        ttk.Button(
-            project_frame,
-            text="Create project layout from Image root",
-            command=self.initialize_project_layout,
-        ).pack(side="left")
-        ttk.Label(
-            project_frame,
-            text="  default: dd.mm.yy; custom text such as ATTEMPT1 is allowed",
-        ).pack(side="left")
 
-        csv_frame = ttk.Frame(self)
-        csv_frame.grid(row=19, column=0, columnspan=3, sticky="ew", padx=5, pady=(0, 3))
-        ttk.Button(
-            csv_frame,
-            text="Choose CSV folder and find project CSVs",
-            command=self.choose_csv_folder,
-        ).pack(side="left")
-        ttk.Label(
-            csv_frame,
-            text="  finds grid.csv, images.csv and condition_order.csv by case-insensitive filename match",
-        ).pack(side="left", padx=(8, 0))
+        self.build_extended_ui()
 
-        separator = ttk.Separator(self)
-        separator.grid(row=20, column=0, columnspan=3, sticky="ew", padx=5, pady=6)
-        ttk.Button(
-            self,
-            text="Custom matrices",
-            command=lambda: self.launch_python("tools/custom_matrix_gui_recorded.py"),
-        ).grid(row=21, column=0, sticky="ew", padx=5, pady=3)
-        ttk.Button(
-            self,
-            text="Preferred WT source",
-            command=lambda: self.launch_python("tools/dedup_control_gui.py"),
-        ).grid(row=21, column=1, sticky="ew", padx=5, pady=3)
-        ttk.Button(
-            self,
-            text="Open Processing Logs",
-            command=self.open_processing_logs,
-        ).grid(row=21, column=2, sticky="ew", padx=5, pady=3)
+    def build_extended_ui(self) -> None:
+        """Arrange existing actions by workflow stage without changing their commands."""
+        def button(parent: tk.Misc, text: str, command, border_color: str = "#a8a8a8", **kwargs) -> tk.Frame:
+            frame = tk.Frame(parent, background=border_color, borderwidth=0, highlightthickness=0)
+            inner = tk.Button(frame, text=text, command=command, relief="flat", borderwidth=0, highlightthickness=0, background="#f2f2f2", activebackground="#e4e4e4", padx=10, pady=5, takefocus=0, **kwargs)
+            inner.pack(fill="both", expand=True, padx=1, pady=1)
+            frame.inner_button = inner
+            return frame
 
-        ttk.Checkbutton(
-            self,
-            text="Preview first when a standard Pillow job will create multiple images",
-            variable=self.preview_standard_outputs,
-        ).grid(row=22, column=0, columnspan=3, sticky="w", padx=5, pady=(3, 6))
-        batch_frame = ttk.Frame(self)
-        batch_frame.grid(row=23, column=0, columnspan=3, sticky="ew", padx=5, pady=(0, 3))
-        ttk.Button(batch_frame, text="Run all 4-point", command=self.run_all_four_point).pack(side="left")
-        ttk.Button(batch_frame, text="Run subfolder", command=self.run_subfolder_four_point).pack(side="left", padx=(5, 0))
-        subfolders = ttk.Combobox(batch_frame, textvariable=self.batch_subfolder, state="readonly", width=28)
-        subfolders.pack(side="left", padx=(8, 0))
+        for child in self.winfo_children():
+            child.destroy()
+
+        self.columnconfigure(0, weight=1)
+        title_bar = ttk.Frame(self)
+        title_bar.grid(row=0, column=0, sticky="ew", padx=5, pady=(5, 2))
+        title_bar.columnconfigure(1, weight=1)
+        ttk.Label(title_bar, text="Image workflow controller").grid(row=0, column=0, sticky="w")
+        self.save_header_button = button(title_bar, text="Save config", command=lambda: self.save(explicit=True))
+        self.save_header_button.grid(row=0, column=2, padx=(8, 5))
+        self.reboot_header_button = button(title_bar, text="Reboot", command=self.reboot_controller)
+        self.reboot_header_button.grid(row=0, column=3, sticky="e")
+
+        header = ttk.Frame(self)
+        header.grid(row=1, column=0, sticky="ew", padx=5)
+        self.tab_container = ttk.Frame(self)
+        self.tab_container.grid(row=2, column=0, sticky="nsew", padx=5)
+        self.tab_container.columnconfigure(0, weight=1)
+        self.tab_container.rowconfigure(0, weight=1)
+        self.setup_tab = ttk.Frame(self.tab_container)
+        self.align_tab = ttk.Frame(self.tab_container)
+        self.outputs_tab = ttk.Frame(self.tab_container)
+        self.settings_tab = ttk.Frame(self.tab_container)
+        self.tab_frames = {
+            "setup": self.setup_tab,
+            "align": self.align_tab,
+            "outputs": self.outputs_tab,
+            "settings": self.settings_tab,
+        }
+        for frame in self.tab_frames.values():
+            frame.grid(row=0, column=0, sticky="nsew")
+        self.tab_buttons: dict[str, tk.Frame] = {}
+        for column, (key, label) in enumerate((
+            ("setup", "1. Setup"),
+            ("align", "2. Align & Export"),
+            ("outputs", "3. Outputs"),
+            ("settings", "Settings"),
+        )):
+            tab_button = button(header, text=label, command=lambda k=key: self.select_tab(k), border_color="#666666")
+            tab_button.grid(row=0, column=column, padx=(0, 3))
+            self.tab_buttons[key] = tab_button
+
+
+        pad = {"padx": 5, "pady": 3}
+        ttk.Label(self.setup_tab, text="Project files and readiness").grid(row=0, column=0, columnspan=3, sticky="w", **pad)
+        rows = [
+            ("Fiji executable", "fiji_executable", "file"),
+            ("AutoHotkey v2", "ahk_executable", "file"),
+            ("Image root", "image_root", "dir"),
+            ("Crop output", "crop_output", "dir"),
+            ("Matrix output", "matrix_output", "dir"),
+            ("grid.csv", "grid_csv", "file"),
+            ("images.csv", "images_csv", "file"),
+            ("condition_order.csv", "condition_order_csv", "file"),
+        ]
+        for row, (label, key, kind) in enumerate(rows, start=1):
+            ttk.Label(self.setup_tab, text=label).grid(row=row, column=0, sticky="w", **pad)
+            ttk.Entry(self.setup_tab, textvariable=self.vars[key], width=60).grid(row=row, column=1, **pad)
+            button(self.setup_tab, text="…", width=3, command=lambda k=key, t=kind: self.browse(k, t)).grid(row=row, column=2, **pad)
+        setup_actions = ttk.Frame(self.setup_tab)
+        setup_actions.grid(row=9, column=0, columnspan=3, sticky="w", **pad)
+        button(setup_actions, text="Choose CSV folder and find project CSVs", command=self.choose_csv_folder).pack(side="left")
+        button(setup_actions, text="Metadata review", command=lambda: self.launch_python("tools/metadata_review_gui.py")).pack(side="left", padx=(5, 0))
+        button(setup_actions, text="Save config", command=lambda: self.save(explicit=True)).pack(side="left", padx=(5, 0))
+        project = ttk.Frame(self.setup_tab)
+        project.grid(row=10, column=0, columnspan=3, sticky="w", **pad)
+        ttk.Label(project, text="Project prefix").pack(side="left")
+        ttk.Entry(project, textvariable=self.project_prefix, width=18).pack(side="left", padx=(6, 8))
+        button(project, text="Create project layout from Image root", command=self.initialize_project_layout).pack(side="left")
+        button(self.setup_tab, text="Reconcile / validate CSV workflow", command=self.run_batch_preflight).grid(row=11, column=0, columnspan=3, sticky="ew", **pad)
+
+        ttk.Label(self.align_tab, text="Single plate or batch alignment and crop export").grid(row=0, column=0, sticky="w", **pad)
+        actions = ttk.LabelFrame(self.align_tab, text="Run and recovery")
+        actions.grid(row=1, column=0, sticky="w", **pad)
+        batch_actions = ttk.Frame(actions)
+        batch_actions.pack(anchor="w", padx=5, pady=(5, 2))
+        button(batch_actions, text="Run all 4-point", command=self.run_all_four_point).pack(side="left")
+        button(batch_actions, text="Run subfolder", command=self.run_subfolder_four_point).pack(side="left", padx=(5, 0))
+        subfolders = ttk.Combobox(batch_actions, textvariable=self.batch_subfolder, state="readonly", width=28)
+        subfolders.pack(side="left", padx=(5, 0))
         subfolders.configure(postcommand=lambda: self.refresh_subfolders(subfolders))
-        ttk.Checkbutton(batch_frame, text="Skip done", variable=self.skip_done).pack(side="left", padx=(8, 0))
-        ttk.Checkbutton(
-            self,
-            text="Replace existing crops after accepted grid",
-            variable=self.replace_existing_crops,
-        ).grid(row=24, column=0, columnspan=3, sticky="w", padx=5, pady=(0, 3))
-        ttk.Checkbutton(
-            self,
-            text="Clear Fiji source/alignment windows on C cancellation",
-            variable=self.clear_fiji_on_cancel,
-        ).grid(row=25, column=0, columnspan=3, sticky="w", padx=5, pady=(0, 3))
+        single_actions = ttk.Frame(actions)
+        single_actions.pack(anchor="w", padx=5, pady=(2, 5))
+        button(single_actions, text="Run single image", command=lambda: self.run_one_plate_validation(rerun_done=False)).pack(side="left")
+        button(single_actions, text="Rerun single image", command=lambda: self.run_one_plate_validation(rerun_done=True)).pack(side="left", padx=(5, 0))
+        button(single_actions, text="Reset stale batch marker", command=self.reset_stale_batch_marker).pack(side="left", padx=(5, 0))
 
-        ttk.Button(
-            self,
-            text="Run one-plate 4-point proof (choose plate)",
-            command=lambda: self.run_one_plate_validation(rerun_done=False),
-        ).grid(row=26, column=0, columnspan=3, sticky="ew", padx=5, pady=(0, 6))
-        ttk.Button(
-            self,
-            text="Reset / re-run selected DONE plate",
-            command=lambda: self.run_one_plate_validation(rerun_done=True),
-        ).grid(row=27, column=0, columnspan=3, sticky="ew", padx=5, pady=(0, 6))
+        options = ttk.LabelFrame(self.align_tab, text="Batch and alignment options")
+        options.grid(row=2, column=0, sticky="w", **pad)
+        ttk.Checkbutton(options, text="Skip done", variable=self.skip_done).grid(row=0, column=0, sticky="w", padx=5, pady=(5, 2))
+        ttk.Checkbutton(options, text="Replace existing crops after accepted grid", variable=self.replace_existing_crops).grid(row=1, column=0, sticky="w", padx=5, pady=2)
+        ttk.Checkbutton(options, text="Batch: show grid QC after every four clicks", variable=self.batch_grid_qc).grid(row=2, column=0, sticky="w", padx=5, pady=2)
+        ttk.Checkbutton(options, text="Hide source image while aligning (batch + single)", variable=self.hide_source_during_alignment).grid(row=3, column=0, sticky="w", padx=5, pady=2)
+        ttk.Checkbutton(options, text="Clear Fiji source/alignment windows on C cancellation", variable=self.clear_fiji_on_cancel).grid(row=4, column=0, sticky="w", padx=5, pady=(2, 5))
 
-    def close_controller(self) -> None:
-        """Close controller-owned helpers before returning control to the launcher."""
+        ttk.Label(self.outputs_tab, text="Run after crop export").grid(row=0, column=0, columnspan=3, sticky="w", **pad)
+        ttk.Checkbutton(self.outputs_tab, text="Preview first when a standard Pillow job will create multiple images", variable=self.preview_standard_outputs).grid(row=1, column=0, columnspan=3, sticky="w", **pad)
+        ttk.Label(self.outputs_tab, text="Pillow output").grid(row=2, column=0, sticky="w", **pad)
+        ttk.Combobox(self.outputs_tab, textvariable=self.pillow_job, values=list(PILLOW_JOBS), state="readonly", width=34).grid(row=2, column=1, sticky="w", **pad)
+        button(self.outputs_tab, text="Run", command=self.run_pillow_job).grid(row=2, column=2, sticky="ew", **pad)
+        output_actions = ttk.Frame(self.outputs_tab)
+        output_actions.grid(row=3, column=0, columnspan=3, sticky="w", **pad)
+        button(output_actions, text="Custom matrices", command=lambda: self.launch_python("tools/custom_matrix_gui_recorded.py")).pack(side="left")
+        button(output_actions, text="Preferred WT source", command=lambda: self.launch_python("tools/dedup_control_gui.py")).pack(side="left", padx=(5, 0))
+        button(self.outputs_tab, text="Open crop output", command=lambda: self.open_path_from_config("crop_output")).grid(row=4, column=0, sticky="ew", **pad)
+        button(self.outputs_tab, text="Open matrix output", command=lambda: self.open_path_from_config("matrix_output")).grid(row=4, column=1, sticky="ew", **pad)
+        button(self.outputs_tab, text="Open image root", command=lambda: self.open_path_from_config("image_root")).grid(row=4, column=2, sticky="ew", **pad)
+
+        button(self.settings_tab, text="Processing settings", command=self.open_processing_settings).grid(row=0, column=0, sticky="ew", **pad)
+        button(self.settings_tab, text="ROI presets", command=lambda: self.launch_python("tools/roi_preset_gui.py")).grid(row=0, column=1, sticky="ew", **pad)
+        button(self.settings_tab, text="Open Processing Logs", command=self.open_processing_logs).grid(row=0, column=2, sticky="ew", **pad)
+        button(self.settings_tab, text="Open last preflight report", command=self.open_preflight_report).grid(row=1, column=0, columnspan=2, sticky="ew", **pad)
+        button(self.settings_tab, text="Open config folder", command=self.open_config_folder).grid(row=1, column=2, sticky="ew", **pad)
+
+        ttk.Label(self, textvariable=self.status, wraplength=720).grid(row=3, column=0, sticky="w", padx=5, pady=(4, 5))
+        self.select_tab("setup")
+    def select_tab(self, key: str) -> None:
+        """Show one workflow stage and give its square tab button a subtle active state."""
+        self.tab_frames[key].tkraise()
+        for name, tab_button in self.tab_buttons.items():
+            tab_button.inner_button.configure(background="#dddddd" if name == key else "#f2f2f2")
+    def _shutdown_controller(self, reboot: bool = False) -> None:
+        """End only this launcher tree and Fiji PIDs recorded by this controller."""
         self.stop_ahk()
         for process in self.fiji_processes:
             if process.poll() is None:
-                process.terminate()
+                subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"], capture_output=True, check=False)
+        for pid in owned_fiji_pids():
+            terminate_owned_fiji(pid)
+        OWNED_FIJI_PIDS_FILE.unlink(missing_ok=True)
+        if os.environ.get("CAUTIOUS_CONTROLLER_LAUNCHER") == "1":
+            APP_RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
+            CLOSE_REQUEST_FILE.write_text("reboot\n" if reboot else "close\n", encoding="utf-8")
         self.destroy()
+        if os.environ.get("CAUTIOUS_CONTROLLER_LAUNCHER") == "1" and not reboot:
+            subprocess.Popen(["taskkill", "/PID", str(os.getppid()), "/T", "/F"], creationflags=subprocess.CREATE_NO_WINDOW)
+
+    def close_controller(self) -> None:
+        self._shutdown_controller()
+
+    def reboot_controller(self) -> None:
+        if not self.save():
+            return
+        ahk = Path(self.vars["ahk_executable"].get().strip())
+        helper = REPO_ROOT / "ahk" / "reboot_controller.ah2"
+        launcher = REPO_ROOT / "start_controller.cmd"
+        if not ahk.is_file() or not helper.is_file() or not launcher.is_file():
+            messagebox.showerror("Reboot", "AutoHotkey v2 or the normal controller launcher is unavailable.")
+            return
+        subprocess.Popen([str(ahk), str(helper), str(launcher), str(os.getpid()), str(os.getppid())])
+        self._shutdown_controller(reboot=True)
 
     def config_bool(self, key: str, default: bool) -> bool:
         value = self.vars.get(key)
@@ -148,6 +261,8 @@ class ExtendedController(Controller):
         self.vars["replace_existing_crops"].set("1" if self.replace_existing_crops.get() else "0")
         self.vars["skip_done"].set("1" if self.skip_done.get() else "0")
         self.vars["clear_fiji_on_cancel"].set("1" if self.clear_fiji_on_cancel.get() else "0")
+        self.vars["batch_grid_qc"].set("1" if self.batch_grid_qc.get() else "0")
+        self.vars["hide_source_during_alignment"].set("1" if self.hide_source_during_alignment.get() else "0")
         return super().save(explicit)
 
     def refresh_subfolders(self, widget: ttk.Combobox) -> None:
@@ -157,6 +272,19 @@ class ExtendedController(Controller):
         if self.batch_subfolder.get() not in values:
             self.batch_subfolder.set("")
 
+    def reset_stale_batch_marker(self) -> None:
+        if active_batch_marker():
+            messagebox.showerror(
+                "Reset stale batch marker",
+                "A live batch wrapper still owns this marker. Finish the batch or use C; resetting it now could allow overlapping batches.",
+            )
+            return
+        for path in (ACTIVE_BATCH_FILE, CONTROL_REQUEST_FILE, RESUME_MARKER_FILE):
+            try:
+                path.unlink()
+            except FileNotFoundError:
+                pass
+        self.status.set("Cleared stale four-point batch runtime markers.")
     def run_all_four_point(self) -> None:
         self.run_four_point_batch(None)
 
@@ -168,6 +296,12 @@ class ExtendedController(Controller):
         self.run_four_point_batch(folder)
 
     def run_four_point_batch(self, subfolder: str | None) -> None:
+        self.fiji_processes = [process for process in self.fiji_processes if process.poll() is None]
+        if active_batch_marker():
+            messagebox.showerror("Run four-point batch", "A four-point batch is still active. Finish it or use C to cancel it before starting another batch.")
+            return
+        # A completed macro may leave Fiji open deliberately. Its wrapper is no longer an active batch and must not block the next run.
+        self.fiji_processes = []
         if not self.save():
             return
         replace_existing = self.replace_existing_crops.get()
@@ -197,7 +331,9 @@ class ExtendedController(Controller):
             messagebox.showerror("Run four-point batch", "Alignment hotkeys did not start; batch launch was cancelled.")
             return
         try:
-            subprocess.Popen(args)
+            batch_process = subprocess.Popen(args)
+            self.fiji_processes = [process for process in self.fiji_processes if process.poll() is None]
+            self.fiji_processes.append(batch_process)
         except OSError as exc:
             messagebox.showerror("Run four-point batch", str(exc))
             return

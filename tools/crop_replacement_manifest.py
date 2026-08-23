@@ -15,8 +15,8 @@ except ModuleNotFoundError:
 
 def write_manifest(config: dict, row: dict[str, str], path: Path) -> int:
     crop_root = Path(config["crop_output"])
-    sources = {item.name.casefold(): item for item in preflight_batch.discover_sources(Path(config["image_root"]))}
-    source = sources.get(row["Filename"].casefold())
+    sources = {(item.parent.name.casefold(), item.name.casefold()): item for item in preflight_batch.discover_sources(Path(config["image_root"]))}
+    source = sources.get((row.get("Folder", "").casefold(), row["Filename"].casefold()))
     if source is None:
         raise SystemExit(f"Selected source is not under image_root: {row['Filename']}")
     grid = [item for item in preflight_batch.read_csv(Path(config["grid_csv"])) if item["Experiment"] == row["Experiment"] and item["Set"] == row["Set"]]

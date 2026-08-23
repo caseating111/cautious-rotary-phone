@@ -49,6 +49,4 @@ Neither suggestion is accepted automatically; the second-image check should not 
 - If the representative plate works, do not spend time stress-testing many plates before using the workflow normally.
 - If peak selection fails once on an otherwise reasonable whole-column ROI, try one sensible reposition/retry.
 - If native peak selection is still clearly unreliable, stop patching `Array.findMaxima()` and evaluate the already-identified mature BAR **Find Peaks** fallback before any custom detector.
-- The original four-point production macro is directly available as **Run 4-point fallback** in the controller. It uses the same CSV validation, batch preflight, pending-image list, configured paths/crop dimensions and alignment hotkey helper, but its original four-point calibration/export block remains unchanged.
-- The preserved four-point macro only supports its original 10- or 12-column grids; the adapter blocks unsupported widths before Fiji rather than letting the old macro skip them.
-- Do not manually compare every output from both routes. Use the four-point route only when a plate/workset needs the known fallback or while the new route is being evaluated.
+- The supported controller path is the modern **Run all 4-point** / **Run subfolder** flow. Validate its configured macro and the AHK helper; the retired fallback is not a user-facing route.
