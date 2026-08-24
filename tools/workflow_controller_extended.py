@@ -212,6 +212,11 @@ class ExtendedController(Controller):
         ttk.Entry(project, textvariable=self.project_prefix, width=18).pack(side="left", padx=(6, 8))
         button(project, text="Create project layout from Image root", command=self.initialize_project_layout).pack(side="left")
         button(self.setup_tab, text="Reconcile / validate CSV workflow", command=self.run_batch_preflight).grid(row=11, column=0, columnspan=3, sticky="ew", **pad)
+        button(
+            self.setup_tab,
+            text="Open V10 project applets",
+            command=lambda: self.launch_python("tools/workflow_applets_gui.py"),
+        ).grid(row=12, column=0, columnspan=3, sticky="ew", **pad)
 
         ttk.Label(self.align_tab, text="Single plate or batch alignment and crop export").grid(row=0, column=0, sticky="w", **pad)
         actions = ttk.LabelFrame(self.align_tab, text="Run and recovery")

@@ -1,7 +1,8 @@
 import json
-import math
 import os
 import shutil
+import tempfile
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 try:
@@ -10,8 +11,8 @@ except ModuleNotFoundError:
     from grid_coordinates import spot_list as grid_asset_spot_list
 
 try:
-    from PIL import Image, ImageOps
     import numpy as np
+    from PIL import Image
     DEPS_AVAILABLE = True
 except ImportError:
     DEPS_AVAILABLE = False
@@ -25,12 +26,6 @@ DEFAULT_PRESETS = {
         "gamma": 1.0,
         "description": "Uses outside-grid background median/10th-pct as black point and inside-grid 99th-pct as white point"
     },
-    "high_contrast_clahe": {
-        "method": "clahe",
-        "clip_limit": 2.0,
-        "tile_grid_size": (8, 8),
-        "description": "Local adaptive contrast enhancement for colony detail visibility"
-    },
     "gamma_boost": {
         "method": "background_aware_linear",
         "bg_percentile": 15.0,
@@ -40,6 +35,28 @@ DEFAULT_PRESETS = {
     }
 }
 
+
+def _output_parent(path: str) -> str:
+    parent = os.path.dirname(os.path.abspath(path))
+    os.makedirs(parent, exist_ok=True)
+    return parent
+
+
+def _preset_config(preset: Optional[Union[str, Dict[str, Any]]]) -> tuple[str, Dict[str, Any]]:
+    if preset is None:
+        return "background_aware_linear", dict(DEFAULT_PRESETS["background_aware_linear"])
+    if isinstance(preset, str):
+        if preset not in DEFAULT_PRESETS:
+            raise ValueError(f"Unknown visibility preset: {preset}")
+        return preset, dict(DEFAULT_PRESETS[preset])
+    if isinstance(preset, dict):
+        name = str(preset.get("name", "custom_preset"))
+        config = dict(preset)
+        method = config.get("method", "background_aware_linear")
+        if method != "background_aware_linear":
+            raise ValueError(f"Unsupported visibility method: {method}")
+        return name, config
+    raise TypeError("preset must be a known name, mapping, or None")
 
 def calculate_grid_roi(
     grid_coordinates: Union[List[Tuple[float, float]], Dict[str, Any]],
@@ -99,6 +116,8 @@ def compute_visibility_statistics(
     gy2 = int(min(h, grid_roi["bottom"]))
 
     inside_pixels = image_array[gy1:gy2, gx1:gx2]
+    if inside_pixels.size == 0:
+        raise ValueError("Accepted grid ROI does not overlap the source image.")
 
     # Create mask for outside-grid border
     bx1 = int(max(0, gx1 - margin))
@@ -164,18 +183,11 @@ def adjust_plate_visibility(
     """
     options = options or {}
     image_uid = options.get("image_uid", "unknown_image")
-    status = options.get("status", "APPROVED")  # APPROVED | MANUAL_REVIEW | SKIPPED
+    status = options.get("status", "PROPOSED")  # PROPOSED | ACCEPTED | MANUAL_REVIEW | SKIPPED
+    if status not in {"PROPOSED", "ACCEPTED", "MANUAL_REVIEW", "SKIPPED"}:
+        raise ValueError(f"Unsupported visibility status: {status}")
     needs_manual = (status == "MANUAL_REVIEW") or options.get("needs_manual_review", False)
-
-    if isinstance(preset, str):
-        preset_dict = DEFAULT_PRESETS.get(preset, DEFAULT_PRESETS["background_aware_linear"])
-        preset_name = preset
-    elif isinstance(preset, dict):
-        preset_dict = preset
-        preset_name = preset.get("name", "custom_preset")
-    else:
-        preset_dict = DEFAULT_PRESETS["background_aware_linear"]
-        preset_name = "background_aware_linear"
+    preset_name, preset_dict = _preset_config(preset)
 
     # If skipped
     if status == "SKIPPED":
@@ -189,11 +201,14 @@ def adjust_plate_visibility(
             "parameters": {},
             "grid_roi": None,
             "statistics": {},
-            "output_path": options.get("output_path")
+            "output_path": options.get("output_path"),
+            "source_image_ref": options.get("source_image_ref") or (str(source_image) if isinstance(source_image, (str, Path)) else None),
+            "grid_asset_id": grid_coordinates.get("asset_id") if isinstance(grid_coordinates, dict) else None,
+            "output_dimensions": None
         }
 
     # Load image if file path
-    if isinstance(source_image, str):
+    if isinstance(source_image, (str, Path)):
         if not os.path.exists(source_image):
             raise FileNotFoundError(f"Source image '{source_image}' not found")
         with Image.open(source_image) as img:
@@ -233,7 +248,10 @@ def adjust_plate_visibility(
         },
         "grid_roi": grid_roi,
         "statistics": stats,
-        "output_path": options.get("output_path")
+        "output_path": options.get("output_path"),
+        "source_image_ref": options.get("source_image_ref") or (str(source_image) if isinstance(source_image, (str, Path)) else None),
+        "grid_asset_id": grid_coordinates.get("asset_id") if isinstance(grid_coordinates, dict) else None,
+        "output_dimensions": [img_w, img_h]
     }
 
 
@@ -248,16 +266,18 @@ def apply_visibility_adjustment(
     if not DEPS_AVAILABLE:
         raise RuntimeError("Pillow and numpy are required for apply_visibility_adjustment")
 
-    status = adjustment_result.get("status", "APPROVED")
+    status = adjustment_result.get("status", "PROPOSED")
+    if output_path and status not in {"ACCEPTED", "SKIPPED"}:
+        raise ValueError("A proposed visibility adjustment cannot be written before acceptance.")
     params = adjustment_result.get("parameters", {})
 
-    if isinstance(source_image, str):
+    if isinstance(source_image, (str, Path)):
         if not os.path.exists(source_image):
             raise FileNotFoundError(f"Source image '{source_image}' does not exist")
 
         if status == "SKIPPED" or not params:
             if output_path:
-                os.makedirs(os.path.dirname(output_path), exist_ok=True)
+                _output_parent(output_path)
                 shutil.copy2(source_image, output_path)
                 return output_path
             return Image.open(source_image)
@@ -271,7 +291,7 @@ def apply_visibility_adjustment(
             out_img = Image.fromarray(adjusted_arr)
 
             if output_path:
-                os.makedirs(os.path.dirname(output_path), exist_ok=True)
+                _output_parent(output_path)
                 out_img.save(output_path)
                 return output_path
             return out_img
@@ -285,7 +305,7 @@ def apply_visibility_adjustment(
         adjusted_arr = apply_display_transform(arr, bp, wp, gamma)
         out_img = Image.fromarray(adjusted_arr)
         if output_path:
-            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            _output_parent(output_path)
             out_img.save(output_path)
             return output_path
         return out_img
@@ -334,3 +354,23 @@ class ReviewQueue:
             if e.get("image_uid") == str(image_uid):
                 e["reviewed"] = True
         self.save()
+
+
+def write_visibility_result(result: Dict[str, Any], result_path: str) -> str:
+    """Atomically write accepted adjustment metadata beside its output."""
+    if result.get("status") != "ACCEPTED":
+        raise ValueError("Only accepted visibility results may be written.")
+    parent = _output_parent(result_path)
+    fd, temporary = tempfile.mkstemp(prefix=".visibility-", suffix=".tmp", dir=parent, text=True)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(result, handle, indent=2, sort_keys=True)
+            handle.write("\n")
+        os.replace(temporary, result_path)
+    except Exception:
+        try:
+            os.unlink(temporary)
+        except OSError:
+            pass
+        raise
+    return result_path

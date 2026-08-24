@@ -1,289 +1,413 @@
+from __future__ import annotations
+
+import hashlib
 import os
 import shutil
-import re
-from typing import Any, Dict, List, Optional, Set, Tuple
-from .v10_adapter import load_v10, reconcile_image_files
+import tempfile
+from collections import Counter
+from pathlib import Path
+from typing import Any
+
+from .v10_adapter import reconcile_image_files
+
+_INVALID_NAME_CHARS = set('<>:"/\\|?*;')
+_RESERVED_WINDOWS_NAMES = {
+    "CON",
+    "PRN",
+    "AUX",
+    "NUL",
+    *(f"COM{index}" for index in range(1, 10)),
+    *(f"LPT{index}" for index in range(1, 10)),
+}
+_PROJECT_DIRECTORIES = {
+    "raw": ("Raw",),
+    "working": ("Working",),
+    "processed": ("Processed",),
+    "annotated": ("Annotated",),
+    "crops_unprocessed": ("Crops", "Unprocessed"),
+    "crops_processed": ("Crops", "Processed"),
+    "matrices": ("Matrices",),
+    "metadata": ("Metadata",),
+    "state": ("State",),
+}
 
 
-def initialize_project_tree(project_root: str, create_subdirs: bool = True) -> Dict[str, str]:
-    """
-    Initializes standard project directory tree structure:
-    - raw/
-    - working/
-    - processed/
-    - annotated/
-    - crops/unprocessed/
-    - crops/processed/
-    - matrices/
-    - state/
-    """
-    dirs = {
-        "raw": os.path.join(project_root, "raw"),
-        "working": os.path.join(project_root, "working"),
-        "processed": os.path.join(project_root, "processed"),
-        "annotated": os.path.join(project_root, "annotated"),
-        "crops_unprocessed": os.path.join(project_root, "crops", "unprocessed"),
-        "crops_processed": os.path.join(project_root, "crops", "processed"),
-        "matrices": os.path.join(project_root, "matrices"),
-        "state": os.path.join(project_root, "state"),
+def _safe_relative_path(value: str, *, field: str) -> str:
+    text = str(value or "").strip()
+    if not text or Path(text).is_absolute() or Path(text).drive:
+        raise ValueError(f"{field} must be a non-empty relative path.")
+    raw_parts = text.replace("\\", "/").split("/")
+    if any(not part or part in {".", ".."} for part in raw_parts):
+        raise ValueError(f"{field} cannot contain empty or dot path components.")
+    for part in raw_parts:
+        stem = part.split(".", 1)[0].upper()
+        if (
+            any(ord(char) < 32 or char in _INVALID_NAME_CHARS for char in part)
+            or part.endswith((" ", "."))
+            or stem in _RESERVED_WINDOWS_NAMES
+        ):
+            raise ValueError(f"{field} contains an unsafe Windows filename component.")
+    return "/".join(raw_parts)
+
+
+def _sha256(path: str | Path) -> str:
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _atomic_write_text(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", dir=path.parent, text=True
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="") as handle:
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _atomic_copy(source: Path, destination: Path) -> None:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{destination.name}.", dir=destination.parent
+    )
+    os.close(descriptor)
+    temporary = Path(temporary_name)
+    try:
+        shutil.copy2(source, temporary)
+        os.replace(temporary, destination)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _relative_to_root(path: Path, root: Path) -> str:
+    try:
+        return path.resolve().relative_to(root.resolve()).as_posix()
+    except ValueError as exc:
+        raise ValueError(f"Source path is outside the project root: {path}") from exc
+
+
+def _recursive_files(folder: Path) -> list[str]:
+    if not folder.is_dir():
+        return []
+    return [str(path.resolve()) for path in sorted(folder.rglob("*")) if path.is_file()]
+
+
+def initialize_project_tree(
+    project_root: str | Path, create_subdirs: bool = True
+) -> dict[str, str]:
+    """Return or create additive directories compatible with ProjectLayout."""
+    root = Path(project_root).resolve()
+    directories = {
+        key: str(root.joinpath(*parts)) for key, parts in _PROJECT_DIRECTORIES.items()
     }
     if create_subdirs:
-        for d in dirs.values():
-            os.makedirs(d, exist_ok=True)
-    return dirs
+        for directory in directories.values():
+            Path(directory).mkdir(parents=True, exist_ok=True)
+    return directories
+
+
+def _files_by_session(
+    project_model: dict[str, Any],
+    raw_root: Path,
+    custom_session_folders: dict[str, str],
+) -> dict[str, list[str]]:
+    all_files = _recursive_files(raw_root)
+    named_folders: dict[str, list[Path]] = {}
+    if raw_root.is_dir():
+        for path in raw_root.rglob("*"):
+            if path.is_dir():
+                named_folders.setdefault(path.name.casefold(), []).append(path)
+    result: dict[str, list[str]] = {}
+    for session in project_model.get("sessions", []):
+        uid = str(session.get("session_uid", ""))
+        custom = custom_session_folders.get(uid)
+        if custom:
+            folder = Path(custom).resolve()
+            try:
+                folder.relative_to(raw_root)
+            except ValueError as exc:
+                raise ValueError(
+                    f"Custom session folder for {uid} must remain inside Raw."
+                ) from exc
+            result[uid] = _recursive_files(folder)
+            continue
+        matches = named_folders.get(uid.casefold(), [])
+        result[uid] = (
+            sorted({file for folder in matches for file in _recursive_files(folder)})
+            if matches
+            else all_files
+        )
+    return result
 
 
 def generate_conversion_map_text(
-    project_model: Dict[str, Any],
-    rename_results: List[Dict[str, Any]],
-    project_root: Optional[str] = None
+    project_model: dict[str, Any],
+    rename_results: list[dict[str, Any]],
+    project_root: str | Path | None = None,
 ) -> str:
-    """
-    Generates a clear human-readable audit text file mapping:
-    raw relative path -> working relative path [UID: ...] [Status: ...]
-    Grouped by Experiment and Set with clean dividers.
-    """
-    res_by_uid = {r["image_uid"]: r for r in rename_results}
-    images = project_model.get("images", [])
-
+    """Build the human audit map using project-relative paths only."""
+    results = {result["image_uid"]: result for result in rename_results}
+    grouped: dict[str, dict[str, list[dict[str, Any]]]] = {}
+    for image in project_model.get("images", []):
+        grouped.setdefault(str(image.get("exp") or "Unknown"), {}).setdefault(
+            str(image.get("set") or "Default"), []
+        ).append(image)
     lines = [
-        "================================================================================",
-        "                     V10 IMAGE NAME CONVERSION & AUDIT MAP                      ",
-        "================================================================================",
-        "This file records the mapping from raw source camera files to V10 working files.",
-        "Canonical identity is preserved via Image UID across all processing stages.",
+        "V10 IMAGE NAME CONVERSION & AUDIT MAP",
+        "Canonical identity is Image UID; paths are relative to the project root.",
         "",
     ]
-
-    # Group images by Exp, then Set
-    exp_groups: Dict[str, Dict[str, List[Dict[str, Any]]]] = {}
-    for img in images:
-        exp = img.get("exp") or "Unknown"
-        img_set = img.get("set") or "Default"
-        if exp not in exp_groups:
-            exp_groups[exp] = {}
-        if img_set not in exp_groups[exp]:
-            exp_groups[exp][img_set] = []
-        exp_groups[exp][img_set].append(img)
-
-    for exp in sorted(exp_groups.keys()):
-        lines.append(f"==================== Experiment {exp} ====================")
-        lines.append("")
-        set_dict = exp_groups[exp]
-        for s_name in sorted(set_dict.keys()):
-            lines.append(f"  -------------------- Set {s_name} --------------------")
-            for img in set_dict[s_name]:
-                uid = img["image_uid"]
-                r = res_by_uid.get(uid, {})
-                disposition = r.get("disposition", "UNKNOWN")
-                raw_p = r.get("raw_path") or img.get("original") or "N/A"
-                work_p = r.get("working_path") or img.get("working_filename") or "N/A"
-
-                if project_root:
-                    if os.path.isabs(raw_p) and raw_p.startswith(project_root):
-                        raw_p = os.path.relpath(raw_p, project_root)
-                    if os.path.isabs(work_p) and work_p.startswith(project_root):
-                        work_p = os.path.relpath(work_p, project_root)
-
-                lines.append(f"    {raw_p} -> {work_p}")
-                lines.append(f"        [UID: {uid}]  [Session: {img.get('session_uid')}]  [Status: {disposition}]")
+    for experiment in sorted(grouped):
+        lines.append(f"=== Experiment {experiment} ===")
+        for set_name in sorted(grouped[experiment]):
+            lines.append(f"-- Set {set_name} --")
+            for image in grouped[experiment][set_name]:
+                uid = image["image_uid"]
+                result = results.get(uid, {})
+                raw_path = result.get("raw_path") or "EXPECTED_NOT_PRESENT"
+                working_path = result.get("working_path") or "NOT_PLANNED"
+                lines.append(f"{raw_path} -> {working_path}")
+                lines.append(
+                    f"  UID={uid} Session={image.get('session_uid')} "
+                    f"Status={result.get('disposition', 'UNKNOWN')}"
+                )
             lines.append("")
-        lines.append("")
+    return "\n".join(lines).rstrip() + "\n"
 
-    return "\n".join(lines)
+
+def _write_conversion_map(path: Path, text: str) -> None:
+    if path.is_file():
+        prior = path.read_text(encoding="utf-8")
+        if prior == text:
+            return
+        digest = hashlib.sha256(prior.encode("utf-8")).hexdigest()[:12]
+        history = path.parent / "History" / f"image_name_conversions.{digest}.txt"
+        if not history.exists():
+            _atomic_write_text(history, prior)
+    _atomic_write_text(path, text)
 
 
 def prepare_working_copy(
-    project_model: Dict[str, Any],
-    project_root: str,
-    raw_root: Optional[str] = None,
-    working_root: Optional[str] = None,
-    options: Optional[Dict[str, Any]] = None
-) -> Dict[str, Any]:
-    """
-    Prepares the project directory tree and creates/maps working copies of raw images.
-
-    Options:
-    - enable_rename: bool (default True). If True, copy to V10 working_filename. If False, copy preserving original name.
-    - preview_only: bool (default False). If True, compute dispositions without filesystem writes.
-    - write_conversion_map: bool (default True). Write image_name_conversions.txt at project_root.
-    - collision_policy: "error" | "disambiguate_with_uid" (default "error").
-    - provenance_map: Optional dict mapping image_uid -> accepted physical file.
-    - custom_session_folders: Optional dict mapping session_uid -> folder path.
-    """
+    project_model: dict[str, Any],
+    project_root: str | Path,
+    raw_root: str | Path | None = None,
+    working_root: str | Path | None = None,
+    options: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Preview or apply V10 reconciliation into a non-destructive Working tree."""
     options = options or {}
-    enable_rename = options.get("enable_rename", True)
-    preview_only = options.get("preview_only", False)
-    write_conversion_map = options.get("write_conversion_map", True)
+    enable_rename = bool(options.get("enable_rename", True))
+    preview_only = bool(options.get("preview_only", False))
+    write_conversion_map = bool(options.get("write_conversion_map", True))
     collision_policy = options.get("collision_policy", "error")
-    provenance_map = options.get("provenance_map", {})
-    custom_session_folders = options.get("custom_session_folders", {})
+    if collision_policy not in {"error", "disambiguate_with_uid"}:
+        raise ValueError(f"Unsupported collision_policy: {collision_policy}")
 
-    raw_root = os.path.abspath(raw_root or os.path.join(project_root, "raw"))
-    working_root = os.path.abspath(working_root or os.path.join(project_root, "working"))
-    project_root = os.path.abspath(project_root)
+    root = Path(project_root).resolve()
+    raw = Path(raw_root).resolve() if raw_root else root / "Raw"
+    working = Path(working_root).resolve() if working_root else root / "Working"
+    for path, label in ((raw, "raw_root"), (working, "working_root")):
+        try:
+            path.relative_to(root)
+        except ValueError as exc:
+            raise ValueError(f"{label} must remain inside the project root.") from exc
 
-    # 1. Initialize project directories (unless preview)
     if not preview_only:
-        initialize_project_tree(project_root, create_subdirs=True)
-        os.makedirs(raw_root, exist_ok=True)
-        os.makedirs(working_root, exist_ok=True)
+        initialize_project_tree(root)
+        raw.mkdir(parents=True, exist_ok=True)
+        working.mkdir(parents=True, exist_ok=True)
 
-    # 2. Scan raw root for physical files per session
-    files_by_session: Dict[str, List[str]] = {}
-    sessions = project_model.get("sessions", [])
-    for s in sessions:
-        suid = s["session_uid"]
-        session_folder = custom_session_folders.get(suid, os.path.join(raw_root, suid))
-        found_files = []
-        if os.path.exists(session_folder) and os.path.isdir(session_folder):
-            for entry in os.scandir(session_folder):
-                if entry.is_file():
-                    found_files.append(entry.path)
-        elif os.path.exists(raw_root) and os.path.isdir(raw_root):
-            for entry in os.scandir(raw_root):
-                if entry.is_file():
-                    found_files.append(entry.path)
-        files_by_session[suid] = found_files
+    provenance_map = {
+        str(uid): str(Path(path).resolve())
+        for uid, path in options.get("provenance_map", {}).items()
+    }
+    for uid, path in provenance_map.items():
+        try:
+            Path(path).relative_to(raw)
+        except ValueError as exc:
+            raise ValueError(
+                f"Provenance path for {uid} must remain inside Raw."
+            ) from exc
 
-    # 3. Reconcile expected images with physical files
-    rec_result = reconcile_image_files(
+    files_by_session = _files_by_session(
+        project_model, raw, options.get("custom_session_folders", {})
+    )
+    reconciliation = reconcile_image_files(
         project_model,
         files_by_session=files_by_session,
-        provenance_map=provenance_map
+        provenance_map=provenance_map,
+    )
+    reconciled = {item["image_uid"]: item for item in reconciliation.get("images", [])}
+    claimed = Counter(
+        str(Path(item["matched_file"]).resolve()).casefold()
+        for item in reconciled.values()
+        if item.get("status") == "READY" and item.get("matched_file")
     )
 
-    reconciled_lookup = {r["image_uid"]: r for r in rec_result.get("images", [])}
-
-    # 4. Plan destination working paths and check for target collisions
-    dest_path_to_uid: Dict[str, str] = {}
-    image_plans: List[Dict[str, Any]] = []
-
-    for img in project_model.get("images", []):
-        uid = img["image_uid"]
-        suid = img.get("session_uid", "")
-        rec = reconciled_lookup.get(uid, {})
-        status = rec.get("status", "EXPECTED_NOT_PRESENT")
-        matched_raw_file = rec.get("matched_file")
-
+    destinations: dict[str, str] = {}
+    plans: list[dict[str, Any]] = []
+    for image in project_model.get("images", []):
+        uid = str(image["image_uid"])
+        session_uid = str(image.get("session_uid") or "")
+        match = reconciled.get(uid, {})
+        source_value = match.get("matched_file")
+        source = Path(source_value).resolve() if source_value else None
         if enable_rename:
-            target_fn = img.get("working_filename") or img.get("original") or f"{uid}.jpg"
+            target_name = _safe_relative_path(
+                image.get("working_filename") or image.get("original") or f"{uid}.jpg",
+                field="working_filename",
+            )
         else:
-            target_fn = img.get("original") or (os.path.basename(matched_raw_file) if matched_raw_file else f"{uid}.jpg")
-
-        target_rel_path = os.path.join("working", target_fn)
-        target_abs_path = os.path.join(working_root, target_fn)
-        target_key = target_abs_path.lower()
-
+            target_name = _safe_relative_path(
+                image.get("original") or (source.name if source else f"{uid}.jpg"),
+                field="original",
+            )
+        destination = (working / Path(target_name)).resolve()
+        destination_key = str(destination).casefold()
         disposition = "SKIPPED"
-        disposition_detail = ""
+        detail = ""
 
-        if target_key in dest_path_to_uid and dest_path_to_uid[target_key] != uid:
+        prior_uid = destinations.get(destination_key)
+        if prior_uid and prior_uid != uid:
             if collision_policy == "disambiguate_with_uid":
-                stem, ext = os.path.splitext(target_fn)
-                disambig_fn = f"{stem}_{uid}{ext}"
-                target_rel_path = os.path.join("working", disambig_fn)
-                target_abs_path = os.path.join(working_root, disambig_fn)
-                target_key = target_abs_path.lower()
-                dest_path_to_uid[target_key] = uid
+                token = hashlib.sha256(uid.encode("utf-8")).hexdigest()[:8]
+                target_path = Path(target_name)
+                target_name = str(
+                    target_path.with_name(
+                        f"{target_path.stem}-{token}{target_path.suffix}"
+                    )
+                ).replace("\\", "/")
+                destination = (working / Path(target_name)).resolve()
+                destination_key = str(destination).casefold()
+                if destination_key in destinations:
+                    disposition = "TARGET_COLLISION"
+                    detail = (
+                        "UID disambiguation still produced a duplicate destination."
+                    )
+                else:
+                    destinations[destination_key] = uid
             else:
                 disposition = "TARGET_COLLISION"
-                disposition_detail = f'Destination path "{target_fn}" collides with Image UID "{dest_path_to_uid[target_key]}"'
+                detail = f"Destination collides with Image UID {prior_uid}."
         else:
-            dest_path_to_uid[target_key] = uid
+            destinations[destination_key] = uid
 
+        status = match.get("status", "EXPECTED_NOT_PRESENT")
         if disposition != "TARGET_COLLISION":
-            if status == "READY" and matched_raw_file:
-                if os.path.exists(target_abs_path):
-                    try:
-                        raw_size = os.path.getsize(matched_raw_file)
-                        target_size = os.path.getsize(target_abs_path)
-                        if raw_size == target_size:
-                            disposition = "UNCHANGED_CURRENT"
-                            disposition_detail = "Target file already exists with matching size"
-                        else:
-                            disposition = "COPIED_RENAMED" if enable_rename else "COPIED_ORIGINAL_NAME"
-                            disposition_detail = "Target file exists but size differs; will update"
-                    except OSError:
-                        disposition = "COPIED_RENAMED" if enable_rename else "COPIED_ORIGINAL_NAME"
-                        disposition_detail = "Will copy to working directory"
+            if (
+                status == "READY"
+                and source is not None
+                and claimed[str(source).casefold()] > 1
+            ):
+                disposition = "AMBIGUOUS_SOURCE"
+                detail = "One physical source matched more than one Image UID."
+            elif status == "READY" and source is not None:
+                if destination.is_file():
+                    if _sha256(source) == _sha256(destination):
+                        disposition = "UNCHANGED_CURRENT"
+                        detail = "Target content matches source."
+                    else:
+                        disposition = "TARGET_COLLISION"
+                        detail = "Existing target differs; refusing overwrite."
                 else:
-                    disposition = "COPIED_RENAMED" if enable_rename else "COPIED_ORIGINAL_NAME"
-                    disposition_detail = "Will copy to working directory"
-            elif status == "EXPECTED_NOT_PRESENT":
-                disposition = "EXPECTED_NOT_PRESENT"
-                disposition_detail = "Expected by V10 model but no physical raw file found"
+                    disposition = (
+                        "WOULD_COPY_RENAMED"
+                        if preview_only and enable_rename
+                        else "WOULD_COPY_ORIGINAL_NAME"
+                        if preview_only
+                        else "COPIED_RENAMED"
+                        if enable_rename
+                        else "COPIED_ORIGINAL_NAME"
+                    )
+                    detail = "Copy is planned." if preview_only else "Copy pending."
             elif status == "AMBIGUOUS":
                 disposition = "AMBIGUOUS_SOURCE"
-                disposition_detail = f"Multiple matching raw files found: {rec.get('candidates')}"
+                detail = f"Multiple source candidates: {match.get('candidates', [])}"
+            elif status == "EXPECTED_NOT_PRESENT":
+                disposition = "EXPECTED_NOT_PRESENT"
+                detail = "Expected by V10 but no physical source is present."
 
-        raw_rel = os.path.relpath(matched_raw_file, project_root) if (matched_raw_file and os.path.isabs(matched_raw_file) and matched_raw_file.startswith(project_root)) else (matched_raw_file or os.path.join("raw", suid, img.get("original", "")))
+        raw_path = (
+            _relative_to_root(source, root)
+            if source is not None
+            else f"Raw/{session_uid}/{image.get('original') or ''}".rstrip("/")
+        )
+        plans.append(
+            {
+                "image_uid": uid,
+                "session_uid": session_uid,
+                "raw_path": raw_path,
+                "working_path": destination.relative_to(root).as_posix(),
+                "raw_abs_path": str(source) if source else None,
+                "working_abs_path": str(destination),
+                "disposition": disposition,
+                "disposition_detail": detail,
+            }
+        )
 
-        image_plans.append({
-            "image_uid": uid,
-            "session_uid": suid,
-            "raw_path": raw_rel,
-            "working_path": target_rel_path,
-            "raw_abs_path": matched_raw_file,
-            "working_abs_path": target_abs_path,
-            "disposition": disposition,
-            "disposition_detail": disposition_detail
-        })
-
-    # 5. Execute file copies if not preview
     if not preview_only:
-        for plan in image_plans:
-            disp = plan["disposition"]
-            if disp in ("COPIED_RENAMED", "COPIED_ORIGINAL_NAME"):
-                src = plan["raw_abs_path"]
-                dst = plan["working_abs_path"]
-                if src and os.path.exists(src):
-                    os.makedirs(os.path.dirname(dst), exist_ok=True)
-                    shutil.copy2(src, dst)
+        for plan in plans:
+            if plan["disposition"] not in {
+                "COPIED_RENAMED",
+                "COPIED_ORIGINAL_NAME",
+            }:
+                continue
+            try:
+                _atomic_copy(Path(plan["raw_abs_path"]), Path(plan["working_abs_path"]))
+                plan["disposition_detail"] = "Copied atomically to Working."
+            except OSError as exc:
+                plan["disposition"] = "COPY_FAILED"
+                plan["disposition_detail"] = str(exc)
 
-    # 6. Generate conversion map text
-    conv_map_text = generate_conversion_map_text(project_model, image_plans, project_root=project_root)
-    conv_map_path = os.path.join(project_root, "image_name_conversions.txt")
+    clean_plans = [
+        {
+            key: plan[key]
+            for key in (
+                "image_uid",
+                "session_uid",
+                "raw_path",
+                "working_path",
+                "disposition",
+                "disposition_detail",
+            )
+        }
+        for plan in plans
+    ]
+    conversion_text = generate_conversion_map_text(project_model, clean_plans, root)
+    conversion_path = root / "Metadata" / "image_name_conversions.txt"
     if write_conversion_map and not preview_only:
-        with open(conv_map_path, "w", encoding="utf-8") as f:
-            f.write(conv_map_text)
+        _write_conversion_map(conversion_path, conversion_text)
 
-    copied_renamed = sum(1 for p in image_plans if p["disposition"] == "COPIED_RENAMED")
-    copied_orig = sum(1 for p in image_plans if p["disposition"] == "COPIED_ORIGINAL_NAME")
-    unchanged = sum(1 for p in image_plans if p["disposition"] == "UNCHANGED_CURRENT")
-    not_present = sum(1 for p in image_plans if p["disposition"] == "EXPECTED_NOT_PRESENT")
-    ambiguous = sum(1 for p in image_plans if p["disposition"] == "AMBIGUOUS_SOURCE")
-    collision = sum(1 for p in image_plans if p["disposition"] == "TARGET_COLLISION")
-    skipped = sum(1 for p in image_plans if p["disposition"] == "SKIPPED")
-
-    clean_images = []
-    for p in image_plans:
-        clean_images.append({
-            "image_uid": p["image_uid"],
-            "session_uid": p["session_uid"],
-            "raw_path": p["raw_path"],
-            "working_path": p["working_path"],
-            "disposition": p["disposition"],
-            "disposition_detail": p["disposition_detail"]
-        })
-
+    counts = Counter(plan["disposition"] for plan in plans)
     return {
         "contract_version": 1,
-        "project_root": project_root,
-        "raw_root": raw_root,
-        "working_root": working_root,
-        "conversion_map_path": os.path.relpath(conv_map_path, project_root) if os.path.exists(conv_map_path) or preview_only else conv_map_path,
-        "conversion_map_text": conv_map_text,
+        "preview_only": preview_only,
+        "project_root": str(root),
+        "raw_root": str(raw),
+        "working_root": str(working),
+        "conversion_map_path": conversion_path.relative_to(root).as_posix(),
+        "conversion_map_text": conversion_text,
         "summary": {
-            "total_expected": len(image_plans),
-            "copied_renamed_count": copied_renamed,
-            "copied_original_count": copied_orig,
-            "unchanged_current_count": unchanged,
-            "expected_not_present_count": not_present,
-            "ambiguous_source_count": ambiguous,
-            "target_collision_count": collision,
-            "skipped_count": skipped
+            "total_expected": len(plans),
+            "dispositions": dict(sorted(counts.items())),
+            "ready_to_copy_count": counts["WOULD_COPY_RENAMED"]
+            + counts["WOULD_COPY_ORIGINAL_NAME"],
+            "copied_count": counts["COPIED_RENAMED"] + counts["COPIED_ORIGINAL_NAME"],
+            "unchanged_current_count": counts["UNCHANGED_CURRENT"],
+            "expected_not_present_count": counts["EXPECTED_NOT_PRESENT"],
+            "ambiguous_source_count": counts["AMBIGUOUS_SOURCE"],
+            "target_collision_count": counts["TARGET_COLLISION"],
+            "copy_failed_count": counts["COPY_FAILED"],
         },
-        "images": clean_images,
-        "unmapped_files": rec_result.get("unmapped_files", [])
+        "images": clean_plans,
+        "unmapped_files": reconciliation.get("unmapped_files", []),
     }

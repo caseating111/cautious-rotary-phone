@@ -6,7 +6,8 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 EXTENDED = REPO_ROOT / "tools" / "workflow_controller_extended.py"
-START_CONTROLLER = REPO_ROOT / "start_controller_miniforge.cmd"
+START_CONTROLLER = REPO_ROOT / "start_controller.cmd"
+START_PRIVATE = REPO_ROOT / "start_controller_private_test.cmd"
 
 
 class ProjectLayoutControllerContractTests(unittest.TestCase):
@@ -21,12 +22,14 @@ class ProjectLayoutControllerContractTests(unittest.TestCase):
 
     def test_launchers_prefer_the_shared_miniforge_workflow_runtime(self) -> None:
         controller = START_CONTROLLER.read_text(encoding="utf-8").lower()
-        custom = START_CUSTOM.read_text(encoding="utf-8").lower()
-        for text in (controller, custom):
-            self.assertIn(r"%userprofile%\.conda\envs\workflow-c\python.exe", text)
-            self.assertIn("-n workflow-c python", text)
-            self.assertIn("py -3.11", text)
-            self.assertNotIn("py -3.14", text)
+        private = START_PRIVATE.read_text(encoding="utf-8").lower()
+        self.assertIn(r"%userprofile%\.conda\envs\workflow-c\python.exe", controller)
+        self.assertIn("-n workflow-c python", controller)
+        self.assertIn("py -3.11", controller)
+        self.assertNotIn("py -3.14", controller)
+        self.assertIn('call "%~dp0start_controller.cmd"', private)
+        self.assertNotIn("py -3.14", private)
+
 
 if __name__ == "__main__":
     unittest.main()

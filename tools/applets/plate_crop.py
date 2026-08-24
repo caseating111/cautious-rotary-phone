@@ -1,193 +1,207 @@
+from __future__ import annotations
+
 import math
-import os
 import shutil
-from typing import Any, Dict, List, Optional, Tuple, Union
+from pathlib import Path
+from typing import Any
 
 try:
     from PIL import Image
+
     PIL_AVAILABLE = True
 except ImportError:
     PIL_AVAILABLE = False
 
 
 def calibrate_crop_size(
-    left_pt: Tuple[float, float],
-    right_pt: Tuple[float, float],
-    top_pt: Tuple[float, float],
-    bottom_pt: Tuple[float, float],
+    left_pt: tuple[float, float],
+    right_pt: tuple[float, float],
+    top_pt: tuple[float, float],
+    bottom_pt: tuple[float, float],
     increment: int = 50,
-    calibration_id: Optional[str] = None
-) -> Dict[str, Any]:
-    """
-    Derives reusable square CropSizeCalibration from 4 boundary points (left, right, top, bottom).
-    Exact corners are NOT required.
-
-    Rule:
-    - measured_width = abs(right_pt[0] - left_pt[0])
-    - measured_height = abs(bottom_pt[1] - top_pt[1])
-    - raw_side = min(measured_width, measured_height)
-    - side_pixels = floor(raw_side / increment) * increment
-    """
-    if increment <= 0:
+    calibration_id: str | None = None,
+    *,
+    accepted: bool = False,
+) -> dict[str, Any]:
+    """Derive a proposed or accepted reusable square crop-size calibration."""
+    if not isinstance(increment, int) or increment <= 0:
         raise ValueError(f"increment must be a positive integer, got {increment}")
-
-    measured_w = abs(right_pt[0] - left_pt[0])
-    measured_h = abs(bottom_pt[1] - top_pt[1])
-
-    if measured_w <= 0 or measured_h <= 0:
-        raise ValueError(f"Invalid boundary points: measured_w={measured_w}, measured_h={measured_h}")
-
-    raw_side = min(measured_w, measured_h)
-    side_pixels = int(math.floor(raw_side / increment) * increment)
-
-    if side_pixels <= 0:
-        raise ValueError(f"Calculated side_pixels ({side_pixels}) must be > 0. Check boundary points and increment.")
-
+    measured_width = abs(float(right_pt[0]) - float(left_pt[0]))
+    measured_height = abs(float(bottom_pt[1]) - float(top_pt[1]))
+    if not all(
+        math.isfinite(value) and value > 0
+        for value in (measured_width, measured_height)
+    ):
+        raise ValueError(
+            "Boundary points must define positive finite width and height."
+        )
+    side = int(math.floor(min(measured_width, measured_height) / increment) * increment)
+    if side <= 0:
+        raise ValueError("Calculated crop side must be positive.")
     return {
         "contract_version": 1,
+        "asset_type": "CropSizeCalibration",
+        "status": "ACCEPTED" if accepted else "PROPOSED",
         "calibration_id": calibration_id or "calib_default",
-        "side_pixels": side_pixels,
+        "side_pixels": side,
         "is_square": True,
         "rounding_increment": increment,
         "measured_extents": {
-            "measured_width": round(measured_w, 2),
-            "measured_height": round(measured_h, 2),
-            "left_x": left_pt[0],
-            "right_x": right_pt[0],
-            "top_y": top_pt[1],
-            "bottom_y": bottom_pt[1]
+            "measured_width": round(measured_width, 2),
+            "measured_height": round(measured_height, 2),
+            "left_x": float(left_pt[0]),
+            "right_x": float(right_pt[0]),
+            "top_y": float(top_pt[1]),
+            "bottom_y": float(bottom_pt[1]),
         },
-        "method": "four_boundary_points_floor_increment"
+        "method": "four_boundary_points_floor_increment",
     }
+
+
+def _dimensions(image_geometry: dict[str, Any]) -> tuple[int, int] | None:
+    width, height = image_geometry.get("width"), image_geometry.get("height")
+    if width is None and height is None:
+        return None
+    if (
+        not isinstance(width, int)
+        or width < 1
+        or not isinstance(height, int)
+        or height < 1
+    ):
+        raise ValueError("Crop placement dimensions must be positive integers.")
+    return width, height
 
 
 def place_plate_crop(
-    calibration: Dict[str, Any],
-    left_edge_pt: Tuple[float, float],
-    top_edge_pt: Tuple[float, float],
-    image_geometry: Optional[Dict[str, Any]] = None,
-    inset_offset: Tuple[int, int] = (0, 0),
-    options: Optional[Dict[str, Any]] = None
-) -> Dict[str, Any]:
-    """
-    Places a calibrated crop square onto an image using 2 independent anchor clicks:
-    - left_edge_pt[0]: authoritative X anchor
-    - top_edge_pt[1]: authoritative Y anchor
-
-    Returns CropResult dict.
-    """
+    calibration: dict[str, Any],
+    left_edge_pt: tuple[float, float],
+    top_edge_pt: tuple[float, float],
+    image_geometry: dict[str, Any] | None = None,
+    inset_offset: tuple[int, int] = (0, 0),
+    options: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Place a reusable crop size using independent per-image left/top anchors."""
     options = options or {}
     image_geometry = image_geometry or {}
-    skip = options.get("skip", False)
-    image_uid = options.get("image_uid") or image_geometry.get("image_uid") or "unknown_image"
-
-    if skip:
+    dimensions = _dimensions(image_geometry)
+    image_uid = (
+        options.get("image_uid") or image_geometry.get("image_uid") or "unknown_image"
+    )
+    if options.get("skip"):
         return {
             "contract_version": 1,
+            "asset_type": "CropResult",
+            "status": "SKIPPED",
             "image_uid": str(image_uid),
             "calibration_id": calibration.get("calibration_id", "none"),
-            "status": "SKIPPED",
             "crop_box": None,
-            "left_anchor_x": None,
-            "top_anchor_y": None,
-            "source_dimensions": [image_geometry.get("width"), image_geometry.get("height")] if image_geometry else None,
-            "output_dimensions": [image_geometry.get("width"), image_geometry.get("height")] if image_geometry else None,
-            "needs_manual_review": False,
-            "output_path": None
+            "source_dimensions": list(dimensions) if dimensions else None,
+            "output_dimensions": list(dimensions) if dimensions else None,
+            "transform": None,
+            "output_path": None,
         }
-
+    if calibration.get("status", "ACCEPTED") != "ACCEPTED":
+        raise ValueError("Crop-size calibration must be accepted before placement.")
     side = calibration.get("side_pixels")
     if not isinstance(side, int) or side <= 0:
         raise ValueError(f"Invalid calibration side_pixels: {side}")
-
-    x_anchor = left_edge_pt[0]
-    y_anchor = top_edge_pt[1]
-
-    crop_x = int(round(x_anchor + inset_offset[0]))
-    crop_y = int(round(y_anchor + inset_offset[1]))
-
-    crop_box = {
-        "x": crop_x,
-        "y": crop_y,
-        "width": side,
-        "height": side,
-        "left": crop_x,
-        "top": crop_y,
-        "right": crop_x + side,
-        "bottom": crop_y + side
-    }
-
+    x_anchor, y_anchor = float(left_edge_pt[0]), float(top_edge_pt[1])
+    if not math.isfinite(x_anchor) or not math.isfinite(y_anchor):
+        raise ValueError("Crop anchors must be finite.")
+    left = round(x_anchor + inset_offset[0])
+    top = round(y_anchor + inset_offset[1])
+    right, bottom = left + side, top + side
+    if dimensions and (
+        left < 0 or top < 0 or right > dimensions[0] or bottom > dimensions[1]
+    ):
+        raise ValueError(
+            f"Proposed crop ({left}, {top}, {right}, {bottom}) is outside source dimensions {dimensions}."
+        )
+    status = "ACCEPTED" if options.get("accepted") else "PROPOSED"
     return {
         "contract_version": 1,
+        "asset_type": "CropResult",
+        "status": status,
         "image_uid": str(image_uid),
         "calibration_id": calibration.get("calibration_id", "calib_default"),
-        "status": "ACCEPTED",
-        "crop_box": crop_box,
-        "left_anchor_x": float(x_anchor),
-        "top_anchor_y": float(y_anchor),
-        "source_dimensions": [image_geometry.get("width"), image_geometry.get("height")] if image_geometry else None,
+        "crop_box": {
+            "x": left,
+            "y": top,
+            "width": side,
+            "height": side,
+            "left": left,
+            "top": top,
+            "right": right,
+            "bottom": bottom,
+        },
+        "left_anchor_x": x_anchor,
+        "top_anchor_y": y_anchor,
+        "source_dimensions": list(dimensions) if dimensions else None,
         "output_dimensions": [side, side],
-        "needs_manual_review": False,
-        "output_path": options.get("output_path")
+        "transform": {
+            "model": "source_to_crop_translation",
+            "matrix": [[1.0, 0.0, -left], [0.0, 1.0, -top], [0.0, 0.0, 1.0]],
+        },
+        "output_path": options.get("output_path"),
     }
+
+
+def _prepare_output(path: str | Path) -> Path:
+    output = Path(path)
+    if output.parent != Path("."):
+        output.parent.mkdir(parents=True, exist_ok=True)
+    return output
 
 
 def apply_plate_crop(
-    source_image: Union[str, Any],
-    crop_result: Dict[str, Any],
-    output_path: Optional[str] = None
+    source_image: str | Path | Any,
+    crop_result: dict[str, Any],
+    output_path: str | Path | None = None,
 ) -> Any:
-    """
-    Applies CropResult to source image non-destructively.
-    If status is SKIPPED, simply copies or returns source.
-    """
+    """Preview or non-destructively write an accepted whole-plate crop."""
     if not PIL_AVAILABLE:
         raise RuntimeError("Pillow is required for apply_plate_crop")
-
     status = crop_result.get("status", "ACCEPTED")
     crop_box = crop_result.get("crop_box")
+    if output_path and status not in {"ACCEPTED", "SKIPPED"}:
+        raise ValueError("A proposed crop cannot be written before acceptance.")
 
-    if isinstance(source_image, str):
-        if not os.path.exists(source_image):
-            raise FileNotFoundError(f"Source image '{source_image}' does not exist")
-
+    def transform(image):
         if status == "SKIPPED" or crop_box is None:
-            if output_path:
-                os.makedirs(os.path.dirname(output_path), exist_ok=True)
-                shutil.copy2(source_image, output_path)
-                return output_path
-            return Image.open(source_image)
+            return image.copy()
+        expected = crop_result.get("source_dimensions")
+        if expected and list(image.size) != expected:
+            raise ValueError("Source dimensions do not match CropResult.")
+        box = tuple(crop_box[key] for key in ("left", "top", "right", "bottom"))
+        return image.crop(box)
 
-        with Image.open(source_image) as img:
-            box = (crop_box["left"], crop_box["top"], crop_box["right"], crop_box["bottom"])
-            cropped = img.crop(box)
+    if isinstance(source_image, (str, Path)):
+        source = Path(source_image)
+        if not source.is_file():
+            raise FileNotFoundError(f"Source image does not exist: {source}")
+        if status == "SKIPPED" and output_path:
+            output = _prepare_output(output_path)
+            shutil.copy2(source, output)
+            return str(output)
+        with Image.open(source) as image:
+            result = transform(image)
             if output_path:
-                os.makedirs(os.path.dirname(output_path), exist_ok=True)
-                cropped.save(output_path)
-                return output_path
-            return cropped
-    else:
-        # source_image is PIL Image
-        img = source_image
-        if status == "SKIPPED" or crop_box is None:
-            return img.copy()
-        box = (crop_box["left"], crop_box["top"], crop_box["right"], crop_box["bottom"])
-        cropped = img.crop(box)
-        if output_path:
-            os.makedirs(os.path.dirname(output_path), exist_ok=True)
-            cropped.save(output_path)
-            return output_path
-        return cropped
+                output = _prepare_output(output_path)
+                result.save(output)
+                return str(output)
+            return result
+
+    result = transform(source_image)
+    if output_path:
+        output = _prepare_output(output_path)
+        result.save(output)
+        return str(output)
+    return result
 
 
 def transform_point_to_crop(
-    x: float,
-    y: float,
-    crop_result: Dict[str, Any]
-) -> Tuple[float, float]:
-    """
-    Transforms coordinate (x, y) from source image space to cropped image space.
-    """
+    x: float, y: float, crop_result: dict[str, Any]
+) -> tuple[float, float]:
     crop_box = crop_result.get("crop_box")
     if not crop_box:
         return x, y
@@ -195,13 +209,8 @@ def transform_point_to_crop(
 
 
 def transform_point_from_crop_to_source(
-    crop_x: float,
-    crop_y: float,
-    crop_result: Dict[str, Any]
-) -> Tuple[float, float]:
-    """
-    Transforms coordinate (crop_x, crop_y) from cropped space back to source image space.
-    """
+    crop_x: float, crop_y: float, crop_result: dict[str, Any]
+) -> tuple[float, float]:
     crop_box = crop_result.get("crop_box")
     if not crop_box:
         return crop_x, crop_y

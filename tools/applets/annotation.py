@@ -1,12 +1,15 @@
-import math
+import json
 import os
-import shutil
+import tempfile
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 try:
+    from tools.applets.plate_layout import validate_plate_layout
     from tools.grid_coordinates import spot_mapping as grid_asset_spot_mapping
 except ModuleNotFoundError:
     from grid_coordinates import spot_mapping as grid_asset_spot_mapping
+    from plate_layout import validate_plate_layout
 
 try:
     from PIL import Image, ImageDraw, ImageFont
@@ -34,6 +37,31 @@ DEFAULT_ANNOTATION_PRESET = {
     }
 }
 
+
+def validate_annotation_request(request: Dict[str, Any]) -> None:
+    required = ("contract_version", "image_uid", "layout_id", "labels")
+    if not isinstance(request, dict) or any(not request.get(key) for key in required):
+        raise ValueError("annotation_request requires contract_version, image_uid, layout_id, and labels")
+    if request.get("contract_version") != 1 or not isinstance(request["labels"], dict):
+        raise ValueError("Unsupported annotation_request contract")
+
+
+def _atomic_json(value: Dict[str, Any], path: str) -> str:
+    parent = os.path.dirname(os.path.abspath(path))
+    os.makedirs(parent, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(prefix=".annotation-", suffix=".tmp", dir=parent, text=True)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(value, handle, indent=2, sort_keys=True)
+            handle.write("\n")
+        os.replace(temporary, path)
+    except Exception:
+        try:
+            os.unlink(temporary)
+        except OSError:
+            pass
+        raise
+    return path
 
 def _get_font(size: int = 18):
     if not PIL_AVAILABLE:
@@ -83,6 +111,20 @@ def render_rotated_text_image(
         return rotated
     return txt_img
 
+
+def _record_rendered_box(record, box, canvas_size, warnings, label_class):
+    left, top, right, bottom = (int(value) for value in box)
+    record["rendered_box"] = {
+        "left": left,
+        "top": top,
+        "right": right,
+        "bottom": bottom,
+    }
+    width, height = canvas_size
+    if left < 0 or top < 0 or right > width or bottom > height:
+        warnings.append(
+            f"{label_class} label {record.get('label')!r} extends outside the annotation canvas."
+        )
 
 def derive_annotation_positions(
     plate_layout: Dict[str, Any],
@@ -177,16 +219,46 @@ def render_plate_annotation(
     if not PIL_AVAILABLE:
         raise RuntimeError("Pillow is required for render_plate_annotation")
 
-    preset = preset or DEFAULT_ANNOTATION_PRESET
+    validate_plate_layout(plate_layout)
+    requested_preset = preset or {}
+    preset = dict(DEFAULT_ANNOTATION_PRESET)
+    preset.update(requested_preset)
+    preset["canvas_padding"] = {
+        **DEFAULT_ANNOTATION_PRESET["canvas_padding"],
+        **requested_preset.get("canvas_padding", {}),
+    }
     req = annotation_request or {}
+    validate_annotation_request(req)
+    if req["layout_id"] != str(plate_layout.get("layout_id", "")):
+        raise ValueError("Annotation request layout_id does not match PlateLayout.")
+    request_options = req.get("options", {})
+    if "strain_text_rotation_degrees" in request_options:
+        preset["strain_rotation_degrees"] = request_options["strain_text_rotation_degrees"]
+    if "vertical_text_rotation_degrees" in request_options:
+        preset["vertical_rotation_degrees"] = request_options["vertical_text_rotation_degrees"]
+    if isinstance(grid_coordinates, dict) and grid_coordinates.get("asset_type") == "GridCoordinateAsset":
+        asset_uid = grid_coordinates.get("image_uid")
+        if asset_uid not in {None, "", req["image_uid"]}:
+            raise ValueError("Grid asset belongs to a different Image UID.")
+        grid = grid_coordinates.get("grid", {})
+        if (grid.get("rows"), grid.get("columns")) != (
+            plate_layout.get("grid_rows"),
+            plate_layout.get("grid_cols"),
+        ):
+            raise ValueError("Grid asset dimensions do not match PlateLayout.")
 
     # Load source image
-    if isinstance(source_image, str):
+    if isinstance(source_image, (str, Path)):
         if not os.path.exists(source_image):
             raise FileNotFoundError(f"Source image '{source_image}' not found")
         base_img = Image.open(source_image).convert("RGB")
     else:
         base_img = source_image.convert("RGB") if hasattr(source_image, "convert") else Image.fromarray(source_image)
+
+    if isinstance(grid_coordinates, dict) and grid_coordinates.get("asset_type") == "GridCoordinateAsset":
+        space = grid_coordinates.get("coordinate_space", {})
+        if (space.get("image_width"), space.get("image_height")) != base_img.size:
+            raise ValueError("Grid asset coordinate-space dimensions do not match source image.")
 
     # Convert list of coordinates to (r, c) dict if needed
     rows = plate_layout.get("grid_rows", 8)
@@ -224,6 +296,8 @@ def render_plate_annotation(
     # Derive positions
     pos_data = derive_annotation_positions(plate_layout, grid_map, preset)
 
+    warnings = []
+
     # 1. Render Header labels (Date, Condition, Session, Plate)
     labels = req.get("labels", {})
     header_parts = []
@@ -245,20 +319,30 @@ def render_plate_annotation(
         txt = str(v["label"])
         rot = v["rotation"]
         if rot == 0:
-            draw.text((v["x"], v["y"]), txt, fill=color, font=vert_font)
+            position = (v["x"], v["y"])
+            draw.text(position, txt, fill=color, font=vert_font)
+            box = draw.textbbox(position, txt, font=vert_font)
         else:
             txt_img = render_rotated_text_image(txt, vert_font, rot, fill=color)
-            canvas.paste(txt_img, (int(v["x"]), int(v["y"])), txt_img)
+            position = (int(v["x"]), int(v["y"]))
+            canvas.paste(txt_img, position, txt_img)
+            box = (*position, position[0] + txt_img.width, position[1] + txt_img.height)
+        _record_rendered_box(v, box, canvas.size, warnings, "vertical")
 
     # 3. Render Strain column labels (rotated 90 deg clockwise by default)
     for s in pos_data["strain_placements"]:
         txt = str(s["label"])
         rot = s["rotation"]
         if rot == 0:
-            draw.text((s["x"], s["y"]), txt, fill=color, font=strain_font)
+            position = (s["x"], s["y"])
+            draw.text(position, txt, fill=color, font=strain_font)
+            box = draw.textbbox(position, txt, font=strain_font)
         else:
             txt_img = render_rotated_text_image(txt, strain_font, rot, fill=color)
-            canvas.paste(txt_img, (int(s["x"]), int(s["y"])), txt_img)
+            position = (int(s["x"]), int(s["y"]))
+            canvas.paste(txt_img, position, txt_img)
+            box = (*position, position[0] + txt_img.width, position[1] + txt_img.height)
+        _record_rendered_box(s, box, canvas.size, warnings, "strain")
 
     if output_path:
         os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
@@ -268,9 +352,14 @@ def render_plate_annotation(
         "contract_version": 1,
         "image_uid": req.get("image_uid", "unknown"),
         "layout_id": plate_layout.get("layout_id", "1"),
-        "status": "RENDERED",
+        "status": "ACCEPTED" if output_path else "PROPOSED",
         "output_dimensions": [canvas_w, canvas_h],
         "output_path": output_path,
+        "source_image_ref": req.get("source_image_ref") or (str(source_image) if isinstance(source_image, (str, Path)) else None),
+        "grid_asset_id": grid_coordinates.get("asset_id") if isinstance(grid_coordinates, dict) else None,
+        "warnings": warnings,
+        "placements": pos_data,
+        "preview_image": canvas if output_path is None else None,
         "preset_used": preset.get("name", "custom"),
         "rendered_labels": {
             "header": header_parts,
@@ -360,3 +449,16 @@ def compose_matrix(
         "cols": col_keys,
         "tile_count": len(crop_items)
     }
+
+
+def preview_plate_annotation(source_image: Union[str, Any], plate_layout: Dict[str, Any], grid_coordinates: Union[Dict[Tuple[int, int], Tuple[float, float]], List[Tuple[float, float]], Dict[str, Any]], annotation_request: Dict[str, Any], preset: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Render an in-memory preview without writing source or output files."""
+    result = render_plate_annotation(source_image, plate_layout, grid_coordinates, annotation_request, preset, None)
+    if result.get("preview_image") is None:
+        raise RuntimeError("Annotation preview did not produce an in-memory image")
+    return result
+
+
+def write_annotation_result(result: Dict[str, Any], result_path: str) -> str:
+    """Atomically write accepted annotation metadata."""
+    return _atomic_json(result, result_path)
