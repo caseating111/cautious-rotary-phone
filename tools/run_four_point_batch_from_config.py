@@ -46,6 +46,7 @@ LEGACY_EXPORT_MARKER = "        // =============================================
 def load_config(
     require_fiji: bool = True,
     require_fiji_handoff_paths: bool = True,
+    require_crop_output: bool = True,
 ) -> dict:
     if not CONFIG_FILE.is_file():
         raise SystemExit(f"Config not found: {CONFIG_FILE}")
@@ -58,11 +59,12 @@ def load_config(
 
     required = [
         "image_root",
-        "crop_output",
         "grid_csv",
         "images_csv",
         "condition_order_csv",
     ]
+    if require_crop_output:
+        required.insert(0, "crop_output")
     if require_fiji:
         required.insert(0, "fiji_executable")
     missing = [key for key in required if not str(data.get(key, "")).strip()]
@@ -70,7 +72,8 @@ def load_config(
         raise SystemExit("Missing config values: " + ", ".join(missing))
 
     if require_fiji_handoff_paths:
-        for key in ("grid_csv", "crop_output"):
+        handoff_keys = ["grid_csv"] + (["crop_output"] if require_crop_output else [])
+        for key in handoff_keys:
             if ";" in str(data[key]):
                 raise SystemExit(
                     f"Configured {key} contains a semicolon, which conflicts with the composed Fiji macro-argument delimiter: {data[key]}"
@@ -237,8 +240,9 @@ def replace_once(source: str, old: str, new: str) -> str:
     return source.replace(old, new, 1)
 
 
-def configure_source_settings(source: str, config: dict, replacement_manifest: Path | None = None, state_file: Path | None = None, *, run_label: str = "Batch All") -> str:
+def configure_source_settings(source: str, config: dict, replacement_manifest: Path | None = None, state_file: Path | None = None, *, run_label: str = "Batch All", register_only: bool = False) -> str:
     batch_qc = str(config.get("batch_grid_qc", "1")).casefold() not in {"0", "false", "no", "off"}
+    register_only = bool(register_only)
     hide_source = str(config.get("hide_source_during_alignment", "1")).casefold() not in {"0", "false", "no", "off"}
     source = replace_once(
         source,
@@ -253,8 +257,8 @@ def configure_source_settings(source: str, config: dict, replacement_manifest: P
         'controlFile = "path here";': f'controlFile = "{macro_path(CONTROL_REQUEST_FILE)}";',
         'gridCoordinateHandoff = "path here";': f'gridCoordinateHandoff = "{macro_path(GRID_COORDINATE_HANDOFF)}";',
         'gridRunLabel = "Batch All";': f'gridRunLabel = {json.dumps(run_label)};',
-        'inputRoot  = "path here";': f'batchGridQC = {1 if batch_qc else 0};\nhideSourceDuringAlignment = {1 if hide_source else 0};\nresumeBatch = File.exists("{macro_path(RESUME_MARKER_FILE)}");\ninputRoot  = "{macro_path(config["image_root"])}";',
-        'outputRoot = "path here";': f'outputRoot = "{macro_path(config["crop_output"])}";',
+        'inputRoot  = "path here";': f'batchGridQC = {1 if batch_qc else 0};\nregisterOnly = {1 if register_only else 0};\nregisteredImages = 0;\nhideSourceDuringAlignment = {1 if hide_source else 0};\nresumeBatch = File.exists("{macro_path(RESUME_MARKER_FILE)}");\ninputRoot  = "{macro_path(config["image_root"])}";',
+        'outputRoot = "path here";': f'outputRoot = "{"" if register_only else macro_path(config.get("crop_output", ""))}";',
         "CROP_W = 130;": f'CROP_W = {config["crop_width"]};',
         "CROP_H = 546;": f'CROP_H = {config["crop_height"]};',
     }
@@ -286,7 +290,7 @@ def next_alignment_run_number(log_path: Path) -> int:
     return max(numbers, default=0) + 1
 
 
-def configure_run_logging(source: str, config: dict, run_label: str) -> str:
+def configure_run_logging(source: str, config: dict, run_label: str, *, register_only: bool = False) -> str:
     allowed_labels = {"Batch All", "Batch Folder", "Single", "Single Rerun"}
     if run_label not in allowed_labels:
         raise SystemExit(f"Unsupported four-point run label: {run_label}")
@@ -316,7 +320,7 @@ def configure_run_logging(source: str, config: dict, run_label: str) -> str:
     source = replace_once(
         source,
         completion,
-        completion + "completeWorkflowRun(processedImages, notListedImages, skippedImages);\n\n",
+        completion + ("completeWorkflowRun(registeredImages, notListedImages, skippedImages);\n\n" if register_only else "completeWorkflowRun(processedImages, notListedImages, skippedImages);\n\n"),
     )
     functions = "// ============================================================\n// FUNCTIONS\n// ============================================================\n"
     logging_functions = r'''function workflowLog(message) {
@@ -374,7 +378,7 @@ def enhance_metadata_lookup(source: str) -> str:
 '''
     return source[:start] + lookup + source[end:]
 
-def enhance_four_point_macro(source: str) -> str:
+def enhance_four_point_macro(source: str, *, register_only: bool = False) -> str:
     """Keep the mature four-point math/export, replacing only its interaction block."""
     if source.count(START_MARKER) != 1 or source.count(LEGACY_EXPORT_MARKER) != 1:
         raise SystemExit("Four-point calibration markers changed; refusing to guess where to patch.")
@@ -563,10 +567,19 @@ def enhance_four_point_macro(source: str) -> str:
         Overlay.remove;
         close();
         selectWindow(sourceTitle);
+        getDimensions(sourceW, sourceH, sourceC, sourceZ, sourceT);
+        if (registerOnly) {
+            gridLine = cleanFolderName + "\t" + fileName + "\t" + experiment + "\t" + setName + "\t" + typeName + "\t\t" + gridRunLabel + "\t" + sourceW + "\t" + sourceH + "\t8\t" + gridCols + "\t" + R1LX + "\t" + R1LY + "\t" + R1RX + "\t" + R1RY + "\t" + R5LX + "\t" + R5LY + "\t" + R5RX + "\t" + R5RY;
+            File.append(gridLine + "\n", gridCoordinateHandoff);
+            close();
+            workflowLog("REGISTERED - " + cleanFolderName + "/" + fileName);
+            registeredImages++;
+            continue;
+        }
+
         // Validate every planned rectangle before replacement archiving or the
         // first output write. A bad calibration therefore leaves prior crops
         // and the source image untouched.
-        getDimensions(sourceW, sourceH, sourceC, sourceZ, sourceT);
         boundsTopFactor = 0.375;
         boundsLowFactor = 1.375;
         for (boundsI = 0; boundsI < nWanted; boundsI++) {
@@ -599,18 +612,27 @@ def enhance_four_point_macro(source: str) -> str:
         archiveReplacementCrops(cleanFolderName, fileName);
 
 '''
-    completion_marker = '''showMessage(
-    "ALL DONE",
-    "Processed images: " + processedImages + "\\n" +
-    "Not listed / not pending: " + notListedImages + "\\n" +
-    "Skipped after metadata match: " + skippedImages + "\\n\\n" +
-    "Outputs saved under:\\n" +
-    outputRoot
-);
-'''
-    if completion_marker not in source:
+    completion_pattern = r'showMessage\(\n    "ALL DONE",\n    "Processed images: " \+ processedImages \+ "\\n" \+\n    "Not listed / not pending: " \+ notListedImages \+ "\\n" \+\n    "Skipped after metadata match: " \+ skippedImages \+ "\\n\\n" \+\n    "Outputs saved under:\\n" \+\n    outputRoot\n\);'
+    match = re.search(completion_pattern, source)
+    if match is None:
         raise SystemExit("Legacy completion dialog changed; refusing to guess where to release the batch wrapper.")
-    source = source.replace(completion_marker, completion_marker + 'File.saveString("complete\\n", controlFile);\n', 1)
+    legacy_completion_marker = match.group(0)
+    if register_only:
+        block = block.replace("ACCEPT: Export crops.", "ACCEPT: Register grid only.")
+    else:
+        register_start = block.index("        if (registerOnly) {")
+        register_end = block.index("        // Validate every", register_start)
+        block = block[:register_start] + block[register_end:]
+    completion_marker = legacy_completion_marker
+    if register_only:
+        completion_marker = completion_marker.replace(
+            '"Processed images: " + processedImages + "\\n" +',
+            '"Registered images: " + registeredImages + "\\n" +',
+        ).replace(
+            '"Outputs saved under:\\n" +\n    outputRoot',
+            '"Grid coordinates written to the handoff file."',
+        )
+    source = source[:match.start()] + completion_marker + 'File.saveString("complete\\n", controlFile);\n' + source[match.end():]
     export_success_marker = r'''        File.append(stateKey + "\t" + runNumber + "\n", stateFile);
 '''
     grid_handoff = r'''        gridLine = cleanFolderName + "\t" + fileName + "\t" + experiment + "\t" + setName + "\t" + typeName + "\t\t" + gridRunLabel + "\t" + sourceW + "\t" + sourceH + "\t8\t" + gridCols + "\t" + R1LX + "\t" + R1LY + "\t" + R1RX + "\t" + R1RY + "\t" + R5LX + "\t" + R5LY + "\t" + R5RX + "\t" + R5RY;
@@ -626,11 +648,12 @@ def build_four_point_macro(
     state_file: Path | None = None,
     *,
     run_label: str = "Batch All",
+    register_only: bool = False,
 ) -> Path:
-    source = configure_source_settings(SOURCE_MACRO.read_text(encoding="utf-8"), config, replacement_manifest, state_file, run_label=run_label)
+    source = configure_source_settings(SOURCE_MACRO.read_text(encoding="utf-8"), config, replacement_manifest, state_file, run_label=run_label, register_only=register_only)
     source = enhance_metadata_lookup(source)
-    source = enhance_four_point_macro(source)
-    source = configure_run_logging(source, config, run_label)
+    source = enhance_four_point_macro(source, register_only=register_only)
+    source = configure_run_logging(source, config, run_label, register_only=register_only)
     APP_DIR.mkdir(parents=True, exist_ok=True)
     CONFIGURED_FOUR_POINT_MACRO.write_text(source, encoding="utf-8")
     return CONFIGURED_FOUR_POINT_MACRO
@@ -718,28 +741,33 @@ def main() -> None:
     )
     parser.add_argument("--subfolder", help="process only this immediate image-root subfolder")
     parser.add_argument("--replace-existing-crops", action="store_true", help="archive existing crops after accepted grid QC, then export replacements")
+    parser.add_argument("--register-only", action="store_true", help="register accepted four-point grids without crop bounds checks or crop writes")
     args = parser.parse_args()
+    if args.register_only and args.replace_existing_crops:
+        parser.error("--register-only cannot be combined with --replace-existing-crops")
 
     config = load_config(
         require_fiji=not args.prepare_only,
         require_fiji_handoff_paths=False,
+        require_crop_output=not args.register_only,
     )
     validate_runtime_files(config, require_fiji=not args.prepare_only)
     validate_csvs(config)
     validate_four_point_grid_widths(config)
     rows = restrict_pending_to_subfolder(config, args.subfolder, include_completed=args.replace_existing_crops)
-    ensure_crop_output_root(config)
+    if not args.register_only:
+        ensure_crop_output_root(config)
     replacement_manifest = None
     if args.replace_existing_crops:
         crop_replacement_manifest.write_manifests(config, rows, REPLACEMENT_MANIFEST)
         replacement_manifest = REPLACEMENT_MANIFEST
     session_state = APP_DIR / f"four_point_session_{uuid.uuid4().hex}.state.txt"
     run_label = "Batch Folder" if args.subfolder else "Batch All"
-    macro = build_four_point_macro(config, replacement_manifest, session_state, run_label=run_label)
+    macro = build_four_point_macro(config, replacement_manifest, session_state, run_label=run_label, register_only=args.register_only)
     grid_coordinates.prepare_grid_handoff(GRID_COORDINATE_HANDOFF)
 
     if args.prepare_only:
-        action = "replacement-ready" if args.replace_existing_crops else "pending"
+        action = "registration-only" if args.register_only else ("replacement-ready" if args.replace_existing_crops else "pending")
         print(f"Prepared four-point batch for {len(rows)} {action} image(s): {macro}")
         return
 

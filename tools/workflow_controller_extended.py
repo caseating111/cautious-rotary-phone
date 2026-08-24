@@ -124,6 +124,7 @@ class ExtendedController(Controller):
         self.clear_fiji_on_cancel = tk.BooleanVar(value=self.config_bool("clear_fiji_on_cancel", True))
         self.batch_grid_qc = tk.BooleanVar(value=self.config_bool("batch_grid_qc", True))
         self.hide_source_during_alignment = tk.BooleanVar(value=self.config_bool("hide_source_during_alignment", True))
+        self.register_only = tk.BooleanVar(value=False)
         self.batch_subfolder = tk.StringVar()
         self.project_prefix = tk.StringVar(value=project_layout.default_prefix())
         self.fiji_processes: list[subprocess.Popen] = []
@@ -238,9 +239,10 @@ class ExtendedController(Controller):
         options.grid(row=2, column=0, sticky="w", **pad)
         ttk.Checkbutton(options, text="Skip done", variable=self.skip_done).grid(row=0, column=0, sticky="w", padx=5, pady=(5, 2))
         ttk.Checkbutton(options, text="Replace existing crops after accepted grid", variable=self.replace_existing_crops).grid(row=1, column=0, sticky="w", padx=5, pady=2)
-        ttk.Checkbutton(options, text="Batch: show grid QC after every four clicks", variable=self.batch_grid_qc).grid(row=2, column=0, sticky="w", padx=5, pady=2)
-        ttk.Checkbutton(options, text="Hide source image while aligning (batch + single)", variable=self.hide_source_during_alignment).grid(row=3, column=0, sticky="w", padx=5, pady=2)
-        ttk.Checkbutton(options, text="Clear Fiji source/alignment windows on C cancellation", variable=self.clear_fiji_on_cancel).grid(row=4, column=0, sticky="w", padx=5, pady=(2, 5))
+        ttk.Checkbutton(options, text="Register grid only (no crops)", variable=self.register_only).grid(row=2, column=0, sticky="w", padx=5, pady=2)
+        ttk.Checkbutton(options, text="Batch: show grid QC after every four clicks", variable=self.batch_grid_qc).grid(row=3, column=0, sticky="w", padx=5, pady=2)
+        ttk.Checkbutton(options, text="Hide source image while aligning (batch + single)", variable=self.hide_source_during_alignment).grid(row=4, column=0, sticky="w", padx=5, pady=2)
+        ttk.Checkbutton(options, text="Clear Fiji source/alignment windows on C cancellation", variable=self.clear_fiji_on_cancel).grid(row=5, column=0, sticky="w", padx=5, pady=(2, 5))
 
         ttk.Label(self.outputs_tab, text="Build matrices and labelled crops from the selected dataset subset").grid(row=0, column=0, columnspan=3, sticky="w", **pad)
         button(
@@ -354,7 +356,11 @@ class ExtendedController(Controller):
         if not self.save():
             return
         replace_existing = self.replace_existing_crops.get()
-        if not self.skip_done.get() and not replace_existing:
+        register_only = self.register_only.get()
+        if register_only and replace_existing:
+            messagebox.showerror("Run four-point batch", "Register-only mode cannot be combined with crop replacement.")
+            return
+        if not register_only and not self.skip_done.get() and not replace_existing:
             messagebox.showerror(
                 "Run four-point batch",
                 "Processing completed plates needs accepted-grid crop replacement, which is not enabled yet. Keep Skip done selected.",
@@ -366,6 +372,8 @@ class ExtendedController(Controller):
             args.extend(["--subfolder", subfolder])
         if replace_existing:
             args.append("--replace-existing-crops")
+        if register_only:
+            args.append("--register-only")
 
         try:
             config = one_plate_validation.batch.load_config(
@@ -405,7 +413,7 @@ class ExtendedController(Controller):
             messagebox.showerror("Run four-point batch", str(exc))
             return
         scope = subfolder or "all pending folders"
-        action = "accepted-grid crop replacement is enabled" if replace_existing else "completed plates are skipped"
+        action = "grid registration only; crops will not be exported" if register_only else ("accepted-grid crop replacement is enabled" if replace_existing else "completed plates are skipped")
         self.status.set(f"Launched four-point batch for {scope}; {action}.")
         self.after(300, lambda: self.monitor_batch_process(batch_process, saw_active=False))
 
@@ -607,11 +615,17 @@ class ExtendedController(Controller):
             time.sleep(0.3)
             started_ahk_here = bool(self.ahk_process and self.ahk_process.poll() is None)
 
+        register_only = self.register_only.get()
+        if register_only and (rerun_done or self.replace_existing_crops.get()):
+            messagebox.showerror("One-plate validation", "Register-only mode cannot be combined with rerun or crop replacement.")
+            if started_ahk_here: self.stop_ahk()
+            return
         try:
             selected, fiji_process = one_plate_validation.run_with_process(
                 filename,
                 rerun_done=rerun_done,
                 replace_existing=rerun_done or self.replace_existing_crops.get(),
+                register_only=register_only,
             )
         except SystemExit as exc:
             if started_ahk_here:

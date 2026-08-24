@@ -46,7 +46,12 @@ def open_window_titles() -> list[str]:
         return True
 
     user32.EnumWindows(callback_type(collect), 0)
-    return any(title.strip().casefold() == wanted for title in titles)
+    return titles
+
+
+def proof_plate_is_open(filename: str) -> bool:
+    wanted = Path(filename).name.strip().casefold()
+    return any(title.strip().casefold() == wanted for title in open_window_titles())
 
 
 def read_pending_rows(
@@ -182,9 +187,13 @@ def ensure_roi_click_patch(fiji: Path) -> bool:
         raise SystemExit(f"Could not patch ROI 1-click Tools safely: {exc}") from exc
 
 
-def prepare(filename: str | None = None, *, rerun_done: bool = False, replace_existing: bool = False) -> tuple[Path, dict[str, str]]:
+def prepare(filename: str | None = None, *, rerun_done: bool = False, replace_existing: bool = False, register_only: bool = False) -> tuple[Path, dict[str, str]]:
     replace_existing = replace_existing or rerun_done
+    if register_only and (rerun_done or replace_existing):
+        raise SystemExit("Register-only mode cannot be combined with rerun or crop replacement.")
     args = [sys.executable, str(Path(batch.__file__).resolve()), "--prepare-only"]
+    if register_only:
+        args.append("--register-only")
     configured = batch.CONFIGURED_FOUR_POINT_MACRO
     proof_macro = FOUR_POINT_PLATE_MACRO
 
@@ -240,6 +249,7 @@ def run_with_process(
     *,
     rerun_done: bool = False,
     replace_existing: bool = False,
+    register_only: bool = False,
 ) -> tuple[dict[str, str], subprocess.Popen]:
     """Launch one proof and return the controller-owned Fiji process."""
     if filename and proof_plate_is_open(filename):
@@ -262,7 +272,7 @@ def run_with_process(
             "Close/restart Fiji once so it reloads the patched toolset, then run the proof again."
         )
 
-    macro, selected = prepare(filename, rerun_done=rerun_done, replace_existing=replace_existing)
+    macro, selected = prepare(filename, rerun_done=rerun_done, replace_existing=replace_existing, register_only=register_only)
     batch.grid_coordinates.prepare_grid_handoff(batch.GRID_COORDINATE_HANDOFF)
     try:
         batch.CONTROL_REQUEST_FILE.unlink()
@@ -296,12 +306,13 @@ def run_with_process(
     return selected, process
 
 
-def run(filename: str | None = None, *, rerun_done: bool = False, replace_existing: bool = False) -> dict[str, str]:
+def run(filename: str | None = None, *, rerun_done: bool = False, replace_existing: bool = False, register_only: bool = False) -> dict[str, str]:
     """Backward-compatible one-plate launcher for command-line callers."""
     selected, _process = run_with_process(
         filename,
         rerun_done=rerun_done,
         replace_existing=replace_existing,
+        register_only=register_only,
     )
     return selected
 
@@ -311,8 +322,9 @@ def main() -> None:
 
     parser = argparse.ArgumentParser(description="Launch exactly one selected pending source image for validation.")
     parser.add_argument("--filename", help="exact pending source filename; default is the first authoritative pending row")
+    parser.add_argument("--register-only", action="store_true", help="register the grid without exporting crops")
     args = parser.parse_args()
-    selected = run(args.filename)
+    selected = run(args.filename, register_only=args.register_only)
     print(
         "Launched one-plate four-point alignment: "
         f"{selected.get('Filename', '')} | {selected.get('Experiment', '')}/"

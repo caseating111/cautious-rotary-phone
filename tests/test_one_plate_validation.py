@@ -19,6 +19,11 @@ def local_tempdir():
 
 
 class OnePlateValidationTests(unittest.TestCase):
+    def test_proof_plate_guard_matches_exact_filename_case_insensitively(self) -> None:
+        with patch.object(proof, "open_window_titles", return_value=["Other.jpg", "PLATE.JPG"]):
+            self.assertTrue(proof.proof_plate_is_open("C:/images/plate.jpg"))
+            self.assertFalse(proof.proof_plate_is_open("C:/images/plate-2.jpg"))
+
     def test_pending_tsv_is_read_with_explicit_tab_delimiter(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / "pending.tsv"
