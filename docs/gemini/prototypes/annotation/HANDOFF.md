@@ -2,7 +2,7 @@
 
 Status: INTEGRATED
 
-Integrated on `workflow-integrated` at `c31d4f1`, with mixed-tier matrix composition added at `fdac0df`. Annotation uses embedded V10 layout plus accepted grid geometry for preview/final derivatives; matrix composition uses verified recorded crops and may mix Top/Low selections in one immutable run.
+Integrated on `workflow-integrated` at `c31d4f1`, with mixed-tier matrix composition at `fdac0df` and rich reusable header/in-image styling at `dd715c9`/`edf9e52`. Annotation uses embedded V10 layout plus accepted grid geometry for preview/final derivatives; the Quick Figures adapter uses simplified/V10-compatible CSV plus durable 1×N geometry; matrix composition uses verified recorded crops and may mix Top/Low selections in one immutable run.
 
 ## Goal
 

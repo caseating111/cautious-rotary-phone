@@ -15,11 +15,14 @@ Integrated product components:
 - later unprocessed/processed culture export from saved grids
 - mixed Top/Low matrix composition
 - optional four-point register-only mode
+- simplified/V10-compatible Quick Figures mini-applet with arbitrary-image 1×N registration, alignment, annotation, and rectangular well export
+- rich reusable annotation styles/presets and last-session applet settings
+- dry-run-first selected-image batch orchestration plus manual orientation/crop queues
 
 `tools/applets/registry.py` is the controller-facing catalog. The applet cores remain independently callable, communicate through schemas under `contracts/`, and are exposed through **Open V10 project applets**. `WorkflowProjectState` persists accepted results, derivative provenance, crop exports, matrix exports, and staleness-relevant grid identities.
 
 The production anchor remains the four-point Fiji route. Batch, single, and rerun persist `GridCoordinateAsset` v1 after successful crop export. The additive register-only option uses the same accepted placement/QC route and persists the grid without creating or changing crop output. Later visibility, annotation, culture export, and mixed-tier matrix actions reuse recorded assets rather than forcing alignment again.
 
-Integration checkpoints: V10/layout `246efcb`; durable grid `8fabf35`; stateful project applets `c31d4f1`; later culture export `9d3205d`; mixed-tier matrix `fdac0df`; register-only `cfdd806`.
+Integration checkpoints: V10/layout `246efcb`; durable grid `8fabf35`; stateful project applets `c31d4f1`; later culture export `9d3205d`; mixed-tier matrix `fdac0df`; register-only `cfdd806`; Quick Figure core/presets `77ced6f`; embedded/detached UI `183493c`; rich annotation `dd715c9`; batch orchestration `14860da`; alignment/settings completion `edf9e52`.
 
 Runtime baseline: Windows, Miniforge/Conda environment `workflow-c`, Python 3.11. Pillow, NumPy, pandas and openpyxl are declared in `environment.yml`.

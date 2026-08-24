@@ -18,6 +18,8 @@ This file is the durable queue for checks that genuinely require user visual/des
 
 - One V10-apps visual/QC session using local real images only after the privacy gate: create/open project state; preview/apply optional Working copies; confirm orientation and plate-crop previews before acceptance; attach the saved grid; inspect visibility and annotation previews; export later Unprocessed and Processed Top/Low cultures; then compose one matrix mixing at least one Top and one Low crop. Confirm raw sources remain unchanged, rejected previews write nothing, accepted outputs use numbered/provenance-recorded locations, and label/crop/matrix presentation is usable. Report observations textually only.
 
+- In the same private desktop session, exercise Quick Figures with a non-V10 PCR/other-figure image and the packaged `samples/quick_figure.csv`: test both embedded and detached forms, dragged-edge alignment, whole crop, two-endpoint 1×N registration, optional QC, quick description/date, one rich header/in-image preset (including an exact strain colour), and long rectangular per-well export. Then select at least two project images in Batch and confirm manual queue advance plus one automatic dry-run/accept stage. Confirm hotkeys act only in the intended applet/tab and report observations textually without sending pixels.
+
 ## Completed
 
 None recorded yet.

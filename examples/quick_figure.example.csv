@@ -1,0 +1,5 @@
+Pos,Strain,Figure Description,Date,Condition
+1,WELL_A,Anonymous PCR example,2026-01-01,Control
+2,WELL_B,,,Treatment
+3,WELL_C,,,Treatment
+4,WELL_D,,,Control

@@ -31,6 +31,7 @@ SAMPLE_FILES = {
     "examples/grid.example.csv": "samples/grid.csv",
     "examples/images.example.csv": "samples/images.csv",
     "examples/condition_order.example.csv": "samples/condition_order.csv",
+    "examples/quick_figure.example.csv": "samples/quick_figure.csv",
 }
 NON_RUNTIME_TOOL_FILES = {
     "tools/build_portable_release.py",
@@ -49,6 +50,11 @@ REQUIRED_ARCHIVE_FILES = {
     "tools/finalize_grid_handoff.py",
     "tools/workflow_applets_gui.py",
     "tools/applet_workflows.py",
+    "tools/applet_presets.py",
+    "tools/annotation_settings_gui.py",
+    "tools/quick_figure_gui.py",
+    "tools/applets/quick_figure.py",
+    "tools/applets/batch_actions.py",
     "tools/applets/v10_adapter.py",
     "tools/applets/culture_crop_export.py",
     "tools/applets/mixed_tier_matrix.py",
@@ -61,6 +67,7 @@ REQUIRED_ARCHIVE_FILES = {
     "samples/grid.csv",
     "samples/images.csv",
     "samples/condition_order.csv",
+    "samples/quick_figure.csv",
 }
 BANNED_PARTS = {
     ".git",
