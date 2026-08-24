@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import subprocess
+import sys
 import zipfile
 from pathlib import Path
 
@@ -14,7 +16,7 @@ def test_release_allowlist_excludes_repository_and_development_material() -> Non
     for relative in selected:
         release.validate_destination(relative)
         assert not relative.startswith(("docs/", "tests/", "fixtures/", ".git/"))
-    assert "tools/build_portable_release.py" not in selected
+    assert not release.NON_RUNTIME_TOOL_FILES & set(selected)
     assert not any(
         relative.casefold().endswith((".xlsx", ".pyc")) for relative in selected
     )
@@ -46,3 +48,22 @@ def test_release_zip_is_anonymous_complete_and_deterministic(tmp_path: Path) -> 
         grid_sample = archive.read(f"{prefix}samples/grid.csv").decode("utf-8")
         assert "Experiment,Set,GridCols,Column,Strain" in grid_sample
         assert "STRAIN1" in grid_sample
+
+        extracted = tmp_path / "extracted"
+        archive.extractall(extracted)
+
+    product_root = extracted / release.ARCHIVE_ROOT
+    subprocess.run(
+        [sys.executable, "-m", "compileall", "-q", str(product_root / "tools")],
+        check=True,
+    )
+    subprocess.run(
+        [
+            sys.executable,
+            str(product_root / "tools" / "validate_project_csvs.py"),
+            str(product_root / "samples" / "grid.csv"),
+            str(product_root / "samples" / "images.csv"),
+            str(product_root / "samples" / "condition_order.csv"),
+        ],
+        check=True,
+    )

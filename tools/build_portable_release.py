@@ -17,6 +17,7 @@ ROOT_RUNTIME_FILES = {
     "runtime-environment.yml",
     "setup_environment.cmd",
     "start_controller.cmd",
+    "start_controller_miniforge.cmd",
     "start_custom_matrix.cmd",
 }
 LEGACY_RUNTIME_FILES = {
@@ -31,16 +32,32 @@ SAMPLE_FILES = {
     "examples/images.example.csv": "samples/images.csv",
     "examples/condition_order.example.csv": "samples/condition_order.csv",
 }
+NON_RUNTIME_TOOL_FILES = {
+    "tools/build_portable_release.py",
+    "tools/check_image_blind_paths.py",
+    "tools/custom_matrix_presentation_preview.py",
+    "tools/run_custom_matrix_presentation.py",
+}
 REQUIRED_ARCHIVE_FILES = {
     "runtime-environment.yml",
     "setup_environment.cmd",
     "start_controller.cmd",
+    "start_controller_miniforge.cmd",
     "tools/workflow_controller_extended.py",
     "tools/run_four_point_batch_from_config.py",
     "tools/grid_coordinates.py",
     "tools/finalize_grid_handoff.py",
+    "tools/workflow_applets_gui.py",
+    "tools/applet_workflows.py",
+    "tools/applets/v10_adapter.py",
+    "tools/applets/culture_crop_export.py",
+    "tools/applets/mixed_tier_matrix.py",
     "ahk/four_point_alignment_hotkeys.ah2",
     "existing scripts clean/roibox RUN ALL IN PARENT.ijm",
+    "contracts/project_model.schema.json",
+    "contracts/grid_coordinate_asset.schema.json",
+    "contracts/culture_crop_export.schema.json",
+    "contracts/mixed_tier_matrix.schema.json",
     "samples/grid.csv",
     "samples/images.csv",
     "samples/condition_order.csv",
@@ -103,7 +120,7 @@ def release_sources() -> dict[str, Path]:
                 (
                     relative.startswith("tools/")
                     and relative.endswith(".py")
-                    and relative != "tools/build_portable_release.py"
+                    and relative not in NON_RUNTIME_TOOL_FILES
                 )
                 or (relative.startswith("ahk/") and relative.endswith(".ah2"))
                 or (relative.startswith("contracts/") and relative.endswith(".json"))
