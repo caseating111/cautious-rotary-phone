@@ -17,6 +17,7 @@ from tools.applet_presets import (
     save_preset,
 )
 from tools.applets.quick_figure import (
+    align_image_to_edge,
     annotate_quick,
     calculate_box_from_roi,
     export_wells,
@@ -42,8 +43,13 @@ class QuickImageCanvas(ttk.Frame):
         self.scale = 1.0
         self.offset = (0.0, 0.0)
         self.click_handler: Callable[[tuple[float, float]], None] | None = None
+        self.drag_handler: (
+            Callable[[tuple[float, float], tuple[float, float]], None] | None
+        ) = None
+        self.drag_start: tuple[float, float] | None = None
         self.canvas.bind("<Configure>", lambda _event: self._render())
-        self.canvas.bind("<Button-1>", self._click)
+        self.canvas.bind("<ButtonPress-1>", self._press)
+        self.canvas.bind("<ButtonRelease-1>", self._release)
 
     def show(self, image: Image.Image) -> None:
         self.image = image.copy()
@@ -51,6 +57,8 @@ class QuickImageCanvas(ttk.Frame):
 
     def set_handlers(self, *, click=None, drag=None) -> None:
         self.click_handler = click
+        self.drag_handler = drag
+        self.drag_start = None
 
     def draw_points(self, points: list[tuple[float, float]]) -> None:
         self.canvas.delete("overlay")
@@ -102,15 +110,35 @@ class QuickImageCanvas(ttk.Frame):
         self.offset = ((width - shown.width) / 2, (height - shown.height) / 2)
         self.canvas.create_image(*self.offset, image=self.photo, anchor="nw")
 
-    def _click(self, event: tk.Event) -> None:
-        if self.image is None or self.click_handler is None:
-            return
+    def _point(self, event: tk.Event) -> tuple[float, float] | None:
+        if self.image is None:
+            return None
         point = (
             (event.x - self.offset[0]) / self.scale,
             (event.y - self.offset[1]) / self.scale,
         )
-        if 0 <= point[0] < self.image.width and 0 <= point[1] < self.image.height:
+        return (
+            point
+            if 0 <= point[0] < self.image.width and 0 <= point[1] < self.image.height
+            else None
+        )
+
+    def _press(self, event: tk.Event) -> None:
+        point = self._point(event)
+        if point is None:
+            return
+        if self.drag_handler:
+            self.drag_start = point
+        elif self.click_handler:
             self.click_handler(point)
+
+    def _release(self, event: tk.Event) -> None:
+        if not self.drag_handler or self.drag_start is None:
+            return
+        end = self._point(event)
+        start, self.drag_start = self.drag_start, None
+        if end is not None and end != start:
+            self.drag_handler(start, end)
 
 
 class QuickFigurePanel(ttk.Frame):
@@ -174,6 +202,9 @@ class QuickFigurePanel(ttk.Frame):
             ttk.Button(
                 orient, text=text, command=lambda op=operation: self.orient(op)
             ).pack(side="left", expand=True, fill="x")
+        ttk.Button(
+            self, text="Align: drag a top/bottom edge", command=self.start_alignment
+        ).pack(fill="x", padx=8, pady=2)
         ttk.Button(
             self,
             text="Whole crop: click top-left then bottom-right",
@@ -254,6 +285,9 @@ class QuickFigurePanel(ttk.Frame):
             add="+",
         )
         root.bind(
+            "<Control-l>", lambda _event: self._hotkey(self.start_alignment), add="+"
+        )
+        root.bind(
             "<Control-k>", lambda _event: self._hotkey(self.start_whole_crop), add="+"
         )
         root.bind("<Control-g>", lambda _event: self._hotkey(self.start_grid), add="+")
@@ -322,6 +356,24 @@ class QuickFigurePanel(ttk.Frame):
         self.viewer.show(self.image)
         self.status.set(
             "Orientation applied in memory; re-register grid after geometry changes."
+        )
+
+    def start_alignment(self) -> None:
+        if self.image is None:
+            messagebox.showerror("Quick Figures", "Choose an image first.")
+            return
+        self.viewer.set_handlers(drag=self._alignment_dragged)
+        self.status.set("Drag left-to-right along a top or bottom figure edge.")
+
+    def _alignment_dragged(
+        self, start: tuple[float, float], end: tuple[float, float]
+    ) -> None:
+        self.image, result = align_image_to_edge(self.image, start, end)
+        self.grid = None
+        self.viewer.set_handlers()
+        self.viewer.show(self.image)
+        self.status.set(
+            f"Aligned by {result['angle_degrees']:.4f}° in memory; re-register grid."
         )
 
     def start_whole_crop(self) -> None:

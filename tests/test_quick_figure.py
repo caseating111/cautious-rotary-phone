@@ -4,6 +4,7 @@ import pytest
 from PIL import Image
 
 from tools.applets.quick_figure import (
+    align_image_to_edge,
     annotate_quick,
     calculate_box_from_roi,
     export_wells,
@@ -94,3 +95,12 @@ def test_invalid_csv_and_out_of_bounds_fail_before_export(tmp_path):
     asset = register_quick_grid("synthetic.png", (100, 100), (10, 50), (90, 50), 2)
     with pytest.raises(ValueError, match="outside"):
         well_rectangles(asset, 40, 40)
+
+
+def test_quick_arbitrary_edge_alignment_uses_production_convention():
+    source = Image.new("RGB", (200, 100), "white")
+    aligned, result = align_image_to_edge(source, (10, 20), (190, 30))
+    assert aligned.size == source.size
+    assert result["status"] == "ACCEPTED"
+    assert result["method"] == "quick_figure_manual_horizontal_edge_line"
+    assert result["angle_degrees"] > 0

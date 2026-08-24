@@ -166,7 +166,9 @@ class AnnotationSettingsDialog(tk.Toplevel):
         return {
             "font_family": self.settings[f"{key}_font_family"],
             "font_size": self.settings[f"{key}_font_size"],
-            "color": self.settings.get("text_color", "#000000"),
+            "color": self.settings.get(
+                f"{key}_color", self.settings.get("text_color", "#000000")
+            ),
             "bold": self.settings[f"{key}_bold"],
             "rotation": self.settings[f"{key}_rotation_degrees"],
             "offset_x": self.settings.get(f"{key}_offset_x", 0),
@@ -212,7 +214,7 @@ class AnnotationSettingsDialog(tk.Toplevel):
                     self.settings[f"{key}_rotation_degrees"] = value
                 elif field in {"offset_x", "offset_y"}:
                     self.settings[f"{key}_{field}"] = value
-            self.settings["text_color"] = style["color"]
+            self.settings[f"{key}_color"] = style["color"]
         mappings = {}
         for item in self.strain_colors.get().split(";"):
             if not item.strip():

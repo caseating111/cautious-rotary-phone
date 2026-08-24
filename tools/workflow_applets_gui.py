@@ -184,11 +184,11 @@ class WorkflowApp(tk.Tk):
         self.enable_rename = tk.BooleanVar(value=True)
         self.setup_preview: dict[str, Any] | None = None
         self.setup_signature: tuple[str, bool] | None = None
-        self.crop_export_tier = tk.StringVar(value="Unprocessed")
-        self.crop_export_top = tk.BooleanVar(value=True)
-        self.crop_export_low = tk.BooleanVar(value=True)
-        self.crop_export_columns = tk.StringVar()
         culture_settings = load_last("culture_crop", {}) or {}
+        self.crop_export_tier = tk.StringVar(value=str(culture_settings.get("tier", "Unprocessed")))
+        self.crop_export_top = tk.BooleanVar(value=bool(culture_settings.get("top", True)))
+        self.crop_export_low = tk.BooleanVar(value=bool(culture_settings.get("low", True)))
+        self.crop_export_columns = tk.StringVar(value=str(culture_settings.get("columns", "")))
         self.crop_export_width = tk.StringVar(value=str(culture_settings.get("width", 130)))
         self.crop_export_height = tk.StringVar(value=str(culture_settings.get("height", 546)))
         self.crop_export_preset = tk.StringVar()
@@ -196,12 +196,14 @@ class WorkflowApp(tk.Tk):
         self.crop_export_plan: dict[str, Any] | None = None
         self.crop_export_signature: tuple[Any, ...] | None = None
         self.matrix_candidates: dict[str, dict[str, Any]] = {}
-        self.matrix_layout_mode = tk.StringVar(value="Selected crops (one column)")
-        self.matrix_tile_width = tk.StringVar()
-        self.matrix_tile_height = tk.StringVar()
+        matrix_settings = load_last("mixed_matrix", {}) or {}
+        self.matrix_layout_mode = tk.StringVar(value=str(matrix_settings.get("layout_mode", "Selected crops (one column)")))
+        self.matrix_tile_width = tk.StringVar(value=str(matrix_settings.get("tile_width", "")))
+        self.matrix_tile_height = tk.StringVar(value=str(matrix_settings.get("tile_height", "")))
         self.matrix_plan: dict[str, Any] | None = None
         self.matrix_signature: tuple[Any, ...] | None = None
-        self.visibility_preset = tk.StringVar(value="background_aware_linear")
+        visibility_settings = load_last("visibility", {}) or {}
+        self.visibility_preset = tk.StringVar(value=str(visibility_settings.get("preset", "background_aware_linear")))
         self.visibility_proposal: dict[str, Any] | None = None
         self.annotation_proposal: dict[str, Any] | None = None
         self.annotation_labels = {
@@ -1069,14 +1071,21 @@ class WorkflowApp(tk.Tk):
         width, height = int(self.crop_export_width.get()), int(self.crop_export_height.get())
         if width < 1 or height < 1:
             raise ValueError("Crop width and height must be positive integers.")
-        return {"width": width, "height": height}
+        return {
+            "width": width,
+            "height": height,
+            "tier": self.crop_export_tier.get(),
+            "top": self.crop_export_top.get(),
+            "low": self.crop_export_low.get(),
+            "columns": self.crop_export_columns.get().strip(),
+        }
 
     def calculate_culture_crop_size(self) -> None:
         result = self._run(lambda: calculate_box_from_roi(*(float(value.get()) for value in self.crop_export_roi)))
         if result:
             self.crop_export_width.set(str(result["width"]))
             self.crop_export_height.set(str(result["height"]))
-            save_last("culture_crop", result)
+            save_last("culture_crop", self._culture_crop_settings())
             self.status.set(f"Calculated reusable culture crop: {result['width']} × {result['height']} px.")
 
     def save_culture_crop_preset(self) -> None:
@@ -1097,6 +1106,10 @@ class WorkflowApp(tk.Tk):
         if settings:
             self.crop_export_width.set(str(settings["width"]))
             self.crop_export_height.set(str(settings["height"]))
+            self.crop_export_tier.set(str(settings.get("tier", self.crop_export_tier.get())))
+            self.crop_export_top.set(bool(settings.get("top", self.crop_export_top.get())))
+            self.crop_export_low.set(bool(settings.get("low", self.crop_export_low.get())))
+            self.crop_export_columns.set(str(settings.get("columns", self.crop_export_columns.get())))
             save_last("culture_crop", settings)
 
     def _crop_export_signature_value(self) -> tuple[Any, ...]:
@@ -1116,7 +1129,7 @@ class WorkflowApp(tk.Tk):
         height = int(self.crop_export_height.get())
         if width < 1 or height < 1:
             raise ValueError("Crop width and height must be positive integers.")
-        save_last("culture_crop", {"width": width, "height": height})
+        save_last("culture_crop", self._culture_crop_settings())
         return (
             uid,
             self.crop_export_tier.get(),
@@ -1199,6 +1212,7 @@ class WorkflowApp(tk.Tk):
 
     def preview_visibility(self) -> None:
         workflow, uid = self._selected()
+        save_last("visibility", {"preset": self.visibility_preset.get()})
         result = self._run(
             lambda: workflow.propose_visibility(uid, self.visibility_preset.get())
         )
@@ -1498,6 +1512,11 @@ class WorkflowApp(tk.Tk):
         )
         if tile_size is not None and any(value < 1 for value in tile_size):
             raise ValueError("Matrix tile dimensions must be positive integers.")
+        save_last("mixed_matrix", {
+            "layout_mode": self.matrix_layout_mode.get(),
+            "tile_width": width_text,
+            "tile_height": height_text,
+        })
         return selected, tile_size, self.matrix_layout_mode.get()
 
     def preview_mixed_tier_matrix(self) -> None:

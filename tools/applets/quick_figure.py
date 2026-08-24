@@ -13,6 +13,10 @@ from typing import Any
 from PIL import Image
 
 from tools.applets.annotation import render_plate_annotation
+from tools.applets.plate_orientation import (
+    apply_plate_orientation,
+    capture_plate_orientation,
+)
 
 POSITION_ALIASES = ("pos", "position", "well", "column", "col")
 STRAIN_ALIASES = ("strain", "labels strain", "well label", "label")
@@ -243,6 +247,20 @@ def well_rectangles(
             {"spot_id": spot["spot_id"], "column": spot["column"], "box": box}
         )
     return result
+
+
+def align_image_to_edge(
+    image: Image.Image,
+    start: tuple[float, float],
+    end: tuple[float, float],
+) -> tuple[Image.Image, dict[str, Any]]:
+    """Align a dragged top/bottom edge using the production orientation convention."""
+    result = capture_plate_orientation(
+        (*start, *end),
+        {"width": image.width, "height": image.height, "image_uid": "quick-figure"},
+        {"accepted": True, "method": "quick_figure_manual_horizontal_edge_line"},
+    )
+    return apply_plate_orientation(image, result), result
 
 
 def orient_image(image: Image.Image, operation: str) -> Image.Image:

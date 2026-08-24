@@ -102,8 +102,12 @@ def normalize_annotation_preset(value=None):
         "vertical_visible": True,
         "strain_font_family": "Arial",
         "vertical_font_family": "Arial",
+        "strain_color": common["color"],
+        "vertical_color": common["color"],
         "strain_bold": False,
         "vertical_bold": False,
+        "strain_offset_x": 0.0,
+        "vertical_offset_y": 0.0,
         "strain_label_colors": {},
     }
     for key, default in defaults.items():
@@ -263,7 +267,7 @@ def derive_annotation_positions(
     vertical_placements = []
     for v in plate_layout.get("vertical_labels", []):
         r_pos = v["pos"]
-        y_pos = row_y.get(r_pos, r_pos * 50.0) + pad_top
+        y_pos = row_y.get(r_pos, r_pos * 50.0) + pad_top + preset.get("vertical_offset_y", 0.0)
         # Placed to the left of column 1
         min_x = min(col_x.values()) + pad_left
         x_pos = min_x + preset.get("vertical_offset_x", -30.0)
@@ -285,7 +289,7 @@ def derive_annotation_positions(
 
         for s in band.get("labels", []):
             c_pos = s["pos"]
-            x_pos = col_x.get(c_pos, c_pos * 50.0) + pad_left
+            x_pos = col_x.get(c_pos, c_pos * 50.0) + pad_left + preset.get("strain_offset_x", 0.0)
             strain_placements.append({
                 "order": order,
                 "pos": c_pos,
@@ -419,6 +423,8 @@ def render_plate_annotation(
         bool(preset.get("vertical_bold")),
     )
     color = _rgb(preset.get("text_color"))
+    strain_base_color = _rgb(preset.get("strain_color"), color)
+    vertical_color = _rgb(preset.get("vertical_color"), color)
 
     # Derive positions
     pos_data = derive_annotation_positions(plate_layout, grid_map, preset)
@@ -496,10 +502,10 @@ def render_plate_annotation(
         rot = v["rotation"]
         if rot == 0:
             position = (v["x"], v["y"])
-            draw.text(position, txt, fill=color, font=vert_font)
+            draw.text(position, txt, fill=vertical_color, font=vert_font)
             box = draw.textbbox(position, txt, font=vert_font)
         else:
-            txt_img = render_rotated_text_image(txt, vert_font, rot, fill=color)
+            txt_img = render_rotated_text_image(txt, vert_font, rot, fill=vertical_color)
             position = (int(v["x"]), int(v["y"]))
             canvas.paste(txt_img, position, txt_img)
             box = (*position, position[0] + txt_img.width, position[1] + txt_img.height)
@@ -511,7 +517,7 @@ def render_plate_annotation(
     ):
         txt = str(s["label"])
         rot = s["rotation"]
-        strain_color = _rgb(preset.get("strain_label_colors", {}).get(txt), color)
+        strain_color = _rgb(preset.get("strain_label_colors", {}).get(txt), strain_base_color)
         if rot == 0:
             position = (s["x"], s["y"])
             draw.text(position, txt, fill=strain_color, font=strain_font)

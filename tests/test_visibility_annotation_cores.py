@@ -7,7 +7,12 @@ except ModuleNotFoundError:
 import pytest
 from PIL import Image
 
-from tools.applets.annotation import preview_plate_annotation, write_annotation_result
+from tools.applets.annotation import (
+    derive_annotation_positions,
+    normalize_annotation_preset,
+    preview_plate_annotation,
+    write_annotation_result,
+)
 from tools.applets.visibility import (
     adjust_plate_visibility,
     apply_visibility_adjustment,
@@ -103,3 +108,28 @@ def test_annotation_sidecar_is_atomic(tmp_path):
     path = write_annotation_result(result, str(tmp_path / "nested" / "result.json"))
     assert Path(path).is_file()
     assert not list((tmp_path / "nested").glob("*.tmp"))
+
+
+def test_annotation_label_sets_have_independent_colours_and_two_axis_offsets():
+    preset = normalize_annotation_preset(
+        {
+            "strain_color": "#112233",
+            "vertical_color": "#445566",
+            "strain_offset_x": 7,
+            "vertical_offset_y": 9,
+        }
+    )
+    positions = derive_annotation_positions(layout(), asset(), preset)
+    baseline = derive_annotation_positions(
+        layout(), asset(), normalize_annotation_preset()
+    )
+    assert (
+        positions["strain_placements"][0]["x"]
+        == baseline["strain_placements"][0]["x"] + 7
+    )
+    assert (
+        positions["vertical_placements"][0]["y"]
+        == baseline["vertical_placements"][0]["y"] + 9
+    )
+    assert preset["strain_color"] == "#112233"
+    assert preset["vertical_color"] == "#445566"
