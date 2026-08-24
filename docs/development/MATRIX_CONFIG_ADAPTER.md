@@ -1,9 +1,7 @@
-# Matrix config adapter — retired
+# Matrix config adapter — internal compatibility route
 
-The old `tools/run_matrices_from_config.py` entry point has been removed.
+The old `tools/run_matrices_from_config.py` entry point was removed because it could expose production crops to a legacy renderer's in-place rotation.
 
-It directly configured `existing scripts clean/make_matrices.py` against the real `crop_output` tree. That bypassed the newer validation/staging wrapper and could allow the legacy script's in-place rotation behavior to modify production crops.
+The current user endpoint is the controller's **Build matrices and labelled crops** applet, documented in `CUSTOM_COMPOSITION.md`. It filters the chosen dataset subset, stages exact current crops, normalizes only disposable copies, runs the mature Pillow implementations, and publishes one numbered multi-output action.
 
-Use `tools/run_existing_pillow_from_config.py matrices` (or the controller's **Matrices** Pillow job) instead. The authoritative wrapper validates project/source/crop readiness, stages only exact current crop files into a disposable input directory, normalizes orientation on those copies, disables legacy rotation, and then runs the existing matrix composition logic unchanged.
-
-`docs/development/EXISTING_PILLOW_ADAPTERS.md` documents the current route.
+`tools/run_existing_pillow_from_config.py` remains a strict internal adapter and diagnostic CLI for the established renderers. It intentionally validates the complete requested metadata contract; it is no longer exposed as a competing controller dropdown. `docs/development/EXISTING_PILLOW_ADAPTERS.md` documents those retained renderer adapters.

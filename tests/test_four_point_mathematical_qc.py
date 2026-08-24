@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from tools import four_point_batch as batch
+from tools import run_four_point_batch_from_config as batch
 
 
 class FourPointMathematicalQCTests(unittest.TestCase):
@@ -29,16 +29,38 @@ class FourPointMathematicalQCTests(unittest.TestCase):
 
     def test_full_grid_qc_is_pure_math_and_runs_before_export(self) -> None:
         text = batch.enhance_four_point_macro(self.source)
-        qc = text.index('Dialog.create("Full-grid QC")')
+        qc = text.index('Dialog.create("Full-grid QC --')
         export = text.index("// EXPORT CROPS", qc)
         self.assertLess(qc, export)
         self.assertIn("for (qcRow = 1; qcRow <= 8; qcRow++)", text)
         self.assertIn("for (qcCol = 1; qcCol <= gridCols; qcCol++)", text)
         self.assertIn("v = (qcRow - 1) / 4;", text)
         self.assertIn("u = (qcCol - 1) / (gridCols - 1);", text)
-        self.assertIn('newArray("Accept", "Retry")', text)
+        self.assertIn('newArray("ACCEPT", "RETRY")', text)
         self.assertNotIn("Array.findMaxima", text)
         self.assertNotIn("getProfile()", text)
+
+    def test_qc_retry_marker_overrides_awt_default_accept(self) -> None:
+        text = batch.enhance_four_point_macro(self.source)
+        choice = text.index("qcAction = Dialog.getChoice();")
+        accept = text.index('if (qcAction == "ACCEPT")', choice)
+        retry_override = text.index('if (hotkeyAction == "retry")', choice)
+        self.assertLess(retry_override, accept)
+        self.assertIn("String.trim(File.openAsString(controlFile))", text)
+        self.assertIn('qcAction = "RETRY";', text[retry_override:accept])
+        self.assertIn("File.delete(controlFile);", text[retry_override:accept])
+
+    def test_ahk_persists_qc_retry_before_driving_awt_choice(self) -> None:
+        ahk = (
+            batch.REPO_ROOT / "ahk" / "four_point_alignment_hotkeys.ah2"
+        ).read_text(encoding="utf-8")
+        handler = ahk[
+            ahk.index('#HotIf FijiWorkflowDialog("Alignment QC")') :
+        ]
+        write = handler.index('WriteBatchControl("retry")')
+        send = handler.index('Send("{Home}{Down}{Enter}")')
+        self.assertLess(write, send)
+        self.assertIn('FileAppend(action, controlPath, "UTF-8-RAW")', ahk)
 
 
 if __name__ == "__main__":

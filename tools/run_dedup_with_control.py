@@ -24,10 +24,14 @@ PREFERENCE_FILE = pillow_adapter.APP_DIR / "preferred_wt_source.json"
 
 
 def canonical_control(name: str) -> str | None:
-    compare = " ".join(name.strip().upper().replace("-", " ").split())
-    if compare in {"WT X", "WT Y"}:
+    compare = " ".join(name.strip().upper().replace("-", " ").replace("_", " ").split())
+    if compare == "WT":
         return compare
-    return None
+    if not compare.startswith("WT") or len(compare) < 3:
+        return None
+    suffix = compare[2:]
+    if suffix[0] in {" ", "-", "_"} or suffix[0].isdigit():
+        return compare
 
 
 def control_groups(grid_csv: Path) -> dict[tuple[str, str], set[str]]:
@@ -95,12 +99,20 @@ def validate_control_source(config: dict, experiment: str, set_name: str) -> set
     if not experiment or not set_name:
         raise SystemExit("Preferred control source needs both Experiment and Set.")
     groups = control_groups(Path(config["grid_csv"]))
-    controls = groups.get((experiment, set_name), set())
+    wanted = (experiment.casefold(), set_name.casefold())
+    matched = next(
+        (
+            key for key in groups
+            if (key[0].casefold(), key[1].casefold()) == wanted
+        ),
+        None,
+    )
+    controls = groups.get(matched, set()) if matched is not None else set()
     if not controls:
         available = ", ".join(f"{exp}/{set_value}" for exp, set_value in sorted(groups)) or "none"
         raise SystemExit(
-            f"{experiment}/{set_name} has no WT X/WT Y control rows in grid.csv. "
-            f"Groups with recognised controls: {available}"
+            f"{experiment}/{set_name} has no recognised WT control rows in grid.csv. "
+            f"Groups with recognised WT controls: {available}"
         )
     return controls
 
@@ -108,12 +120,12 @@ def validate_control_source(config: dict, experiment: str, set_name: str) -> set
 def patch_preferred_control(configured_script: Path, experiment: str, set_name: str) -> None:
     text = configured_script.read_text(encoding="utf-8")
     old = '''            if (
-                row["experiment"] == "E2"
-                and row["set"] == "A"
+                row["experiment"].casefold() == "E2".casefold()
+                and row["set"].casefold() == "A".casefold()
             ):'''
     new = f'''            if (
-                row["experiment"] == {experiment!r}
-                and row["set"] == {set_name!r}
+                row["experiment"].casefold() == {experiment!r}.casefold()
+                and row["set"].casefold() == {set_name!r}.casefold()
             ):'''
     if text.count(old) != 1:
         raise SystemExit("Deduplicated all-strains script no longer has the expected E2/A preference block.")
@@ -146,7 +158,6 @@ def build_preview(experiment: str, set_name: str) -> PreviewResult:
         Path(config["crop_output"]),
         Path(config["grid_csv"]),
         Path(config["images_csv"]),
-        allow_missing=False,
     )
     if not selected_crops:
         raise SystemExit("No validated crops are available to preview.")
@@ -196,7 +207,6 @@ def run(experiment: str, set_name: str, no_open_output: bool = False) -> Path:
         crop_root,
         Path(config["grid_csv"]),
         Path(config["images_csv"]),
-        allow_missing=False,
     )
     output_root = pillow_adapter.ensure_matrix_output_root(config)
     before = pillow_adapter.child_directories(output_root)

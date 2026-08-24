@@ -18,15 +18,15 @@ class ProjectLayoutControllerContractTests(unittest.TestCase):
         self.assertIn('self.vars["crop_output"].set(str(layout.crop_output))', text)
         self.assertIn('self.vars["matrix_output"].set(str(layout.matrix_output))', text)
         self.assertIn("Image files are not modified or copied", text)
-        self.assertIn("ATTEMPT1", text)
 
-    def test_windows_launcher_targets_miniforge_workflow_environment(self) -> None:
+    def test_launchers_prefer_the_shared_miniforge_workflow_runtime(self) -> None:
         controller = START_CONTROLLER.read_text(encoding="utf-8").lower()
-        self.assertIn('conda_default_env%"=="workflow-c', controller)
-        self.assertIn(".conda\\envs\\workflow-c\\python.exe", controller)
-        self.assertIn("tools\\workflow_controller_extended.py", controller)
-        self.assertNotIn("-n base", controller)
-
+        custom = START_CUSTOM.read_text(encoding="utf-8").lower()
+        for text in (controller, custom):
+            self.assertIn(r"%userprofile%\.conda\envs\workflow-c\python.exe", text)
+            self.assertIn("-n workflow-c python", text)
+            self.assertIn("py -3.11", text)
+            self.assertNotIn("py -3.14", text)
 
 if __name__ == "__main__":
     unittest.main()

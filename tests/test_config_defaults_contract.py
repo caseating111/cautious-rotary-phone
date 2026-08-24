@@ -8,12 +8,12 @@ from unittest.mock import patch
 
 from tools import preflight_batch
 from tools import run_existing_pillow_from_config as pillow_adapter
-from tools import four_point_batch as batch_adapter
+from tools import run_four_point_batch_from_config as batch_adapter
 from tools import workflow_controller
 
 
 class ConfigDefaultsContractTests(unittest.TestCase):
-    def test_crop_and_alignment_defaults_stay_consistent_across_handoffs(self) -> None:
+    def test_crop_defaults_stay_consistent_across_handoffs(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             config_path = root / "config.json"

@@ -167,5 +167,45 @@ class CsvValidationTests(unittest.TestCase):
         self.assertTrue(any("Experiment contains filename-unsafe" in problem for problem in problems))
 
 
+    def test_unheaded_extra_field_is_rejected_with_row_number(self) -> None:
+        grid, images, conditions, temp = self.write_project(
+            "Experiment,Set,GridCols,Column,Strain\nE1,A,1,1,WT,EXTRA\n",
+            "Filename,Experiment,Set,Type\nplate.jpg,E1,A,YPDA\n",
+            "Order,Type\n1,YPDA\n",
+        )
+        try:
+            problems = validate(grid, images, conditions)
+        finally:
+            temp.cleanup()
+        self.assertIn("grid.csv row 2", problems[0])
+        self.assertIn("unheaded extra field", problems[0])
+
+    def test_case_only_image_filename_collision_is_rejected_on_windows(self) -> None:
+        grid, images, conditions, temp = self.write_project(
+            "Experiment,Set,GridCols,Column,Strain\nE1,A,1,1,WT\n",
+            "Filename,Experiment,Set,Type\nPlate.JPG,E1,A,YPDA\nplate.jpg,E1,A,YPDA\n",
+            "Order,Type\n1,YPDA\n",
+        )
+        try:
+            problems = validate(grid, images, conditions)
+        finally:
+            temp.cleanup()
+        self.assertTrue(any("duplicate Filename on Windows" in problem for problem in problems))
+
+    def test_unsafe_or_colliding_strain_output_folders_are_rejected(self) -> None:
+        grid, images, conditions, temp = self.write_project(
+            "Experiment,Set,GridCols,Column,Strain\n"
+            "E1,A,2,1,CON\n"
+            "E1,A,2,2,A/B\n"
+            "E2,B,1,1,A-B\n",
+            "Filename,Experiment,Set,Type\nplate.jpg,E1,A,YPDA\n",
+            "Order,Type\n1,YPDA\n",
+        )
+        try:
+            problems = validate(grid, images, conditions)
+        finally:
+            temp.cleanup()
+        self.assertTrue(any("safe Windows output-folder" in problem for problem in problems))
+        self.assertTrue(any("collapse to the same Windows output folder" in problem for problem in problems))
 if __name__ == "__main__":
     unittest.main()

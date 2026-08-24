@@ -11,7 +11,7 @@ Use those documents when implementing a future stage. Do not reread them during 
 
 ## Priority 1 — keep the current basic CSV/Fiji route reliable and slim
 
-The current Windows + Python 3.14 + Fiji + AHK v2 four-click route is the production baseline.
+The current Windows + Miniforge `workflow-c` Python 3.11 + Fiji + AHK v2 four-click route is the production baseline.
 
 Preserve the now-proven core behavior:
 

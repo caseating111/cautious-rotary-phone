@@ -145,6 +145,29 @@ def safe_folder_name(name):
     return name
 
 
+WINDOWS_RESERVED_NAMES = {
+    "CON", "PRN", "AUX", "NUL",
+    *(f"COM{number}" for number in range(1, 10)),
+    *(f"LPT{number}" for number in range(1, 10)),
+}
+
+
+def validated_strain_folder(name):
+    component = safe_folder_name(name)
+    reserved_stem = component.split(".", 1)[0].upper()
+    if (
+        not component
+        or component in {".", ".."}
+        or component.endswith((" ", "."))
+        or reserved_stem in WINDOWS_RESERVED_NAMES
+    ):
+        raise ValueError(f"Unsafe Windows Strain output-folder name: {name!r}")
+    output_dir = (MATRIX_OUTPUT / component).resolve()
+    if not output_dir.is_relative_to(MATRIX_OUTPUT.resolve()):
+        raise ValueError(f"Strain output folder escapes MATRIX_OUTPUT: {name!r}")
+    return component
+
+
 # ============================================================
 # AUTHORITATIVE EXACT FILENAME -> STRAIN MAP
 #
@@ -310,7 +333,7 @@ def main():
                 skipped += 1
                 continue
 
-        strain_folder = safe_folder_name(strain)
+        strain_folder = validated_strain_folder(strain)
         output_path = MATRIX_OUTPUT / strain_folder / path.name
 
         try:

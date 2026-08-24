@@ -30,7 +30,7 @@ def validate_selected_freshness(
     sources = discover_sources(image_root)
     source_by_name: dict[str, list[Path]] = defaultdict(list)
     for source in sources:
-        source_by_name[source.name].append(source)
+        source_by_name[source.name.casefold()].append(source)
 
     _, grid_rows = custom.read_rows(filtered["grid_csv"])
     _, image_rows = custom.read_rows(filtered["images_csv"])
@@ -45,7 +45,7 @@ def validate_selected_freshness(
     for raw_row in image_rows:
         row = {key: (value or "").strip() for key, value in raw_row.items()}
         filename = row.get("Filename", "")
-        matches = source_by_name.get(filename, [])
+        matches = source_by_name.get(filename.casefold(), [])
         if len(matches) != 1:
             issues.append(f"{filename}: expected one current source image, found {len(matches)}")
             continue
@@ -74,12 +74,14 @@ def inspect_selected_inputs(config: dict, selection: dict) -> tuple[int, int]:
     custom.APP_DIR.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="custom-matrix-check-", dir=custom.APP_DIR) as temp:
         filtered = custom.filter_project_csvs(config, selection, Path(temp))
-        contract = pillow_adapter.expected_crop_contract(filtered["grid_csv"], filtered["images_csv"])
+        contract = pillow_adapter.expected_crop_contract(
+            filtered["grid_csv"], filtered["images_csv"], states=selection["states"]
+        )
         selected_paths = pillow_adapter.validate_unique_crop_matches(
             Path(config["crop_output"]),
             filtered["grid_csv"],
             filtered["images_csv"],
-            allow_missing=False,
+            states=selection["states"],
         )
         validate_selected_freshness(config, filtered, selected_paths)
         return len(contract), len(selected_paths)
@@ -91,9 +93,8 @@ def run_job(selection: dict, no_open_output: bool = False) -> Path:
     full_required, full_available = inspect_selected_inputs(config, selection)
     output = custom.run_selection(selection, no_open_output=no_open_output)
 
-    # The exact-crop contract contains both Top and Low. Human records count only states actually rendered.
-    rendered_required = full_required * len(selection["states"]) // 2
-    rendered_available = full_available * len(selection["states"]) // 2
+    rendered_required = full_required
+    rendered_available = full_available
     write_output_records(
         Path(config["matrix_output"]),
         output,

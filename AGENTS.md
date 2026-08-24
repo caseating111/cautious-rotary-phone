@@ -49,7 +49,7 @@ Synthetic/public test images may be used only when clearly non-confidential.
 
 Unless the user explicitly changes the target:
 
-- production/testing priority is **Windows + Miniforge `workflow-c` + Python 3.11**;
+- production/testing priority is **Windows + Miniforge `workflow-c` Python 3.11**;
 - do not spend CI/testing time on Linux or older Python versions merely for general compatibility;
 - AutoHotkey is **v2 only**; do not write v1/v2 hybrid syntax;
 - preserve source images and avoid destructive in-place processing by default.

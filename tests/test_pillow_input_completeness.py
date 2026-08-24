@@ -41,18 +41,6 @@ class PillowInputCompletenessTests(unittest.TestCase):
         self.assertIn("Incomplete crop inputs", message)
         self.assertIn("e1_a_ypda_01_low_", message)
 
-    def test_allow_missing_returns_existing_crop_for_intentional_partial_output(self) -> None:
-        top = self.crop_root / "E1_A_YPDA_01_Top_WT.png"
-        Image.new("L", (546, 130), 10).save(top)
-
-        selected = validate_unique_crop_matches(
-            self.crop_root,
-            self.grid_csv,
-            self.images_csv,
-            allow_missing=True,
-        )
-
-        self.assertEqual(selected, [top])
 
 
 if __name__ == "__main__":

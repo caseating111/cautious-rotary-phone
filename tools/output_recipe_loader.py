@@ -27,7 +27,12 @@ def load_output_recipe(path: str | Path) -> dict:
         )
     selection = normalize_selection(data.get("selection", {}))
     display_text = str(data.get("display_mode", "raw")).casefold()
-    display_mode = "Presentation normalized" if "presentation normalized" in display_text else "Raw"
+    if "presentation normalized" in display_text:
+        raise SystemExit(
+            "This recipe requests retired Presentation normalized output. "
+            "Open a Raw recipe or rebuild the same selection in Raw display mode."
+        )
+    display_mode = "Raw"
     return {
         "selection": selection,
         "display_mode": display_mode,

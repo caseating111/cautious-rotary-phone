@@ -13,6 +13,23 @@ HEADERS = {
 OUTPUT_NAME_UNSAFE = set('/\\:*?"<>|')
 
 
+WINDOWS_RESERVED_NAMES = {
+    "CON", "PRN", "AUX", "NUL",
+    *(f"COM{number}" for number in range(1, 10)),
+    *(f"LPT{number}" for number in range(1, 10)),
+}
+
+
+def safe_output_component(value: str) -> str:
+    replacements = {
+        "/": "-", "\\": "-", ":": "-", "*": "-", "?": "",
+        '"': "", "<": "(", ">": ")", "|": "-",
+    }
+    for old, new in replacements.items():
+        value = value.replace(old, new)
+    return value
+
+
 def rows(path: Path, required: list[str]) -> list[dict[str, str]]:
     if not path.is_file():
         raise ValueError(f"file not found: {path}")
@@ -34,7 +51,15 @@ def rows(path: Path, required: list[str]) -> list[dict[str, str]]:
         missing = [h for h in required if h not in raw_headers]
         if missing:
             raise ValueError(f"{path.name}: missing columns: {', '.join(missing)}")
-        return [{k: (v or "").strip() for k, v in row.items()} for row in reader]
+        parsed: list[dict[str, str]] = []
+        for line_no, row in enumerate(reader, 2):
+            if None in row:
+                raise ValueError(
+                    f"{path.name} row {line_no}: contains unheaded extra field(s); "
+                    "quote embedded commas or add the missing header"
+                )
+            parsed.append({key: (value or "").strip() for key, value in row.items()})
+        return parsed
 
 
 def raw_field_whitespace_rows(path: Path, field: str) -> list[int]:
@@ -112,6 +137,7 @@ def validate(grid_path: Path, images_path: Path, conditions_path: Path) -> list[
         )
 
     groups: dict[tuple[str, str], list[tuple[int, int, str]]] = defaultdict(list)
+    strain_components: dict[str, str] = {}
     for line_no, row in enumerate(grid, 2):
         imagej_line_unsafe(problems, "grid.csv", line_no, row, ["Experiment", "Set", "Strain"])
         macro_argument_unsafe(problems, "grid.csv", line_no, row, ["Experiment", "Set"])
@@ -129,9 +155,31 @@ def validate(grid_path: Path, images_path: Path, conditions_path: Path) -> list[
         if declared < 1 or column < 1:
             problems.append(f"grid.csv row {line_no}: GridCols/Column must be positive")
             continue
-        if not row["Strain"]:
+        strain = row["Strain"]
+        if not strain:
             problems.append(f"grid.csv row {line_no}: empty Strain")
-        groups[key].append((declared, column, row["Strain"]))
+        else:
+            component = safe_output_component(strain)
+            reserved_stem = component.split(".", 1)[0].upper()
+            if (
+                component in {".", ".."}
+                or not component
+                or component.endswith((" ", "."))
+                or reserved_stem in WINDOWS_RESERVED_NAMES
+            ):
+                problems.append(
+                    f"grid.csv row {line_no}: Strain {strain!r} is not a safe Windows output-folder name"
+                )
+            folded_component = component.casefold()
+            previous_strain = strain_components.get(folded_component)
+            if previous_strain is not None and previous_strain != strain:
+                problems.append(
+                    "grid.csv: distinct Strain values collapse to the same Windows output folder "
+                    f"{previous_strain!r} vs {strain!r}"
+                )
+            else:
+                strain_components[folded_component] = strain
+        groups[key].append((declared, column, strain))
 
     folded_grid_keys: dict[tuple[str, str], tuple[str, str]] = {}
     for key in groups:
@@ -227,7 +275,7 @@ def validate(grid_path: Path, images_path: Path, conditions_path: Path) -> list[
                 "Underscores are allowed, but these particular Experiment/Set/Type combinations flatten to the same legacy filename prefix."
             )
 
-    image_filenames: set[str] = set()
+    image_filenames: dict[str, str] = {}
     for line_no, row in enumerate(images, 2):
         imagej_line_unsafe(problems, "images.csv", line_no, row, ["Experiment", "Set", "Type"])
         macro_argument_unsafe(problems, "images.csv", line_no, row, ["Experiment", "Set", "Type"])
@@ -237,9 +285,16 @@ def validate(grid_path: Path, images_path: Path, conditions_path: Path) -> list[
         type_name = row["Type"]
         if not filename:
             problems.append(f"images.csv row {line_no}: empty Filename")
-        elif filename in image_filenames:
-            problems.append(f"images.csv: duplicate Filename {filename!r}")
-        image_filenames.add(filename)
+        else:
+            folded_filename = filename.casefold()
+            previous_filename = image_filenames.get(folded_filename)
+            if previous_filename is not None:
+                problems.append(
+                    "images.csv: duplicate Filename on Windows "
+                    f"{previous_filename!r} vs {filename!r}"
+                )
+            else:
+                image_filenames[folded_filename] = filename
         if key not in groups:
             problems.append(f"images.csv row {line_no}: {key[0]}/{key[1]} has no grid.csv definition")
         if not type_name:

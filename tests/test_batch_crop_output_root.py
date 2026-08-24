@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tools.four_point_batch import ensure_crop_output_root
+from tools.run_four_point_batch_from_config import ensure_crop_output_root
 
 
 class BatchCropOutputRootTests(unittest.TestCase):

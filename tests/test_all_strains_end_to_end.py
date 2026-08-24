@@ -116,19 +116,11 @@ class AllStrainsEndToEndTests(unittest.TestCase):
         self.assertTrue((outputs[0] / "ALL_Top_MATRIX.png").is_file())
         self.assertTrue((outputs[0] / "ALL_Low_MATRIX.png").is_file())
 
-    def test_all_strains_dedup_job_runs_through_staged_wrapper(self) -> None:
-        result, matrix_root, real_crops = self.run_job("all-strains-dedup")
-
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn("Crop orientation: rotated 6, already ready 0", result.stdout)
+    def test_generic_dedup_cli_is_rejected_in_favour_of_explicit_control_selection(self) -> None:
+        result, _matrix_root, real_crops = self.run_job("all-strains-dedup")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("invalid choice", result.stderr)
         self.assert_real_crops_untouched(real_crops)
-
-        outputs = [path for path in matrix_root.iterdir() if path.is_dir()]
-        self.assertEqual(len(outputs), 1)
-        self.assertTrue(outputs[0].name.startswith("ALL STRAINS NO WT DUPE"))
-        self.assertTrue((outputs[0] / "WT_EXP2A_ALL_Top.png").is_file())
-        self.assertTrue((outputs[0] / "WT_EXP2A_ALL_Low.png").is_file())
-
 
 if __name__ == "__main__":
     unittest.main()

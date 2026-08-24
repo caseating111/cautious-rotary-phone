@@ -62,7 +62,11 @@ That directory must contain text/JSON/CSV/log/geometry data only. Never place sc
 
 ## Temp redirection and default launch path
 
-Use `start_controller_miniforge.cmd` for privacy-sensitive controller runs. It sets process-local `TEMP`, `TMP`, and Java `java.io.tmpdir` to the external `C:\LocalWorkflowData\PrivateTemp` tree before launching the Miniforge Python 3.11 controller. Child processes inherit these locations.
+For privacy-sensitive controller tests, use `start_controller_private_test.cmd` by default. It sets process-local `TEMP`, `TMP`, and Java `java.io.tmpdir` to the external `C:\LocalWorkflowData\PrivateTemp` tree and then invokes the **unified Miniforge-first controller launcher** (`start_controller.cmd`). Child processes launched by the controller inherit these locations.
+
+Do not use Anaconda/conda for the default private-test route. Anaconda integration is deferred unless the user explicitly requests it later.
+
+For a direct Fiji test that does not start through the controller, use `tools/start_fiji_private_test.ps1 -FijiExecutable <path> [Fiji args...]`. It applies the same private TEMP/TMP/java.io.tmpdir boundary to the Fiji process without globally changing Windows or Java settings.
 
 Do not globally modify the user's Windows TEMP/TMP or Java configuration merely for this project.
 

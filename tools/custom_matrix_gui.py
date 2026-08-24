@@ -53,21 +53,45 @@ def validate_selection_available(
 class CustomMatrixBuilder(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
-        self.title("Custom matrix comparison")
-        self.geometry("760x720")
-        self.minsize(640, 520)
+        self.title("Build matrices and labelled crops")
+        self.geometry("840x780")
+        self.minsize(700, 560)
         self.config_data = pillow_adapter.load_config()
         pillow_adapter.validate_csvs(self.config_data)
         self.group_vars: dict[tuple[str, str], list[tuple[int, str, tk.BooleanVar]]] = {}
         self.condition_vars: dict[str, tk.BooleanVar] = {}
         self.state_vars = {state: tk.BooleanVar(value=True) for state in ("Top", "Low")}
         self.status = tk.StringVar(value="Choose any subset. Source CSVs and real crops are never changed.")
+        self.initialize_extension_state()
         self.build_ui()
         self.load_initial_selection()
+
+    def initialize_extension_state(self) -> None:
+        """Let the recorded applet create Tk variables before shared UI construction."""
+
+    def build_top_controls(self) -> None:
+        """Add recorded-output and preset controls above the shared selection area."""
+
+    def build_selection_options(self) -> None:
+        """Add output-specific controls below the shared crop selection."""
+
+    def build_action_button(self, parent: ttk.Frame) -> None:
+        ttk.Button(parent, text="Build custom matrix", command=self.build_matrix).pack(side="right", padx=4)
+
+    def on_selection_changed(self) -> None:
+        """Allow output-specific controls to follow the selected crop subset."""
+
+
 
     def project_data(self) -> tuple[dict[tuple[str, str], list[tuple[int, str]]], list[str]]:
         _, grid_rows = custom.read_rows(Path(self.config_data["grid_csv"]))
         _, condition_rows = custom.read_rows(Path(self.config_data["condition_order_csv"]))
+        _, image_rows = custom.read_rows(Path(self.config_data["images_csv"]))
+        active_conditions = {
+            (row.get("Type") or "").strip().casefold()
+            for row in image_rows
+            if (row.get("Type") or "").strip()
+        }
         groups: dict[tuple[str, str], list[tuple[int, str]]] = defaultdict(list)
         for row in grid_rows:
             key = ((row.get("Experiment") or "").strip(), (row.get("Set") or "").strip())
@@ -77,6 +101,7 @@ class CustomMatrixBuilder(tk.Tk):
         conditions = [
             (row.get("Type") or "").strip()
             for row in sorted(condition_rows, key=lambda row: int((row.get("Order") or "0").strip()))
+            if (row.get("Type") or "").strip().casefold() in active_conditions
         ]
         return dict(groups), conditions
 
@@ -88,6 +113,7 @@ class CustomMatrixBuilder(tk.Tk):
         ttk.Button(toolbar, text="Restore last selection", command=self.restore_last_selection).pack(side="left", padx=8)
         ttk.Button(toolbar, text="Check crop availability", command=self.check_availability).pack(side="right", padx=2)
 
+        self.build_top_controls()
         canvas_frame = ttk.Frame(self)
         canvas_frame.pack(fill="both", expand=True, padx=8)
         canvas = tk.Canvas(canvas_frame, highlightthickness=0)
@@ -121,7 +147,7 @@ class CustomMatrixBuilder(tk.Tk):
                 var = tk.BooleanVar(value=True)
                 vars_for_group.append((column, strain, var))
                 label = f"{column}: {strain}"
-                ttk.Checkbutton(cells, text=label, variable=var).grid(row=index // 4, column=index % 4, sticky="w", padx=4, pady=2)
+                ttk.Checkbutton(cells, text=label, variable=var, command=self.on_selection_changed).grid(row=index // 4, column=index % 4, sticky="w", padx=4, pady=2)
             self.group_vars[exp_set] = vars_for_group
 
         condition_frame = ttk.LabelFrame(self.body, text="Conditions / types")
@@ -135,17 +161,19 @@ class CustomMatrixBuilder(tk.Tk):
         for index, condition in enumerate(conditions):
             var = tk.BooleanVar(value=True)
             self.condition_vars[condition] = var
-            ttk.Checkbutton(condition_cells, text=condition, variable=var).grid(row=index // 5, column=index % 5, sticky="w", padx=6, pady=3)
+            ttk.Checkbutton(condition_cells, text=condition, variable=var, command=self.on_selection_changed).grid(row=index // 5, column=index % 5, sticky="w", padx=6, pady=3)
 
         state_frame = ttk.LabelFrame(self.body, text="Crop state")
         state_frame.pack(fill="x", padx=4, pady=5)
         for state, var in self.state_vars.items():
-            ttk.Checkbutton(state_frame, text=state, variable=var).pack(side="left", padx=8, pady=4)
+            ttk.Checkbutton(state_frame, text=state, variable=var, command=self.on_selection_changed).pack(side="left", padx=8, pady=4)
+
+        self.build_selection_options()
 
         footer = ttk.Frame(self)
         footer.pack(fill="x", padx=8, pady=8)
         ttk.Label(footer, textvariable=self.status, wraplength=540).pack(side="left", fill="x", expand=True)
-        ttk.Button(footer, text="Build custom matrix", command=self.build_matrix).pack(side="right", padx=4)
+        self.build_action_button(footer)
 
     def set_group(self, key: tuple[str, str], value: bool) -> None:
         for _column, _strain, var in self.group_vars[key]:
@@ -221,18 +249,6 @@ class CustomMatrixBuilder(tk.Tk):
             return
         self.status.set("Previous custom selection restored.")
 
-    def check_availability(self) -> None:
-        try:
-            selection = self.current_selection()
-            with tempfile_selection_csvs(self.config_data, selection) as filtered:
-                contract = pillow_adapter.expected_crop_contract(filtered["grid_csv"], filtered["images_csv"])
-                selected = pillow_adapter.validate_unique_crop_matches(
-                    Path(self.config_data["crop_output"]), filtered["grid_csv"], filtered["images_csv"], allow_missing=True
-                )
-            total = len(contract)
-            self.status.set(f"Exact current crops available: {len(selected)} / {total}. Build remains strict and will stop if selected crops are missing.")
-        except SystemExit as exc:
-            messagebox.showerror("Crop availability", str(exc))
 
     def build_matrix(self) -> None:
         try:
@@ -265,16 +281,10 @@ class tempfile_selection_csvs:
 
 
 def main() -> None:
-    try:
-        app = CustomMatrixBuilder()
-    except SystemExit as exc:
-        root = tk.Tk()
-        root.withdraw()
-        messagebox.showerror("Custom matrix", str(exc))
-        root.destroy()
-        return
-    app.mainloop()
-
+    raise SystemExit(
+        "This unrecorded custom-matrix GUI entrypoint is retired. "
+        "Use tools/custom_matrix_gui_recorded.py or start_custom_matrix.cmd."
+    )
 
 if __name__ == "__main__":
     main()

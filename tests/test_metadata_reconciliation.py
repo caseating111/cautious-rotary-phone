@@ -92,5 +92,23 @@ class MetadataReconciliationTests(unittest.TestCase):
             candidate_rows(review)
 
 
+    def test_source_and_authoritative_filename_match_case_insensitively(self) -> None:
+        self.images_csv.write_text(
+            "Filename,Experiment,Set,Type\nKNOWN.JPG,E1,A,YPDA\n",
+            encoding="utf-8",
+        )
+        rows, _ = build_rows(self.config)
+        known = next(row for row in rows if row["Filename"] == "known.jpg")
+        self.assertEqual(known["Status"], "EXISTING")
+        self.assertEqual(known["Experiment"], "E1")
+
+    def test_candidate_rejects_case_only_duplicate_basenames(self) -> None:
+        review = [
+            {"Filename": name, "Folder": folder, "Experiment": "E1", "Set": "A", "Type": "YPDA", "Status": "EXISTING"}
+            for name, folder in (("Plate.JPG", "A"), ("plate.jpg", "B"))
+        ]
+        with self.assertRaises(SystemExit) as caught:
+            candidate_rows(review)
+        self.assertIn("Duplicate source basenames", str(caught.exception))
 if __name__ == "__main__":
     unittest.main()

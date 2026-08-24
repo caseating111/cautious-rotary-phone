@@ -33,6 +33,7 @@
 gridFile   = "path here";
 imagesFile = "path here";
 stateFile  = "path here";
+replacementManifest = "path here";
  
 
 inputRoot  = "path here";
@@ -160,10 +161,12 @@ for (folderIndex = 0; folderIndex < folders.length; folderIndex++) {
         // complete and therefore not in the pending-only metadata file.
         if (experiment == "") {
 
-            print(
-                "NOT LISTED / NOT PENDING: " +
-                fileName
-            );
+            stateKey = cleanFolderName + "/" + fileName;
+            previousRun = recordedRun(stateKey);
+            if (previousRun > 0)
+                print("DONE / NOT SELECTED - run " + previousRun + ": " + stateKey);
+            else
+                print("NOT PENDING - no recorded completed run: " + stateKey);
 
             notListedImages++;
 
@@ -488,9 +491,12 @@ for (folderIndex = 0; folderIndex < folders.length; folderIndex++) {
         close();
 
         processedImages++;
+        stateKey = cleanFolderName + "/" + fileName;
+        runNumber = recordedRun(stateKey) + 1;
+        File.append(stateKey + "\t" + runNumber + "\n", stateFile);
 
         print(
-            "DONE: " + sourceTitle +
+            "DONE - run " + runNumber + ": " + stateKey +
             " -> " + outDir
         );
     }
@@ -552,6 +558,18 @@ function exportCrop(sourceTitle, cx, cy, outputName, outDir) {
     close();
 }
 
+function requireCropFits(cx, cy, cropW, cropH, imageW, imageH, title, col, band) {
+    x = round(cx - cropW / 2);
+    y = round(cy - cropH / 2);
+    if (x < 0 || y < 0 || x + cropW > imageW || y + cropH > imageH)
+        exit(
+            "Crop would cross source bounds before any existing crops were archived or outputs written: " +
+            title + ", column " + col + " " + band +
+            ". Re-align or reduce crop dimensions."
+        );
+}
+
+
 
 function pad2(n) {
 
@@ -575,6 +593,86 @@ function safeName(s) {
     s = replace(s, "|", "-");
 
     return s;
+}
+
+
+function recordedRun(key) {
+
+    if (!File.exists(stateFile))
+        return 0;
+
+    entries = split(File.openAsString(stateFile), "\n");
+    prefix = key + "\t";
+    for (entryIndex = entries.length - 1; entryIndex >= 0; entryIndex--) {
+        entry = replace(entries[entryIndex], "\r", "");
+        if (startsWith(entry, prefix))
+            return parseInt(substring(entry, lengthOf(prefix)));
+    }
+    return 0;
+}
+
+
+function archiveReplacementCrops(folderName, fileName) {
+    if (replacementManifest == "" || !File.exists(replacementManifest))
+        return;
+    entries = split(File.openAsString(replacementManifest), "\n");
+    for (entryIndex = 1; entryIndex < entries.length; entryIndex++) {
+        fields = split(replace(entries[entryIndex], "\r", ""), "\t");
+        if (fields.length != 8 || fields[0] != folderName || fields[1] != fileName)
+            continue;
+        sourceCrop = fields[2];
+        targetCrop = fields[3];
+        if (!File.exists(sourceCrop))
+            exit("Expected crop disappeared before replacement: " + sourceCrop);
+        targetDir = substring(targetCrop, 0, lastIndexOf(targetCrop, "/"));
+        eval("script", "var f=new java.io.File('" + escapeJavaScript(targetDir) + "'); f.mkdirs(); '';");
+        if (!File.rename(sourceCrop, targetCrop))
+            exit("Could not archive existing crop before replacement: " + sourceCrop);
+        updateDiscardManifest(
+            fields[6], fields[4], fields[7], fields[5],
+            folderName, fileName, sourceCrop, targetCrop
+        );
+    }
+}
+
+
+function updateDiscardManifest(manifestPath, strain, archivedAt, originalCropTime, folderName, fileName, sourceCrop, targetCrop) {
+    separator = "======================================================================\n";
+    marker = "STRAIN: " + strain + "\n";
+    columnHeader = "archived_at\toriginal_crop_time\tsource_folder\tsource_plate\toriginal_crop\tdiscarded_crop\n";
+    row = archivedAt + "\t" + originalCropTime + "\t" + folderName + "\t" + fileName + "\t" + sourceCrop + "\t" + targetCrop + "\n";
+    group = separator + marker + "----------------------------------------------------------------------\n" + columnHeader + row;
+
+    if (!File.exists(manifestPath)) {
+        File.saveString(group, manifestPath);
+        return;
+    }
+
+    existing = File.openAsString(manifestPath);
+    groupStart = indexOf(existing, marker);
+    if (groupStart < 0) {
+        if (!endsWith(existing, "\n"))
+            existing = existing + "\n";
+        File.saveString(existing + group, manifestPath);
+        return;
+    }
+
+    groupAndAfter = substring(existing, groupStart);
+    nextGroupOffset = indexOf(groupAndAfter, "\n======================================================================\n");
+    if (nextGroupOffset < 0)
+        File.saveString(existing + row, manifestPath);
+    else
+        File.saveString(
+            substring(existing, 0, groupStart + nextGroupOffset + 1) + row +
+            substring(existing, groupStart + nextGroupOffset + 1),
+            manifestPath
+        );
+}
+
+
+function escapeJavaScript(value) {
+    value = replace(value, "\\", "\\\\");
+    return replace(value, "'", "\\'");
 }
 
 

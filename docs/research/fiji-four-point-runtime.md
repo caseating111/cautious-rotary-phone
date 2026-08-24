@@ -85,6 +85,10 @@ Current official route candidates worth proving first are now:
 - Fiji/Jaunch `--python` launch mode as the current official Fiji-side Python entry point;
 - a direct current-supported script/command entry point, if it can reuse the intended GUI session.
 
+### Bounded PyImageJ ownership proof — 2026-08-23
+
+The configured Miniforge Python 3.11 environment already contained PyImageJ. An image-blind proof started the configured Fiji directory in interactive mode, showed its UI, and ran two harmless macro markers in the same gateway. However, PyImageJ used Java 11 while installed Fiji extensions include Java-21 class files, causing plugin-discovery/class-version failures. Do not replace the production launcher with PyImageJ unless its JVM compatibility with the installed Fiji distribution is resolved first.
+
 ## Endpoint debugging / failure history
 
 ### Route 1 — ROI 1-click adapter applied in both production and proof preparation
@@ -179,6 +183,10 @@ The current `workflow-C` implementation:
 4. Removes superseded buttons (old full-column detector, synthetic plates, manual hotkeys) from active controller UI.
 5. Uses case-insensitive filename comparison for pending plates and dispositions.
 6. The affected QC/CLAHE path passes real Fiji on synthetic data; manual validation remains the standard desktop verification gate.
+
+### Late duplicate prompt containment
+
+Generated one-plate macros contain one calibration block and four click dialogs; static inspection does not support generator duplication.  A retained Fiji session can nevertheless receive a late duplicate macro delivery from the launcher/single-instance lifecycle.  The AutoHotkey helper therefore has a deliberately narrow containment rule: after `ALL DONE`, or an explicit user cancellation, it dismisses only a newly appearing four-click dialog whose title matches the just-finished source for 1.8 seconds.  Retries do not arm it.  This is not evidence that session ownership is solved; revisit the runtime architecture rather than broadening this window hook if the containment proves unreliable.
 
 ## Re-search / retry triggers
 Search or retry when a materially different Fiji/runtime failure changes the endpoint question, a genuinely distinct architecture is being considered, Fiji/ImageJ/Jaunch/PyImageJ version behavior changes, an upstream source documents a concrete relevant fix, or the user explicitly requests broader/fresh research.

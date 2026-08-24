@@ -1,9 +1,6 @@
 from pathlib import Path
 import csv
 from PIL import Image, ImageDraw, ImageFont
-from pathlib import Path
-import csv
-from PIL import Image, ImageDraw, ImageFont
 
 
 # ============================================================
@@ -136,11 +133,15 @@ def is_wt_strain(name):
         name.strip()
         .upper()
         .replace("-", " ")
+        .replace("_", " ")
     )
 
     compare = " ".join(compare.split())
-
-    return compare in {"WT X", "WT Y"}
+    if compare == "WT":
+        return True
+    if not compare.startswith("WT") or len(compare) < 3:
+        return False
+    return compare[2] == " " or compare[2].isdigit()
 
 # ============================================================
 # ROTATE ALL CROPS RECURSIVELY
@@ -407,7 +408,8 @@ def build_matrix(exp, set_name, state, rows, conditions, all_files):
             y,
             ROW_LABEL_WIDTH - 10,
             cell_h,
-            ROW_FONT
+            ROW_FONT,
+            colour=label_colour
         )
 
         for c, condition in enumerate(conditions):

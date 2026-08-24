@@ -33,6 +33,11 @@ class DeduplicatedControlSourceTests(unittest.TestCase):
             self.assertEqual(groups[("E1", "S0")], {"WT X"})
             self.assertEqual(groups[("E2", "A")], {"WT X", "WT Y"})
             self.assertEqual(canonical_control("wt-y"), "WT Y")
+            self.assertEqual(canonical_control("wt-a"), "WT A")
+            self.assertEqual(canonical_control("WT_ABC"), "WT ABC")
+            self.assertEqual(canonical_control("wt12"), "WT12")
+            self.assertIsNone(canonical_control("WTA"))
+            self.assertEqual(validate_control_source({"grid_csv": str(grid)}, "e2", "a"), {"WT X", "WT Y"})
 
     def test_unknown_control_group_is_rejected_with_available_choices(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -50,14 +55,14 @@ class DeduplicatedControlSourceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             script = Path(temp) / "configured.py"
             script.write_text(
-                'before\n            if (\n                row["experiment"] == "E2"\n                and row["set"] == "A"\n            ):\nafter\n',
+                'before\n            if (\n                row["experiment"].casefold() == "E2".casefold()\n                and row["set"].casefold() == "A".casefold()\n            ):\nafter\n',
                 encoding="utf-8",
             )
             patch_preferred_control(script, "E1", "S0")
             text = script.read_text(encoding="utf-8")
-            self.assertIn('row["experiment"] == \'E1\'', text)
-            self.assertIn('row["set"] == \'S0\'', text)
-            self.assertNotIn('row["experiment"] == "E2"', text)
+            self.assertIn('row["experiment"].casefold() == \'E1\'.casefold()', text)
+            self.assertIn('row["set"].casefold() == \'S0\'.casefold()', text)
+            self.assertNotIn('== "E2".casefold()', text)
 
     def test_preferred_source_round_trip_and_malformed_file_is_ignored(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

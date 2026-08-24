@@ -70,7 +70,6 @@ def build_preview(alias: str) -> PreviewResult:
         crop_root,
         Path(config["grid_csv"]),
         Path(config["images_csv"]),
-        allow_missing=False,
     )
     if not selected:
         raise SystemExit("No validated crops are available to preview.")

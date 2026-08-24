@@ -53,18 +53,29 @@ def read_review(path: Path) -> list[dict[str, str]]:
 
 def validate_review_source_set(review: list[dict[str, str]], image_root: Path) -> None:
     current_sources = discover_sources(image_root)
-    current_keys = {(source.parent.name, source.name) for source in current_sources}
-    review_keys = {
-        (row.get("Folder", ""), row.get("Filename", ""))
+    current_key_map = {
+        (source.parent.name.casefold(), source.name.casefold()): (source.parent.name, source.name)
+        for source in current_sources
+    }
+    review_key_map = {
+        (row.get("Folder", "").casefold(), row.get("Filename", "").casefold()): (
+            row.get("Folder", ""), row.get("Filename", "")
+        )
         for row in review
         if row.get("Folder", "") and row.get("Filename", "")
     }
 
-    if current_keys == review_keys:
+    if current_key_map.keys() == review_key_map.keys():
         return
 
-    new_sources = sorted(current_keys - review_keys)
-    stale_rows = sorted(review_keys - current_keys)
+    new_sources = sorted(
+        (current_key_map[key] for key in current_key_map.keys() - review_key_map.keys()),
+        key=lambda value: (value[0].casefold(), value[1].casefold()),
+    )
+    stale_rows = sorted(
+        (review_key_map[key] for key in review_key_map.keys() - current_key_map.keys()),
+        key=lambda value: (value[0].casefold(), value[1].casefold()),
+    )
     lines = [
         "Reconciliation review is stale relative to the current source folders.",
         "Use Reconcile / refresh review CSV before finalizing, then review any new/changed rows.",
@@ -85,7 +96,11 @@ def validate_review_source_set(review: list[dict[str, str]], image_root: Path) -
 def candidate_rows(review: list[dict[str, str]]) -> list[dict[str, str]]:
     source_rows = [row for row in review if row.get("Folder", "")]
     filenames = [row.get("Filename", "") for row in source_rows]
-    duplicate_names = sorted(name for name, count in Counter(filenames).items() if name and count > 1)
+    folded_counts = Counter(name.casefold() for name in filenames if name)
+    duplicate_names = sorted(
+        {name for name in filenames if folded_counts[name.casefold()] > 1},
+        key=str.casefold,
+    )
     if duplicate_names:
         raise SystemExit("Duplicate source basenames cannot be represented in images.csv: " + ", ".join(duplicate_names))
 

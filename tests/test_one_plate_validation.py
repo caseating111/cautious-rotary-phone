@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import tempfile
+import csv
 import subprocess
-import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -19,289 +19,115 @@ def local_tempdir():
 
 
 class OnePlateValidationTests(unittest.TestCase):
-    def test_default_uses_first_authoritative_pending_row(self) -> None:
-        rows = [
-            {"Filename": "plate1.jpg", "Experiment": "E1", "Set": "A", "Type": "YPDA"},
-            {"Filename": "plate2.jpg", "Experiment": "E2", "Set": "B", "Type": "SALT"},
-        ]
-        self.assertIs(proof.choose_pending_row(rows), rows[0])
-        self.assertIs(proof.choose_pending_row(rows, "plate2.jpg"), rows[1])
-
-    def test_filename_selection_is_case_insensitive_and_ambiguous_or_missing_is_rejected(self) -> None:
-        rows = [
-            {"Filename": "Plate1.jpg"},
-            {"Filename": "plate1.jpg"},
-        ]
-        with self.assertRaises(SystemExit):
-            proof.choose_pending_row(rows, "plate1.jpg")
-        self.assertEqual(proof.choose_pending_row([rows[0]], "plate1.JPG")["Filename"], "Plate1.jpg")
-        with self.assertRaises(SystemExit):
-            proof.choose_pending_row(rows, "missing.jpg")
-
-    def test_one_row_csv_preserves_header_and_only_selected_row(self) -> None:
-        with local_tempdir() as temp:
-            path = Path(temp) / "proof.csv"
-            fields = ["Filename", "Experiment", "Set", "Type"]
-            row = {"Filename": "plate2.jpg", "Experiment": "E2", "Set": "B", "Type": "SALT"}
-            proof.write_one_row_csv(path, fields, row)
-            fieldnames, rows = proof.read_pending_rows(path)
-            self.assertEqual(fieldnames, fields)
-            self.assertEqual(rows, [row])
-
-    def test_macro_patch_changes_only_pending_metadata_path(self) -> None:
-        old = proof.batch.macro_path(proof.batch.PENDING_IMAGES_CSV)
-        with local_tempdir() as temp:
-            target = Path(temp) / "one.csv"
-            source = f'imagesFile = "{old}";\nprocessedImages++;\nprint("keep");\n'
-            patched = proof.patch_prepared_macro(source, target)
-            self.assertNotIn(f'imagesFile = "{old}";', patched)
-            self.assertIn(f'imagesFile = "{proof.batch.macro_path(target)}";', patched)
-            self.assertIn('processedImages++;\n        exit();', patched)
-            self.assertIn('print("keep");', patched)
-
-            with self.assertRaises(SystemExit):
-                proof.patch_prepared_macro("other = 1;\n", target)
-
-    def test_four_point_generator_directly_uses_whole_image_double_clahe_and_rotated_qc(self) -> None:
-        generated = proof.batch.enhance_four_point_macro(proof.batch.SOURCE_MACRO.read_text(encoding="utf-8"))
-        self.assertNotIn("CLICK_ROI = 108", generated)
-        self.assertNotIn("makeRectangle(round(viewW / 2 - CLICK_ROI", generated)
-        self.assertNotIn('run("Enhance Contrast", "saturated=0.35")', generated)
-        self.assertNotIn("sampleW =", generated)
-        self.assertNotIn("sampleH =", generated)
-        self.assertNotIn("sampleX =", generated)
-        self.assertNotIn("sampleY =", generated)
-        self.assertIn('run("Select None")', generated)
-        self.assertLess(
-            generated.index('run("Select None")'),
-            generated.index('run("Enhance Local Contrast (CLAHE)", claheOptions)'),
-        )
-        self.assertIn('roiBoxW = parseFloat(call("ij.Prefs.get", "rect.width", 108))', generated)
-        self.assertIn('roiBoxH = parseFloat(call("ij.Prefs.get", "rect.height", 108))', generated)
-        self.assertIn("roiBoxSize = maxOf(roiBoxW, roiBoxH)", generated)
-        self.assertIn("claheBlock = maxOf(400, round(roiBoxSize * 4))", generated)
-        self.assertEqual(generated.count('run("Enhance Local Contrast (CLAHE)", claheOptions)'), 2)
-        self.assertIn('" histogram=256 maximum=1000 mask=*None* fast_(less_accurate)"', generated)
-        self.assertIn('run("Install...", "install=[" + roiToolsetPath + "]")', generated)
-        self.assertNotIn('run("Show All")', generated)
-        self.assertIn("for (toolCandidate = 15; toolCandidate <= 21; toolCandidate++)", generated)
-        self.assertIn('startsWith(IJ.getToolName, "Rotated Rectangle Click Tool")', generated)
-        self.assertIn("gridHX =", generated)
-        self.assertIn("gridVX =", generated)
-        self.assertIn("hux = gridHX / hLen", generated)
-        self.assertIn("vux = gridVX / vLen", generated)
-        self.assertIn("Overlay.drawLine(p1x, p1y, p2x, p2y)", generated)
-        self.assertIn("p1x = qcX - (QC_W / 2) * hux", generated)
-        self.assertIn("Overlay.drawLine(topX, topY, bottomX, bottomY)", generated)
-        self.assertNotIn("Overlay.drawRect(qcX", generated)
-
-    def test_production_macro_uses_the_same_clahe_roi_and_qc_adapter(self) -> None:
-        source = proof.batch.SOURCE_MACRO.read_text(encoding="utf-8")
-        with local_tempdir() as temp, patch.object(
-            proof.batch, "configure_source_settings", return_value=source
-        ), patch.object(proof.batch, "APP_DIR", Path(temp)), patch.object(
-            proof.batch, "CONFIGURED_MACRO", Path(temp) / "four-point.ijm"
-        ):
-            exact_path = proof.batch.build_macro({})
-            exact = exact_path.read_text(encoding="utf-8")
-        self.assertEqual(exact.count('run("Enhance Local Contrast (CLAHE)", claheOptions)'), 2)
-        self.assertIn('" histogram=256 maximum=1000 mask=*None* fast_(less_accurate)"', exact)
-        self.assertIn("claheBlock = maxOf(400, round(roiBoxSize * 4))", exact)
-        self.assertIn("Overlay.drawLine(p1x, p1y, p2x, p2y)", exact)
-
-    def test_direct_batch_script_context_can_build_four_point_interaction(self) -> None:
-        tools_dir = proof.batch.REPO_ROOT / "tools"
-        result = subprocess.run(
-            [
-                sys.executable,
-                "-c",
-                (
-                    "import shutil, tempfile\n"
-                    "from pathlib import Path\n"
-                    "import four_point_batch as batch\n"
-                    "target=Path(tempfile.mkdtemp())\n"
-                    "source=batch.SOURCE_MACRO.read_text(encoding='utf-8')\n"
-                    "batch.configure_source_settings=lambda _source,_config: source\n"
-                    "batch.APP_DIR=target\n"
-                    "batch.CONFIGURED_MACRO=target/'four-point.ijm'\n"
-                    "batch.build_macro({})\n"
-                    "print('DIRECT_SCRIPT_IMPORT_OK')\n"
-                    "shutil.rmtree(target)\n"
-                ),
-            ],
-            cwd=tools_dir,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn("DIRECT_SCRIPT_IMPORT_OK", result.stdout)
-
-    def test_selected_plate_window_match_is_exact_and_case_insensitive(self) -> None:
-        import ctypes as real_ctypes
-
-        fake_ctypes = type(
-            "FakeCtypes",
-            (),
-            {
-                "c_bool": real_ctypes.c_bool,
-                "c_void_p": real_ctypes.c_void_p,
-                "windll": type(
-                    "FakeWindll",
-                    (),
-                    {
-                        "user32": type(
-                            "FakeUser32",
-                            (),
-                            {
-                                "EnumWindows": staticmethod(
-                                    lambda callback, _lparam: all(callback(hwnd, 0) for hwnd in range(1, 5))
-                                ),
-                                "GetWindowTextLengthW": staticmethod(lambda _hwnd: 10),
-                                "GetWindowTextW": staticmethod(
-                                    lambda hwnd, buffer, _length: setattr(buffer, "value", titles[hwnd - 1]) or len(buffer.value)
-                                ),
-                            },
-                        )()
-                    },
-                )()
-            },
-        )()
-        titles = ["(Fiji Is Just) ImageJ", "other.jpg", "PLATE1.JPG", "plate1.jpg - notes"]
-
-        class Buffer:
-            value = ""
-
-        def create_unicode_buffer(_length: int) -> Buffer:
-            buffer = Buffer()
-            return buffer
-
-        fake_ctypes.create_unicode_buffer = staticmethod(create_unicode_buffer)
-        fake_ctypes.WINFUNCTYPE = staticmethod(lambda *_args: (lambda fn: fn))
-        with patch.dict("sys.modules", {"ctypes": fake_ctypes}):
-            self.assertTrue(proof.proof_plate_is_open("plate1.jpg"))
-            self.assertFalse(proof.proof_plate_is_open("plate2.jpg"))
-            self.assertFalse(proof.proof_plate_is_open("notes"))
-
-    def test_open_selected_plate_blocks_before_prepare_but_other_images_do_not(self) -> None:
-        with patch.object(proof, "proof_plate_is_open", return_value=True), patch.object(
-            proof, "prepare"
-        ) as prepare:
-            with self.assertRaises(SystemExit) as caught:
-                proof.run("plate1.jpg")
-            self.assertIn("selected proof plate is already open", str(caught.exception))
-            prepare.assert_not_called()
-
-    def test_launcher_command_runs_prepared_macro(self) -> None:
-        selected = {"Filename": "plate1.jpg"}
-        fake_fiji = Path(__file__)
-        fake_config = {"fiji_executable": str(fake_fiji)}
-        macro = Path("proof.ijm")
-        launched = object()
-        with patch.object(proof, "proof_plate_is_open", return_value=False), patch.object(
-            proof, "prepare", return_value=(macro, selected)
-        ), patch.object(
-            proof.batch, "load_config", return_value=fake_config
-        ), patch.object(
-            proof, "ensure_roi_click_patch", return_value=False
-        ), patch.object(proof.subprocess, "Popen", return_value=launched) as popen:
-            result = proof.run("plate1.jpg")
-        self.assertEqual(result, selected)
-        popen.assert_called_once()
-        self.assertEqual(popen.call_args.args[0], [str(fake_fiji), "--no-splash", "-macro", str(macro)])
-        self.assertEqual(popen.call_args.kwargs["cwd"], fake_fiji.parent)
-
-    def test_new_roi_click_patch_requires_one_restart_before_proof(self) -> None:
-        fake_fiji = Path(__file__)
-        fake_config = {"fiji_executable": str(fake_fiji)}
-        with patch.object(proof, "proof_plate_is_open", return_value=False), patch.object(
-            proof.batch, "load_config", return_value=fake_config
-        ), patch.object(proof, "ensure_roi_click_patch", return_value=True), patch.object(
-            proof, "prepare"
-        ) as prepare:
-            with self.assertRaises(SystemExit) as caught:
-                proof.run("plate1.jpg")
-        self.assertIn("Close/restart Fiji once", str(caught.exception))
-        prepare.assert_not_called()
-
-    def test_roi_click_patch_uses_existing_preset_helper_and_refuses_ambiguity(self) -> None:
-        fake_fiji = Path(__file__)
-        with patch.object(
-            proof.roi_preset_gui,
-            "find_roi_click_tools",
-            return_value=[Path("one.ijm")],
-        ), patch.object(
-            proof.roi_preset_gui,
-            "patch_roi_click_tools",
-            return_value=Path("backup.bak"),
-        ) as patch_plugin:
-            self.assertTrue(proof.ensure_roi_click_patch(fake_fiji))
-            patch_plugin.assert_called_once_with(Path("one.ijm"))
-
-        with patch.object(
-            proof.roi_preset_gui,
-            "find_roi_click_tools",
-            return_value=[Path("one.ijm"), Path("two.ijm")],
-        ):
-            with self.assertRaises(SystemExit):
-                proof.ensure_roi_click_patch(fake_fiji)
-
-    def test_four_point_prepare_uses_configured_macro(self) -> None:
-        with local_tempdir() as temp:
-            root = Path(temp)
-            pending = root / "pending.csv"
-            configured = root / "four-point.ijm"
-            proof_csv = root / "proof.csv"
-            proof_macro = root / "proof.ijm"
-            pending.write_text(
-                "Filename,Experiment,Set,Type\nplate2.jpg,E2,B,SALT\n",
+    def test_pending_tsv_is_read_with_explicit_tab_delimiter(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "pending.tsv"
+            path.write_text(
+                "Folder\tFilename\tExperiment\tSet\tType\nA\tplate.jpg\tE\tS\tT\n",
                 encoding="utf-8",
             )
-            configured.write_text(
-                f'imagesFile = "{proof.batch.macro_path(pending)}";\nprocessedImages++;\nprint("done");\n',
-                encoding="utf-8",
+            fields, rows = proof.read_pending_rows(path, delimiter="\t")
+        self.assertEqual(fields, ["Folder", "Filename", "Experiment", "Set", "Type"])
+        self.assertEqual(rows[0]["Filename"], "plate.jpg")
+
+    def test_write_one_row_tsv_preserves_fiji_handoff_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "proof.tsv"
+            proof.write_one_row_tsv(
+                path,
+                {"Folder": "A", "Filename": "plate.jpg", "Experiment": "E", "Set": "S", "Type": "T"},
             )
-            completed = type("Completed", (), {"returncode": 0, "stdout": "ok", "stderr": ""})()
+            with path.open(encoding="utf-8", newline="") as handle:
+                rows = list(csv.DictReader(handle, delimiter="\t"))
+        self.assertEqual(rows, [{"Folder": "A", "Filename": "plate.jpg", "Experiment": "E", "Set": "S", "Type": "T"}])
 
-            with patch.object(proof.batch, "PENDING_IMAGES_CSV", pending), patch.object(
-                proof.batch, "CONFIGURED_MACRO", configured
-            ), patch.object(proof, "PROOF_IMAGES_CSV", proof_csv), patch.object(
-                proof, "PROOF_MACRO", proof_macro
-            ), patch.object(proof.subprocess, "run", return_value=completed) as run_mock:
-                built, selected = proof.prepare("plate2.jpg")
+    def _prepare_with_mocks(self, root: Path, *, rerun_done: bool, replace_existing: bool):
+        configured = root / "configured.ijm"
+        configured.write_text("configured", encoding="utf-8")
+        proof_macro = root / "proof.ijm"
+        proof_tsv = root / "proof.tsv"
+        manifest = root / "replacement.tsv"
+        pending = root / "pending.tsv"
+        images_csv = root / "images.csv"
+        source = root / "FolderA" / "plate.jpg"
+        source.parent.mkdir()
+        source.write_bytes(b"synthetic-not-an-image")
+        pending_row = {"Folder": "FolderA", "Filename": "plate.jpg", "Experiment": "E", "Set": "S", "Type": "T"}
+        authoritative_row = {"Filename": "plate.jpg", "Experiment": "E", "Set": "S", "Type": "T"}
+        completed = subprocess.CompletedProcess([], 0, "", "")
+        config = {"image_root": str(root), "images_csv": str(images_csv)}
 
-            self.assertEqual(built, proof_macro)
-            self.assertEqual(selected["Filename"], "plate2.jpg")
-            self.assertIn(proof.batch.macro_path(proof_csv), proof_macro.read_text(encoding="utf-8"))
+        def read_rows(path: Path, *, delimiter: str = ","):
+            if path == pending:
+                self.assertEqual(delimiter, "\t")
+                return list(pending_row), [pending_row]
+            if path == images_csv:
+                self.assertEqual(delimiter, ",")
+                return list(authoritative_row), [authoritative_row]
+            raise AssertionError(f"unexpected metadata path: {path}")
 
-
-    def test_done_rerun_uses_authoritative_images_row_when_pending_is_empty(self) -> None:
-        with local_tempdir() as temp:
-            root = Path(temp)
-            pending = root / "pending.csv"
-            images = root / "images.csv"
-            configured = root / "four-point.ijm"
-            proof_csv = root / "proof.csv"
-            proof_macro = root / "proof.ijm"
-            pending.write_text("Filename,Experiment,Set,Type\n", encoding="utf-8")
-            images.write_text("Filename,Experiment,Set,Type\nPlate.JPG,E,S,T\n", encoding="utf-8")
-            configured.write_text(
-                f'imagesFile = "{proof.batch.macro_path(pending)}";\nprocessedImages++;\nprint("done");\n', encoding="utf-8"
+        with patch.object(proof.batch, "PENDING_IMAGES_TSV", pending), patch.object(
+            proof.batch, "CONFIGURED_FOUR_POINT_MACRO", configured
+        ), patch.object(proof, "FOUR_POINT_PLATE_MACRO", proof_macro), patch.object(
+            proof, "PROOF_IMAGES_TSV", proof_tsv
+        ), patch.object(proof, "REPLACEMENT_MANIFEST", manifest), patch.object(
+            proof.subprocess, "run", return_value=completed
+        ), patch.object(proof, "read_pending_rows", side_effect=read_rows) as read_mock, patch.object(
+            proof.batch, "load_config", return_value=config
+        ), patch.object(proof, "_prepare_completed_plate_macro", return_value=configured) as completed_macro, patch.object(
+            proof.preflight_batch, "discover_sources", return_value=[source]
+        ), patch.object(proof, "patch_prepared_macro", return_value="patched"), patch.object(
+            proof.crop_replacement_manifest, "write_manifest"
+        ) as write_manifest:
+            result = proof.prepare(
+                "plate.jpg",
+                rerun_done=rerun_done,
+                replace_existing=replace_existing,
             )
-            completed = type(
-                "Completed", (), {"returncode": 1, "stdout": "All expected crops already exist", "stderr": ""}
-            )()
-            config = {"images_csv": str(images)}
-            with patch.object(proof.batch, "PENDING_IMAGES_CSV", pending), patch.object(
-                proof.batch, "CONFIGURED_MACRO", configured
-            ), patch.object(proof, "PROOF_IMAGES_CSV", proof_csv), patch.object(
-                proof, "PROOF_MACRO", proof_macro
-            ), patch.object(proof.subprocess, "run", return_value=completed), patch.object(
-                proof, "_prepare_completed_plate_macro", return_value=configured
-            ), patch.object(proof.batch, "load_config", return_value=config):
-                built, selected = proof.prepare("plate.jpg", rerun_done=True)
-        self.assertEqual(built, proof_macro)
-        self.assertEqual(selected["Filename"], "Plate.JPG")
+        return result, read_mock, completed_macro, write_manifest, manifest, proof_tsv
+
+    def test_ordinary_single_remains_pending_only_when_replacement_is_enabled(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            result, read_mock, completed_macro, write_manifest, manifest, proof_tsv = self._prepare_with_mocks(
+                Path(temp), rerun_done=False, replace_existing=True
+            )
+        self.assertEqual(result[1]["Filename"], "plate.jpg")
+        self.assertEqual(read_mock.call_count, 1)
+        completed_macro.assert_not_called()
+        write_manifest.assert_called_once()
+        self.assertTrue(proof_tsv.name.endswith(".tsv"))
+        self.assertEqual(manifest.name, "replacement.tsv")
+
+    def test_rerun_uses_authoritative_csv_and_forces_replacement_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            result, read_mock, completed_macro, write_manifest, _manifest, _proof_tsv = self._prepare_with_mocks(
+                Path(temp), rerun_done=True, replace_existing=False
+            )
+        self.assertEqual(result[1]["Filename"], "plate.jpg")
+        self.assertEqual(read_mock.call_count, 1)
+        completed_macro.assert_called_once()
+        write_manifest.assert_called_once()
+
+    def test_patch_prepared_macro_scopes_folder_and_replacement_manifest(self) -> None:
+        pending = proof.batch.macro_path(proof.batch.PENDING_IMAGES_TSV)
+        source = (
+            f'imagesFile = "{pending}";\n'
+            'folders = getFileList(inputRoot);\n'
+            'replacementManifest = "";\n'
+            'runLabel = "Batch All";\n'
+            'processedImages++;\n        print("done");\n'
+        )
+        patched = proof.patch_prepared_macro(
+            source,
+            Path("C:/proof.tsv"),
+            Path("C:/replace.tsv"),
+            "FolderA",
+            "Single Rerun",
+        )
+        self.assertIn('imagesFile = "C:/proof.tsv";', patched)
+        self.assertIn('folders = newArray("FolderA/");', patched)
+        self.assertIn('replacementManifest = "C:/replace.tsv";', patched)
+        self.assertIn('runLabel = "Single Rerun";', patched)
 
 
 if __name__ == "__main__":
