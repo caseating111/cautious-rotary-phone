@@ -55,6 +55,7 @@ def new_project_state(
         "v10_workbook": str(Path(v10_workbook).resolve()) if v10_workbook else None,
         "project_model": copy.deepcopy(project_model),
         "crop_calibrations": {},
+        "matrix_exports": {},
         "images": _image_records(project_model),
         "updated_at": _timestamp(),
     }
@@ -87,6 +88,18 @@ def validate_project_state(state: dict[str, Any]) -> None:
             raise ValueError(f"Invalid project-state image record: {uid}")
     if not isinstance(state.get("crop_calibrations"), dict):
         raise TypeError("crop_calibrations must be an object.")
+    matrix_exports = state.get("matrix_exports", {})
+    if not isinstance(matrix_exports, dict):
+        raise TypeError("matrix_exports must be an object.")
+    for request_id, result in matrix_exports.items():
+        if (
+            not isinstance(request_id, str)
+            or not request_id
+            or not isinstance(result, dict)
+            or result.get("status") != "ACCEPTED"
+            or result.get("request_id") != request_id
+        ):
+            raise ValueError("Invalid accepted matrix export record.")
     for uid, record in images.items():
         exports = record.get("crop_exports")
         if exports is not None and not isinstance(exports, dict):
@@ -273,6 +286,23 @@ def record_crop_export(
         if prior is not None:
             current["replaced_at"] = _timestamp()
     exports[tier_name] = current
+
+
+def record_matrix_export(state: dict[str, Any], result: dict[str, Any]) -> None:
+    if result.get("status") != "ACCEPTED":
+        raise ValueError("Only accepted matrix exports may be recorded.")
+    request_id = str(result.get("request_id") or "")
+    if not request_id:
+        raise ValueError("Matrix export requires request_id.")
+    validate_project_state(state)
+    exports = state.setdefault("matrix_exports", {})
+    current = copy.deepcopy(result)
+    prior = exports.get(request_id)
+    if isinstance(prior, dict):
+        current["recorded_at"] = prior.get("recorded_at", _timestamp())
+    else:
+        current["recorded_at"] = _timestamp()
+    exports[request_id] = current
 
 
 def record_derivative(

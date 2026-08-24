@@ -64,6 +64,16 @@ APPLETS = (
         "accepted grid coordinates and matching source image",
     ),
     Applet(
+        "mixed-tier-matrix",
+        "Mixed Top/Low matrix composition",
+        "tools.applets.mixed_tier_matrix",
+        (
+            "mixed_tier_matrix.schema.json",
+            "culture_crop_export.schema.json",
+        ),
+        "accepted current culture crop exports",
+    ),
+    Applet(
         "visibility",
         "Visibility adjustment",
         "tools.applets.visibility",

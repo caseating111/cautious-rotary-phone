@@ -18,6 +18,12 @@ from tools.applets.culture_crop_export import (
     export_culture_crops,
     plan_culture_crop_export,
 )
+from tools.applets.mixed_tier_matrix import (
+    enumerate_crop_candidates,
+    plan_mixed_tier_matrix,
+    preview_mixed_tier_matrix,
+    publish_mixed_tier_matrix,
+)
 from tools.applets.plate_crop import (
     apply_plate_crop,
     calibrate_crop_size,
@@ -43,6 +49,7 @@ from tools.project_state import (
     record_crop_export,
     record_derivative,
     record_grid_asset,
+    record_matrix_export,
     record_orientation,
     record_setup_result,
     save_project_state,
@@ -575,6 +582,46 @@ class ProjectWorkflow:
             )
         result = export_culture_crops(plan)
         record_crop_export(self.state, image_uid, result["tier"], result)
+        self.save()
+        return result
+
+    def mixed_tier_crop_candidates(self) -> dict[str, dict[str, Any]]:
+        return enumerate_crop_candidates(self.state)
+
+    def propose_mixed_tier_matrix(
+        self,
+        selections: list[dict[str, str]],
+        *,
+        rows: list[str],
+        columns: list[str],
+        tile_size: tuple[int, int] | None = None,
+        padding: int = 10,
+    ) -> tuple[dict[str, Any], Any]:
+        plan = plan_mixed_tier_matrix(
+            self.state,
+            selections,
+            rows=rows,
+            columns=columns,
+            output_root=self.project_root / "Matrices" / "Mixed Tier",
+            tile_size=tile_size,
+            padding=padding,
+        )
+        preview = preview_mixed_tier_matrix(plan)
+        return plan, preview["preview_image"]
+
+    def accept_mixed_tier_matrix(self, plan: dict[str, Any]) -> dict[str, Any]:
+        expected_root = (self.project_root / "Matrices" / "Mixed Tier").resolve()
+        if Path(plan.get("output_root", "")).resolve() != expected_root:
+            raise ValueError("Mixed-tier matrix plan output is outside this project.")
+        current = enumerate_crop_candidates(self.state)
+        if any(
+            item.get("candidate_id") not in current for item in plan.get("items", [])
+        ):
+            raise ValueError(
+                "A selected crop is no longer current; preview the matrix again."
+            )
+        result = publish_mixed_tier_matrix(plan)
+        record_matrix_export(self.state, result)
         self.save()
         return result
 

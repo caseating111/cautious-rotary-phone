@@ -1,0 +1,156 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "mixed_tier_matrix.schema.json",
+  "title": "MixedTierMatrix",
+  "type": "object",
+  "required": [
+    "contract_version",
+    "asset_type",
+    "status",
+    "preview_only",
+    "request_id",
+    "output_root",
+    "matrix_layout",
+    "items",
+    "warnings"
+  ],
+  "properties": {
+    "contract_version": {"const": 1},
+    "asset_type": {
+      "enum": ["MixedTierMatrixPlan", "MixedTierMatrixResult"]
+    },
+    "status": {"enum": ["PROPOSED", "ACCEPTED"]},
+    "preview_only": {"type": "boolean"},
+    "request_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "output_root": {"type": "string", "minLength": 1},
+    "matrix_layout": {
+      "type": "object",
+      "required": ["rows", "cols", "tile_size", "padding"],
+      "properties": {
+        "rows": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "cols": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "tile_size": {
+          "type": "array",
+          "prefixItems": [
+            {"type": "integer", "minimum": 1},
+            {"type": "integer", "minimum": 1}
+          ],
+          "items": false
+        },
+        "padding": {"type": "integer", "minimum": 0}
+      },
+      "additionalProperties": false
+    },
+    "items": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/item"}
+    },
+    "warnings": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "output_directory": {"type": "string", "minLength": 1},
+    "output_path": {"type": "string", "minLength": 1},
+    "output_dimensions": {
+      "type": "array",
+      "prefixItems": [
+        {"type": "integer", "minimum": 1},
+        {"type": "integer", "minimum": 1}
+      ],
+      "items": false
+    },
+    "tile_count": {"type": "integer", "minimum": 1},
+    "matrix_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "asset_type": {"const": "MixedTierMatrixPlan"}
+        }
+      },
+      "then": {
+        "properties": {
+          "status": {"const": "PROPOSED"},
+          "preview_only": {"const": true}
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "asset_type": {"const": "MixedTierMatrixResult"}
+        }
+      },
+      "then": {
+        "required": [
+          "output_directory",
+          "output_path",
+          "output_dimensions",
+          "tile_count",
+          "matrix_sha256"
+        ],
+        "properties": {
+          "status": {"const": "ACCEPTED"},
+          "preview_only": {"const": false}
+        }
+      }
+    }
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "item": {
+      "type": "object",
+      "required": [
+        "image",
+        "row",
+        "col",
+        "strain",
+        "condition",
+        "candidate_id",
+        "tier",
+        "source_tier",
+        "state",
+        "sha256",
+        "image_uid",
+        "export_request_id",
+        "crop_id",
+        "strain_label",
+        "crop_column"
+      ],
+      "properties": {
+        "image": {"type": "string", "minLength": 1},
+        "row": {"type": "string", "minLength": 1},
+        "col": {"type": "string", "minLength": 1},
+        "strain": {"type": "string", "minLength": 1},
+        "condition": {"type": "string", "minLength": 1},
+        "candidate_id": {
+          "type": "string",
+          "pattern": "^crop-[0-9a-f]{24}$"
+        },
+        "tier": {"enum": ["Top", "Low"]},
+        "source_tier": {"enum": ["Unprocessed", "Processed"]},
+        "state": {"enum": ["Top", "Low"]},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "image_uid": {"type": "string", "minLength": 1},
+        "export_request_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "crop_id": {"type": "string", "minLength": 1},
+        "strain_label": {"type": "string", "minLength": 1},
+        "crop_column": {"type": "integer", "minimum": 1}
+      },
+      "additionalProperties": false
+    }
+  }
+}

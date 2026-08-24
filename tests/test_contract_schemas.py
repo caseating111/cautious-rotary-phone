@@ -22,6 +22,7 @@ def test_workflow_contract_schemas_are_json_and_versioned() -> None:
         ("visibility_result.schema.json", "VisibilityResult"),
         ("annotation_result.schema.json", "AnnotationResult"),
         ("culture_crop_export.schema.json", "CultureCropExport"),
+        ("mixed_tier_matrix.schema.json", "MixedTierMatrix"),
     ):
         schema = read_schema(name)
         assert schema["title"] == title
@@ -46,3 +47,5 @@ def test_registry_declares_result_contracts_for_each_geometry_consumer() -> None
         "grid_coordinate_asset.schema.json",
         "plate_layout.schema.json",
     }
+    assert "mixed_tier_matrix.schema.json" in by_key["mixed-tier-matrix"].contracts
+    assert "culture_crop_export.schema.json" in by_key["mixed-tier-matrix"].contracts

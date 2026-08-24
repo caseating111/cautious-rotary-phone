@@ -182,6 +182,12 @@ class WorkflowApp(tk.Tk):
         self.crop_export_height = tk.StringVar(value="546")
         self.crop_export_plan: dict[str, Any] | None = None
         self.crop_export_signature: tuple[Any, ...] | None = None
+        self.matrix_candidates: dict[str, dict[str, Any]] = {}
+        self.matrix_layout_mode = tk.StringVar(value="Selected crops (one column)")
+        self.matrix_tile_width = tk.StringVar()
+        self.matrix_tile_height = tk.StringVar()
+        self.matrix_plan: dict[str, Any] | None = None
+        self.matrix_signature: tuple[Any, ...] | None = None
         self.visibility_preset = tk.StringVar(value="background_aware_linear")
         self.visibility_proposal: dict[str, Any] | None = None
         self.annotation_proposal: dict[str, Any] | None = None
@@ -225,6 +231,7 @@ class WorkflowApp(tk.Tk):
         culture_crops = ttk.Frame(notebook)
         visibility = ttk.Frame(notebook)
         annotation = ttk.Frame(notebook)
+        mixed_matrix = ttk.Frame(notebook)
         notebook.add(setup, text="Setup")
         notebook.add(orientation, text="Orientation")
         notebook.add(crop, text="Plate crop")
@@ -232,6 +239,7 @@ class WorkflowApp(tk.Tk):
         notebook.add(culture_crops, text="Culture crops")
         notebook.add(visibility, text="Visibility")
         notebook.add(annotation, text="Annotation")
+        notebook.add(mixed_matrix, text="Mixed matrix")
 
         ttk.Label(
             setup,
@@ -477,6 +485,72 @@ class WorkflowApp(tk.Tk):
         ttk.Button(
             annotation, text="Return to source", command=self.load_selected_source
         ).pack(fill="x", padx=8, pady=3)
+
+        ttk.Label(
+            mixed_matrix,
+            text=(
+                "Select one verified crop for every strain × image cell. "
+                "Top and Low may be mixed within the same matrix."
+            ),
+            wraplength=360,
+        ).pack(anchor="w", padx=8, pady=8)
+        ttk.Combobox(
+            mixed_matrix,
+            textvariable=self.matrix_layout_mode,
+            state="readonly",
+            values=(
+                "Selected crops (one column)",
+                "Strain × image grid",
+            ),
+        ).pack(fill="x", padx=8, pady=3)
+        matrix_dimensions = ttk.Frame(mixed_matrix)
+        matrix_dimensions.pack(fill="x", padx=8, pady=3)
+        ttk.Label(matrix_dimensions, text="Tile width").pack(side="left")
+        ttk.Entry(matrix_dimensions, textvariable=self.matrix_tile_width, width=7).pack(
+            side="left", padx=(4, 12)
+        )
+        ttk.Label(matrix_dimensions, text="height").pack(side="left")
+        ttk.Entry(
+            matrix_dimensions, textvariable=self.matrix_tile_height, width=7
+        ).pack(side="left", padx=(4, 0))
+        ttk.Label(
+            mixed_matrix,
+            text="Leave both tile fields blank to preserve the first crop size.",
+        ).pack(anchor="w", padx=8)
+        matrix_actions = ttk.Frame(mixed_matrix)
+        matrix_actions.pack(fill="x", padx=8, pady=5)
+        ttk.Button(
+            matrix_actions,
+            text="Refresh crops",
+            command=self.refresh_mixed_matrix_candidates,
+        ).pack(side="left", fill="x", expand=True)
+        ttk.Button(
+            matrix_actions,
+            text="Preview selected",
+            command=self.preview_mixed_tier_matrix,
+        ).pack(side="left", fill="x", expand=True, padx=(5, 0))
+        ttk.Button(
+            mixed_matrix,
+            text="Export previewed matrix",
+            command=self.accept_mixed_tier_matrix,
+        ).pack(fill="x", padx=8, pady=(0, 5))
+        self.matrix_tree = ttk.Treeview(
+            mixed_matrix,
+            columns=("state", "source", "strain", "image", "context"),
+            show="headings",
+            selectmode="extended",
+            height=16,
+        )
+        for key, label, width in (
+            ("state", "Top/Low", 60),
+            ("source", "Source", 80),
+            ("strain", "Strain", 80),
+            ("image", "Image UID", 90),
+            ("context", "Experiment / Set / Condition / Date", 170),
+        ):
+            self.matrix_tree.heading(key, text=label)
+            self.matrix_tree.column(key, width=width, stretch=True)
+        self.matrix_tree.pack(fill="both", expand=True, padx=8, pady=(2, 8))
 
         ttk.Label(self, textvariable=self.status, wraplength=1040).pack(
             fill="x", padx=8, pady=(6, 8)
@@ -1111,6 +1185,133 @@ class WorkflowApp(tk.Tk):
             self.status.set(
                 f"Accepted annotated derivative: {output}\nRecord: {sidecar}"
             )
+
+    def refresh_mixed_matrix_candidates(self) -> None:
+        workflow, _uid = self._selected()
+        candidates = self._run(workflow.mixed_tier_crop_candidates)
+        if candidates is None:
+            return
+        self.matrix_candidates = candidates
+        self.matrix_plan = None
+        self.matrix_signature = None
+        for item in self.matrix_tree.get_children():
+            self.matrix_tree.delete(item)
+        for candidate_id, candidate in candidates.items():
+            context = candidate["context"]
+            shown_context = " / ".join(
+                context[key]
+                for key in ("exp", "set", "condition", "date")
+                if context[key]
+            )
+            self.matrix_tree.insert(
+                "",
+                "end",
+                iid=candidate_id,
+                values=(
+                    candidate["state"],
+                    candidate["source_tier"],
+                    candidate["strain"],
+                    candidate["image_uid"],
+                    shown_context,
+                ),
+            )
+        self.status.set(
+            f"Loaded {len(candidates)} current verified crop candidate(s). "
+            "Select one crop for every intended strain × image cell."
+        )
+
+    def _mixed_matrix_signature_value(self) -> tuple[Any, ...]:
+        selected = tuple(self.matrix_tree.selection())
+        if not selected:
+            raise ValueError("Select crops for the mixed matrix first.")
+        width_text = self.matrix_tile_width.get().strip()
+        height_text = self.matrix_tile_height.get().strip()
+        if bool(width_text) != bool(height_text):
+            raise ValueError("Set both matrix tile dimensions or leave both blank.")
+        tile_size = (
+            (int(width_text), int(height_text)) if width_text and height_text else None
+        )
+        if tile_size is not None and any(value < 1 for value in tile_size):
+            raise ValueError("Matrix tile dimensions must be positive integers.")
+        return selected, tile_size, self.matrix_layout_mode.get()
+
+    def preview_mixed_tier_matrix(self) -> None:
+        workflow, _uid = self._selected()
+        signature = self._run(self._mixed_matrix_signature_value)
+        if signature is None:
+            return
+        selected, tile_size, layout_mode = signature
+        chosen = [self.matrix_candidates[candidate_id] for candidate_id in selected]
+        if layout_mode == "Selected crops (one column)":
+            rows = [
+                (
+                    f"{candidate['strain']} "
+                    f"[{candidate['state']} | {candidate['image_uid']} | "
+                    f"{candidate['candidate_id'][-6:]}]"
+                )
+                for candidate in chosen
+            ]
+            columns = ["Selected"]
+            selections = [
+                {
+                    "candidate_id": candidate["candidate_id"],
+                    "row": row,
+                    "column": "Selected",
+                }
+                for candidate, row in zip(chosen, rows, strict=True)
+            ]
+        else:
+            rows = list(dict.fromkeys(candidate["default_row"] for candidate in chosen))
+            columns = list(
+                dict.fromkeys(candidate["default_column"] for candidate in chosen)
+            )
+            selections = [
+                {
+                    "candidate_id": candidate["candidate_id"],
+                    "row": candidate["default_row"],
+                    "column": candidate["default_column"],
+                }
+                for candidate in chosen
+            ]
+        result = self._run(
+            lambda: workflow.propose_mixed_tier_matrix(
+                selections,
+                rows=rows,
+                columns=columns,
+                tile_size=tile_size,
+            )
+        )
+        if result:
+            self.matrix_plan, preview = result
+            self.matrix_signature = signature
+            self.viewer.show(preview)
+            self.status.set(
+                f"Mixed matrix preview: {len(selections)} cells, "
+                f"{len(rows)} row(s) × {len(columns)} column(s); no files written."
+            )
+
+    def accept_mixed_tier_matrix(self) -> None:
+        workflow, _uid = self._selected()
+        signature = self._run(self._mixed_matrix_signature_value)
+        if signature is None:
+            return
+        if self.matrix_plan is None or self.matrix_signature != signature:
+            messagebox.showerror(
+                "Mixed matrix",
+                "Preview the current crop selection, layout and tile size first.",
+            )
+            return
+        if not messagebox.askyesno(
+            "Export mixed matrix",
+            f"Publish the previewed {len(self.matrix_plan['items'])}-cell matrix "
+            "to a new numbered run?",
+        ):
+            return
+        result = self._run(lambda: workflow.accept_mixed_tier_matrix(self.matrix_plan))
+        if result:
+            self.matrix_plan = None
+            self.matrix_signature = None
+            self.status.set(f"Accepted mixed matrix: {result['output_path']}")
 
     def _refresh_asset_labels(self) -> None:
         if self.workflow is None or not self.image_uid.get():

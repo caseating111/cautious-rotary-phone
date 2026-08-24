@@ -374,80 +374,96 @@ def compose_matrix(
     matrix_layout: Dict[str, Any],
     output_path: Optional[str] = None
 ) -> Dict[str, Any]:
-    """
-    Composes a structured matrix grid from individual crop images (with mixed crop tier support).
-
-    crop_items: List of dicts:
-      [{'image': Image | str, 'row': int, 'col': int, 'strain': str, 'condition': str, 'tier': 'top'|'low'}, ...]
-    matrix_layout:
-      {'rows': ['WT', 'MutantA'], 'cols': ['0h', '24h', '48h'], 'tile_size': (120, 120), 'padding': 10}
-    """
+    """Compose a validated mixed-tier crop matrix."""
     if not PIL_AVAILABLE:
         raise RuntimeError("Pillow is required for compose_matrix")
-
-    row_keys = matrix_layout.get("rows", [])
-    col_keys = matrix_layout.get("cols", [])
-    tile_w, tile_h = matrix_layout.get("tile_size", (120, 120))
-    pad = matrix_layout.get("padding", 10)
-    margin_top = 40
-    margin_left = 100
-
-    n_rows = len(row_keys)
-    n_cols = len(col_keys)
-
-    total_w = margin_left + n_cols * (tile_w + pad) + pad
-    total_h = margin_top + n_rows * (tile_h + pad) + pad
-
+    if not isinstance(matrix_layout, dict):
+        raise ValueError("matrix_layout must be an object.")
+    row_keys = matrix_layout.get("rows")
+    col_keys = matrix_layout.get("cols")
+    if not isinstance(row_keys, list) or not row_keys or any(not str(v).strip() for v in row_keys):
+        raise ValueError("matrix_layout rows must be non-empty keys.")
+    if not isinstance(col_keys, list) or not col_keys or any(not str(v).strip() for v in col_keys):
+        raise ValueError("matrix_layout cols must be non-empty keys.")
+    if len({str(v) for v in row_keys}) != len(row_keys) or len({str(v) for v in col_keys}) != len(col_keys):
+        raise ValueError("matrix_layout rows and cols must be unique.")
+    tile_size = matrix_layout.get("tile_size", (120, 120))
+    if not isinstance(tile_size, (tuple, list)) or len(tile_size) != 2:
+        raise ValueError("tile_size must contain width and height.")
+    tile_w, tile_h = (int(tile_size[0]), int(tile_size[1]))
+    pad = int(matrix_layout.get("padding", 10))
+    if tile_w <= 0 or tile_h <= 0 or pad < 0:
+        raise ValueError("tile_size must be positive and padding cannot be negative.")
+    if not isinstance(crop_items, list):
+        raise ValueError("crop_items must be a list.")
+    row_lookup = {str(v): v for v in row_keys}
+    col_lookup = {str(v): v for v in col_keys}
+    validated = []
+    occupied = set()
+    for item in crop_items:
+        if not isinstance(item, dict):
+            raise ValueError("Each crop item must be an object.")
+        tier = str(item.get("tier", "")).strip().casefold()
+        if tier not in {"top", "low"}:
+            raise ValueError("Each crop item tier must be Top or Low.")
+        r_name = item.get("strain") if item.get("strain") is not None else item.get("row")
+        c_name = item.get("condition") if item.get("condition") is not None else item.get("col")
+        r_name, c_name = str(r_name), str(c_name)
+        if r_name not in row_lookup or c_name not in col_lookup:
+            raise ValueError("Crop item row/column is not present in matrix layout.")
+        cell = (r_name, c_name)
+        if cell in occupied:
+            raise ValueError("Each matrix cell may contain only one crop item.")
+        occupied.add(cell)
+        src = item.get("image")
+        if isinstance(src, (str, Path)):
+            if not Path(src).is_file():
+                raise FileNotFoundError(f"Crop source does not exist: {src}")
+            with Image.open(src) as source_image:
+                loaded = source_image.convert("RGB")
+        elif hasattr(src, "convert"):
+            loaded = src.convert("RGB")
+        else:
+            raise ValueError("Crop item image must be an existing path or PIL image.")
+        validated.append((r_name, c_name, loaded))
+    margin_top, margin_left = 40, 100
+    total_w = margin_left + len(col_keys) * (tile_w + pad) + pad
+    total_h = margin_top + len(row_keys) * (tile_h + pad) + pad
     matrix_img = Image.new("RGB", (total_w, total_h), (255, 255, 255))
     draw = ImageDraw.Draw(matrix_img)
     font = _get_font(16)
-
-    # Draw column headers
     for c_idx, col_name in enumerate(col_keys):
-        x = margin_left + c_idx * (tile_w + pad) + pad
-        y = 10
-        draw.text((x, y), str(col_name), fill=(0, 0, 0), font=font)
-
-    # Draw row headers
+        draw.text((margin_left + c_idx * (tile_w + pad) + pad, 10), str(col_name), fill=(0, 0, 0), font=font)
     for r_idx, row_name in enumerate(row_keys):
-        x = 10
         y = margin_top + r_idx * (tile_h + pad) + pad + (tile_h // 2) - 8
-        draw.text((x, y), str(row_name), fill=(0, 0, 0), font=font)
-
-    # Draw tiles
-    for item in crop_items:
-        r_name = item.get("strain") or item.get("row")
-        c_name = item.get("condition") or item.get("col")
-
-        if r_name in row_keys and c_name in col_keys:
-            r_i = row_keys.index(r_name)
-            c_i = col_keys.index(c_name)
-
-            x = margin_left + c_i * (tile_w + pad) + pad
-            y = margin_top + r_i * (tile_h + pad) + pad
-
-            src = item.get("image")
-            if isinstance(src, str):
-                tile = Image.open(src).convert("RGB")
-            elif hasattr(src, "convert"):
-                tile = src.convert("RGB")
-            else:
-                tile = Image.fromarray(src).convert("RGB")
-
-            tile = tile.resize((tile_w, tile_h), Image.Resampling.BILINEAR)
-            matrix_img.paste(tile, (x, y))
-
+        draw.text((10, y), str(row_name), fill=(0, 0, 0), font=font)
+    row_index = {str(v): i for i, v in enumerate(row_keys)}
+    col_index = {str(v): i for i, v in enumerate(col_keys)}
+    for r_name, c_name, tile in validated:
+        x = margin_left + col_index[c_name] * (tile_w + pad) + pad
+        y = margin_top + row_index[r_name] * (tile_h + pad) + pad
+        matrix_img.paste(tile.resize((tile_w, tile_h), Image.Resampling.BILINEAR), (x, y))
+    published_path = None
     if output_path:
-        os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
-        matrix_img.save(output_path)
-
+        destination = Path(output_path).resolve()
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        fd, temporary = tempfile.mkstemp(prefix=".matrix-", suffix=destination.suffix or ".png", dir=str(destination.parent))
+        os.close(fd)
+        try:
+            matrix_img.save(temporary)
+            os.replace(temporary, destination)
+            published_path = str(destination)
+        finally:
+            if os.path.exists(temporary):
+                os.unlink(temporary)
     return {
-        "status": "COMPOSED",
+        "status": "COMPOSED" if output_path else "PREVIEW",
         "output_dimensions": [total_w, total_h],
-        "output_path": output_path,
+        "output_path": published_path,
         "rows": row_keys,
         "cols": col_keys,
-        "tile_count": len(crop_items)
+        "tile_count": len(validated),
+        "preview_image": matrix_img if output_path is None else None,
     }
 
 
