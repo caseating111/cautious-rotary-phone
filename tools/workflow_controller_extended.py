@@ -379,6 +379,7 @@ class ExtendedController(Controller):
             config = one_plate_validation.batch.load_config(
                 require_fiji=True,
                 require_fiji_handoff_paths=False,
+                require_crop_output=not register_only,
             )
             fiji_executable = Path(config["fiji_executable"])
             if one_plate_validation.ensure_roi_click_patch(fiji_executable):

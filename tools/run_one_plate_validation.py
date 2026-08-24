@@ -218,7 +218,7 @@ def prepare(filename: str | None = None, *, rerun_done: bool = False, replace_ex
         raise SystemExit(f"Prepared macro not found: {configured}")
     # build_four_point_macro() is the source of truth for the complete current
     # four-point interaction. The proof only narrows its metadata input.
-    config = batch.load_config(require_fiji=False, require_fiji_handoff_paths=False)
+    config = batch.load_config(require_fiji=False, require_fiji_handoff_paths=False, require_crop_output=not register_only)
     matching_sources = [
         item
         for item in preflight_batch.discover_sources(Path(config["image_root"]))
@@ -261,7 +261,7 @@ def run_with_process(
     if batch.ACTIVE_BATCH_FILE.is_file():
         raise SystemExit("A four-point batch is active; finish or cancel it before launching a single-image run.")
 
-    config = batch.load_config(require_fiji=True, require_fiji_handoff_paths=False)
+    config = batch.load_config(require_fiji=True, require_fiji_handoff_paths=False, require_crop_output=not register_only)
     fiji = Path(config["fiji_executable"])
     if not fiji.is_file():
         raise SystemExit(f"Fiji executable not found: {fiji}")
