@@ -13,6 +13,7 @@ except ModuleNotFoundError:
 
 try:
     from PIL import Image, ImageDraw, ImageFont
+
     PIL_AVAILABLE = True
 except ImportError:
     PIL_AVAILABLE = False
@@ -29,19 +30,104 @@ DEFAULT_ANNOTATION_PRESET = {
     "vertical_rotation_degrees": 0.0,
     "strain_offset_y": -20.0,
     "vertical_offset_x": -30.0,
-    "canvas_padding": {
-        "top": 80,
-        "bottom": 30,
-        "left": 80,
-        "right": 30
-    }
+    "canvas_padding": {"top": 80, "bottom": 30, "left": 80, "right": 30},
 }
+
+HEADER_FIELDS = ("date", "figure_description", "plate", "condition", "session", "media")
+HEADER_PREFIXES = {
+    "date": "Date",
+    "figure_description": "Figure",
+    "plate": "Plate",
+    "condition": "Cond",
+    "session": "Session",
+    "media": "Media",
+}
+
+
+def _rgb(value, default=(0, 0, 0)):
+    if isinstance(value, str):
+        clean = value.strip().lstrip("#")
+        if len(clean) == 6:
+            try:
+                return tuple(int(clean[i : i + 2], 16) for i in (0, 2, 4))
+            except ValueError:
+                pass
+    if isinstance(value, (tuple, list)) and len(value) == 3:
+        try:
+            result = tuple(int(component) for component in value)
+        except (TypeError, ValueError):
+            return default
+        if all(0 <= component <= 255 for component in result):
+            return result
+    return default
+
+
+def _field_order(value):
+    requested = value if isinstance(value, list) else list(HEADER_FIELDS)
+    result = [str(field) for field in requested if str(field) in HEADER_FIELDS]
+    return result + [field for field in HEADER_FIELDS if field not in result]
+
+
+def normalize_annotation_preset(value=None):
+    """Expand a legacy or rich preset into backward-compatible settings."""
+    requested = value or {}
+    result = {**DEFAULT_ANNOTATION_PRESET, **requested}
+    result["canvas_padding"] = {
+        **DEFAULT_ANNOTATION_PRESET["canvas_padding"],
+        **requested.get("canvas_padding", {}),
+    }
+    common = {
+        "font_family": "Arial",
+        "font_size": int(result["header_font_size"]),
+        "color": _rgb(result.get("text_color")),
+        "bold": False,
+        "rotation": 0.0,
+        "offset_x": 0.0,
+        "offset_y": 0.0,
+    }
+    defaults = {
+        "header_enabled": True,
+        "header_grouped": True,
+        "header_field_visibility": {},
+        "header_field_styles": {},
+        "header_offset_x": 0.0,
+        "header_offset_y": 0.0,
+        "in_image_enabled": False,
+        "in_image_grouped": True,
+        "in_image_field_visibility": {},
+        "in_image_field_styles": {},
+        "in_image_offset_x": 12.0,
+        "in_image_offset_y": 12.0,
+        "strain_visible": True,
+        "vertical_visible": True,
+        "strain_font_family": "Arial",
+        "vertical_font_family": "Arial",
+        "strain_bold": False,
+        "vertical_bold": False,
+        "strain_label_colors": {},
+    }
+    for key, default in defaults.items():
+        result.setdefault(key, default)
+    result["header_order"] = _field_order(result.get("header_order"))
+    result["in_image_order"] = _field_order(result.get("in_image_order"))
+    for section in ("header_field_styles", "in_image_field_styles"):
+        styles = result[section]
+        result[section] = {
+            field: {
+                **common,
+                **(styles.get(field, {}) if isinstance(styles, dict) else {}),
+            }
+            for field in HEADER_FIELDS
+        }
+    return result
 
 
 def validate_annotation_request(request: Dict[str, Any]) -> None:
     required = ("contract_version", "image_uid", "layout_id", "labels")
     if not isinstance(request, dict) or any(not request.get(key) for key in required):
-        raise ValueError("annotation_request requires contract_version, image_uid, layout_id, and labels")
+        raise ValueError(
+            "annotation_request requires contract_version, image_uid, layout_id, and labels"
+        )
     if request.get("contract_version") != 1 or not isinstance(request["labels"], dict):
         raise ValueError("Unsupported annotation_request contract")
 
@@ -49,7 +135,9 @@ def validate_annotation_request(request: Dict[str, Any]) -> None:
 def _atomic_json(value: Dict[str, Any], path: str) -> str:
     parent = os.path.dirname(os.path.abspath(path))
     os.makedirs(parent, exist_ok=True)
-    fd, temporary = tempfile.mkstemp(prefix=".annotation-", suffix=".tmp", dir=parent, text=True)
+    fd, temporary = tempfile.mkstemp(
+        prefix=".annotation-", suffix=".tmp", dir=parent, text=True
+    )
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
             json.dump(value, handle, indent=2, sort_keys=True)
@@ -63,12 +151,23 @@ def _atomic_json(value: Dict[str, Any], path: str) -> str:
         raise
     return path
 
-def _get_font(size: int = 18):
+
+def _get_font(size: int = 18, family: str = "Arial", bold: bool = False):
     if not PIL_AVAILABLE:
         return None
     try:
-        # Standard system fonts or default
-        return ImageFont.truetype("arial.ttf", size)
+        suffix = "bd" if bold else ""
+        common = {
+            "arial": f"arial{suffix}.ttf",
+            "arial bold": "arialbd.ttf",
+            "tahoma": "tahomabd.ttf" if bold else "tahoma.ttf",
+            "times new roman": "timesbd.ttf" if bold else "times.ttf",
+            "calibri": "calibrib.ttf" if bold else "calibri.ttf",
+            "cambria": "cambriab.ttf" if bold else "cambria.ttf",
+            "verdana": "verdanab.ttf" if bold else "verdana.ttf",
+        }
+        candidate = common.get(str(family).strip().casefold(), str(family).strip())
+        return ImageFont.truetype(candidate or "arial.ttf", size)
     except Exception:
         try:
             return ImageFont.load_default()
@@ -207,10 +306,12 @@ def derive_annotation_positions(
 def render_plate_annotation(
     source_image: Union[str, Any],
     plate_layout: Dict[str, Any],
-    grid_coordinates: Union[Dict[Tuple[int, int], Tuple[float, float]], List[Tuple[float, float]]],
+    grid_coordinates: Union[
+        Dict[Tuple[int, int], Tuple[float, float]], List[Tuple[float, float]]
+    ],
     annotation_request: Optional[Dict[str, Any]] = None,
     preset: Optional[Dict[str, Any]] = None,
-    output_path: Optional[str] = None
+    output_path: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Renders automatic annotations onto source_image using PlateLayout and Grid coordinates.
@@ -220,23 +321,24 @@ def render_plate_annotation(
         raise RuntimeError("Pillow is required for render_plate_annotation")
 
     validate_plate_layout(plate_layout)
-    requested_preset = preset or {}
-    preset = dict(DEFAULT_ANNOTATION_PRESET)
-    preset.update(requested_preset)
-    preset["canvas_padding"] = {
-        **DEFAULT_ANNOTATION_PRESET["canvas_padding"],
-        **requested_preset.get("canvas_padding", {}),
-    }
+    preset = normalize_annotation_preset(preset)
     req = annotation_request or {}
     validate_annotation_request(req)
     if req["layout_id"] != str(plate_layout.get("layout_id", "")):
         raise ValueError("Annotation request layout_id does not match PlateLayout.")
     request_options = req.get("options", {})
     if "strain_text_rotation_degrees" in request_options:
-        preset["strain_rotation_degrees"] = request_options["strain_text_rotation_degrees"]
+        preset["strain_rotation_degrees"] = request_options[
+            "strain_text_rotation_degrees"
+        ]
     if "vertical_text_rotation_degrees" in request_options:
-        preset["vertical_rotation_degrees"] = request_options["vertical_text_rotation_degrees"]
-    if isinstance(grid_coordinates, dict) and grid_coordinates.get("asset_type") == "GridCoordinateAsset":
+        preset["vertical_rotation_degrees"] = request_options[
+            "vertical_text_rotation_degrees"
+        ]
+    if (
+        isinstance(grid_coordinates, dict)
+        and grid_coordinates.get("asset_type") == "GridCoordinateAsset"
+    ):
         asset_uid = grid_coordinates.get("image_uid")
         if asset_uid not in {None, "", req["image_uid"]}:
             raise ValueError("Grid asset belongs to a different Image UID.")
@@ -253,18 +355,30 @@ def render_plate_annotation(
             raise FileNotFoundError(f"Source image '{source_image}' not found")
         base_img = Image.open(source_image).convert("RGB")
     else:
-        base_img = source_image.convert("RGB") if hasattr(source_image, "convert") else Image.fromarray(source_image)
+        base_img = (
+            source_image.convert("RGB")
+            if hasattr(source_image, "convert")
+            else Image.fromarray(source_image)
+        )
 
-    if isinstance(grid_coordinates, dict) and grid_coordinates.get("asset_type") == "GridCoordinateAsset":
+    if (
+        isinstance(grid_coordinates, dict)
+        and grid_coordinates.get("asset_type") == "GridCoordinateAsset"
+    ):
         space = grid_coordinates.get("coordinate_space", {})
         if (space.get("image_width"), space.get("image_height")) != base_img.size:
-            raise ValueError("Grid asset coordinate-space dimensions do not match source image.")
+            raise ValueError(
+                "Grid asset coordinate-space dimensions do not match source image."
+            )
 
     # Convert list of coordinates to (r, c) dict if needed
     rows = plate_layout.get("grid_rows", 8)
     cols = plate_layout.get("grid_cols", 12)
 
-    if isinstance(grid_coordinates, dict) and grid_coordinates.get("asset_type") == "GridCoordinateAsset":
+    if (
+        isinstance(grid_coordinates, dict)
+        and grid_coordinates.get("asset_type") == "GridCoordinateAsset"
+    ):
         grid_map = grid_asset_spot_mapping(grid_coordinates)
     elif isinstance(grid_coordinates, list):
         # Map sequential list to (r, c)
@@ -280,18 +394,31 @@ def render_plate_annotation(
     else:
         grid_map = grid_coordinates
 
-    pad = preset.get("canvas_padding", {"top": 80, "bottom": 30, "left": 80, "right": 30})
+    pad = preset.get(
+        "canvas_padding", {"top": 80, "bottom": 30, "left": 80, "right": 30}
+    )
     canvas_w = base_img.width + pad["left"] + pad["right"]
     canvas_h = base_img.height + pad["top"] + pad["bottom"]
 
-    canvas = Image.new("RGB", (canvas_w, canvas_h), color=preset.get("background_color", (255, 255, 255)))
+    canvas = Image.new(
+        "RGB",
+        (canvas_w, canvas_h),
+        color=preset.get("background_color", (255, 255, 255)),
+    )
     canvas.paste(base_img, (pad["left"], pad["top"]))
 
     draw = ImageDraw.Draw(canvas)
-    hdr_font = _get_font(preset.get("header_font_size", 24))
-    strain_font = _get_font(preset.get("strain_font_size", 18))
-    vert_font = _get_font(preset.get("vertical_font_size", 18))
-    color = preset.get("text_color", (0, 0, 0))
+    strain_font = _get_font(
+        preset.get("strain_font_size", 18),
+        preset.get("strain_font_family", "Arial"),
+        bool(preset.get("strain_bold")),
+    )
+    vert_font = _get_font(
+        preset.get("vertical_font_size", 18),
+        preset.get("vertical_font_family", "Arial"),
+        bool(preset.get("vertical_bold")),
+    )
+    color = _rgb(preset.get("text_color"))
 
     # Derive positions
     pos_data = derive_annotation_positions(plate_layout, grid_map, preset)
@@ -300,22 +427,71 @@ def render_plate_annotation(
 
     # 1. Render Header labels (Date, Condition, Session, Plate)
     labels = req.get("labels", {})
-    header_parts = []
-    if labels.get("date"):
-        header_parts.append(f"Date: {labels['date']}")
-    if labels.get("condition"):
-        header_parts.append(f"Cond: {labels['condition']}")
-    if labels.get("session"):
-        header_parts.append(f"Session: {labels['session']}")
-    if labels.get("plate"):
-        header_parts.append(f"Plate: {labels['plate']}")
 
-    if header_parts:
-        hdr_text = " | ".join(header_parts)
-        draw.text((pad["left"], 15), hdr_text, fill=color, font=hdr_font)
+    def selected_parts(section):
+        visibility = preset.get(f"{section}_field_visibility", {})
+        return [
+            (field, f"{HEADER_PREFIXES[field]}: {labels[field]}")
+            for field in preset.get(f"{section}_order", HEADER_FIELDS)
+            if labels.get(field) and visibility.get(field, True)
+        ]
+
+    def draw_fields(section, origin):
+        parts = selected_parts(section)
+        x, y = origin
+        rendered = []
+        grouped = bool(preset.get(f"{section}_grouped", True))
+        styles = preset.get(f"{section}_field_styles", {})
+        for index, (field, field_text) in enumerate(parts):
+            style = styles[field]
+            font = _get_font(style["font_size"], style["font_family"], style["bold"])
+            position = (x + float(style["offset_x"]), y + float(style["offset_y"]))
+            text_image = render_rotated_text_image(
+                field_text, font, float(style["rotation"]), _rgb(style["color"], color)
+            )
+            canvas.paste(
+                text_image, (round(position[0]), round(position[1])), text_image
+            )
+            rendered.append(field_text)
+            if grouped:
+                x += text_image.width
+                if index < len(parts) - 1:
+                    separator = render_rotated_text_image(
+                        " | ", font, 0, _rgb(style["color"], color)
+                    )
+                    canvas.paste(separator, (round(x), round(y)), separator)
+                    x += separator.width
+            else:
+                y += text_image.height + 4
+        return rendered
+
+    header_parts = (
+        draw_fields(
+            "header",
+            (
+                pad["left"] + float(preset.get("header_offset_x", 0)),
+                15 + float(preset.get("header_offset_y", 0)),
+            ),
+        )
+        if preset.get("header_enabled", True)
+        else []
+    )
+    in_image_parts = (
+        draw_fields(
+            "in_image",
+            (
+                pad["left"] + float(preset.get("in_image_offset_x", 12)),
+                pad["top"] + float(preset.get("in_image_offset_y", 12)),
+            ),
+        )
+        if preset.get("in_image_enabled", False)
+        else []
+    )
 
     # 2. Render Vertical row labels
-    for v in pos_data["vertical_placements"]:
+    for v in (
+        pos_data["vertical_placements"] if preset.get("vertical_visible", True) else []
+    ):
         txt = str(v["label"])
         rot = v["rotation"]
         if rot == 0:
@@ -330,15 +506,20 @@ def render_plate_annotation(
         _record_rendered_box(v, box, canvas.size, warnings, "vertical")
 
     # 3. Render Strain column labels (rotated 90 deg clockwise by default)
-    for s in pos_data["strain_placements"]:
+    for s in (
+        pos_data["strain_placements"] if preset.get("strain_visible", True) else []
+    ):
         txt = str(s["label"])
         rot = s["rotation"]
+        strain_color = _rgb(preset.get("strain_label_colors", {}).get(txt), color)
         if rot == 0:
             position = (s["x"], s["y"])
-            draw.text(position, txt, fill=color, font=strain_font)
+            draw.text(position, txt, fill=strain_color, font=strain_font)
             box = draw.textbbox(position, txt, font=strain_font)
         else:
-            txt_img = render_rotated_text_image(txt, strain_font, rot, fill=color)
+            txt_img = render_rotated_text_image(
+                txt, strain_font, rot, fill=strain_color
+            )
             position = (int(s["x"]), int(s["y"]))
             canvas.paste(txt_img, position, txt_img)
             box = (*position, position[0] + txt_img.width, position[1] + txt_img.height)
@@ -355,17 +536,21 @@ def render_plate_annotation(
         "status": "ACCEPTED" if output_path else "PROPOSED",
         "output_dimensions": [canvas_w, canvas_h],
         "output_path": output_path,
-        "source_image_ref": req.get("source_image_ref") or (str(source_image) if isinstance(source_image, (str, Path)) else None),
-        "grid_asset_id": grid_coordinates.get("asset_id") if isinstance(grid_coordinates, dict) else None,
+        "source_image_ref": req.get("source_image_ref")
+        or (str(source_image) if isinstance(source_image, (str, Path)) else None),
+        "grid_asset_id": grid_coordinates.get("asset_id")
+        if isinstance(grid_coordinates, dict)
+        else None,
         "warnings": warnings,
         "placements": pos_data,
         "preview_image": canvas if output_path is None else None,
         "preset_used": preset.get("name", "custom"),
         "rendered_labels": {
             "header": header_parts,
+            "in_image": in_image_parts,
             "vertical_count": len(pos_data["vertical_placements"]),
-            "strain_count": len(pos_data["strain_placements"])
-        }
+            "strain_count": len(pos_data["strain_placements"]),
+        },
     }
 
 

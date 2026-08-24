@@ -15,7 +15,8 @@
         "plate": {"type": ["string", "null"]},
         "media": {"type": ["string", "null"]},
         "condition": {"type": ["string", "null"]},
-        "session": {"type": ["string", "null"]}
+        "session": {"type": ["string", "null"]},
+        "figure_description": {"type": ["string", "null"]}
       },
       "additionalProperties": false
     },
