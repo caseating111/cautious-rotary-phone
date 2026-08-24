@@ -12,10 +12,17 @@ from PIL import Image, ImageTk
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from tools.applet_presets import load_last, save_last
+from tools.applet_presets import (list_presets, load_last, load_preset, save_last, save_preset)
 from tools.applet_workflows import ProjectWorkflow
 from tools.annotation_settings_gui import AnnotationSettingsDialog
+from tools.applets.batch_actions import (
+    execute_automatic_batch,
+    execute_grid_batch,
+    plan_automatic_batch,
+    plan_grid_directory,
+)
 from tools.applets.plate_crop import calibrate_crop_size
+from tools.applets.quick_figure import calculate_box_from_roi
 from tools.quick_figure_gui import QuickFigurePanel
 
 
@@ -181,8 +188,11 @@ class WorkflowApp(tk.Tk):
         self.crop_export_top = tk.BooleanVar(value=True)
         self.crop_export_low = tk.BooleanVar(value=True)
         self.crop_export_columns = tk.StringVar()
-        self.crop_export_width = tk.StringVar(value="130")
-        self.crop_export_height = tk.StringVar(value="546")
+        culture_settings = load_last("culture_crop", {}) or {}
+        self.crop_export_width = tk.StringVar(value=str(culture_settings.get("width", 130)))
+        self.crop_export_height = tk.StringVar(value=str(culture_settings.get("height", 546)))
+        self.crop_export_preset = tk.StringVar()
+        self.crop_export_roi = [tk.StringVar() for _ in range(4)]
         self.crop_export_plan: dict[str, Any] | None = None
         self.crop_export_signature: tuple[Any, ...] | None = None
         self.matrix_candidates: dict[str, dict[str, Any]] = {}
@@ -207,8 +217,15 @@ class WorkflowApp(tk.Tk):
         self.annotation_strain_size = tk.StringVar(value="18")
         self.annotation_vertical_size = tk.StringVar(value="18")
         self.annotation_rotation = tk.StringVar(value="90")
+        self.batch_plan: dict[str, Any] | None = None
+        self.batch_queue: list[str] = []
+        self.batch_queue_stage: str | None = None
+        self.batch_queue_index = 0
         self._sync_annotation_controls()
         self._build()
+        self.bind("<Alt-o>", lambda _event: self.start_orientation())
+        self.bind("<Alt-c>", lambda _event: self.start_crop_placement())
+        self.bind("<Alt-b>", lambda _event: self.refresh_batch_images())
 
     def _build(self) -> None:
         top = ttk.Frame(self)
@@ -244,6 +261,7 @@ class WorkflowApp(tk.Tk):
         annotation = ttk.Frame(notebook)
         mixed_matrix = ttk.Frame(notebook)
         quick_figures = ttk.Frame(notebook)
+        batch = ttk.Frame(notebook)
         notebook.add(setup, text="Setup")
         notebook.add(orientation, text="Orientation")
         notebook.add(crop, text="Plate crop")
@@ -253,6 +271,7 @@ class WorkflowApp(tk.Tk):
         notebook.add(annotation, text="Annotation")
         notebook.add(mixed_matrix, text="Mixed matrix")
         notebook.add(quick_figures, text="Quick Figures")
+        notebook.add(batch, text="Batch")
         self.quick_figure_panel = QuickFigurePanel(quick_figures, self.viewer, self.status)
         self.quick_figure_panel.pack(fill="both", expand=True)
 
@@ -404,6 +423,18 @@ class WorkflowApp(tk.Tk):
         ttk.Entry(dimensions_row, textvariable=self.crop_export_height, width=7).pack(
             side="left", padx=(4, 0)
         )
+        ttk.Label(culture_crops, text="Fiji ROI: left, top, right, bottom").pack(anchor="w", padx=8)
+        roi_row = ttk.Frame(culture_crops)
+        roi_row.pack(fill="x", padx=8, pady=2)
+        for variable in self.crop_export_roi:
+            ttk.Entry(roi_row, textvariable=variable, width=7).pack(side="left", fill="x", expand=True)
+        ttk.Button(culture_crops, text="Calculate width/height from ROI", command=self.calculate_culture_crop_size).pack(fill="x", padx=8, pady=2)
+        preset_row = ttk.Frame(culture_crops)
+        preset_row.pack(fill="x", padx=8, pady=2)
+        self.crop_export_preset_box = ttk.Combobox(preset_row, textvariable=self.crop_export_preset, state="readonly", values=list_presets("culture_crop"))
+        self.crop_export_preset_box.pack(side="left", fill="x", expand=True)
+        ttk.Button(preset_row, text="Load size", command=self.load_culture_crop_preset).pack(side="left", padx=(4, 0))
+        ttk.Button(preset_row, text="Save size…", command=self.save_culture_crop_preset).pack(side="left", padx=(4, 0))
         crop_actions = ttk.Frame(culture_crops)
         crop_actions.pack(fill="x", padx=8, pady=5)
         ttk.Button(
@@ -575,6 +606,30 @@ class WorkflowApp(tk.Tk):
             self.matrix_tree.column(key, width=width, stretch=True)
         self.matrix_tree.pack(fill="both", expand=True, padx=8, pady=(2, 8))
 
+        ttk.Label(batch, text="Select images. Automatic stages preflight the entire selection before confirmation; orientation and plate crop advance as manual queues.", wraplength=360).pack(anchor="w", padx=8, pady=7)
+        batch_actions = ttk.Frame(batch)
+        batch_actions.pack(fill="x", padx=8)
+        ttk.Button(batch_actions, text="Refresh", command=self.refresh_batch_images).pack(side="left", fill="x", expand=True)
+        ttk.Button(batch_actions, text="Select all", command=self.select_all_batch_images).pack(side="left", fill="x", expand=True, padx=(4, 0))
+        self.batch_tree = ttk.Treeview(batch, columns=("uid", "orientation", "crop", "grid", "visibility", "annotation"), show="headings", selectmode="extended", height=12)
+        for key, label, width in (("uid", "Image UID", 100), ("orientation", "Orient", 50), ("crop", "Crop", 50), ("grid", "Grid", 50), ("visibility", "Visibility", 60), ("annotation", "Annotation", 70)):
+            self.batch_tree.heading(key, text=label); self.batch_tree.column(key, width=width, stretch=True)
+        self.batch_tree.pack(fill="both", expand=True, padx=8, pady=5)
+        manual = ttk.LabelFrame(batch, text="Manual queues")
+        manual.pack(fill="x", padx=8, pady=3)
+        ttk.Button(manual, text="Orientation queue (Alt+O current)", command=lambda: self.start_manual_batch("orientation")).pack(fill="x")
+        ttk.Button(manual, text="Plate-crop queue (Alt+C current)", command=lambda: self.start_manual_batch("crop")).pack(fill="x")
+        automatic = ttk.LabelFrame(batch, text="Dry-run then accept")
+        automatic.pack(fill="x", padx=8, pady=3)
+        for label, stage in (("Plan culture crops", "culture"), ("Plan visibility", "visibility"), ("Plan annotation", "annotation")):
+            ttk.Button(automatic, text=label, command=lambda value=stage: self.plan_selected_batch(value)).pack(side="left", fill="x", expand=True)
+        ttk.Button(batch, text="Accept current batch plan", command=self.accept_batch_plan).pack(fill="x", padx=8, pady=3)
+        ttk.Button(batch, text="Attach matching grids from folder…", command=self.batch_attach_grids).pack(fill="x", padx=8, pady=3)
+        setup_batch = ttk.Frame(batch)
+        setup_batch.pack(fill="x", padx=8, pady=3)
+        ttk.Button(setup_batch, text="Preview all-image setup", command=self.preview_project_setup).pack(side="left", fill="x", expand=True)
+        ttk.Button(setup_batch, text="Apply all-image setup", command=self.apply_project_setup).pack(side="left", fill="x", expand=True)
+
         ttk.Label(self, textvariable=self.status, wraplength=1040).pack(
             fill="x", padx=8, pady=(6, 8)
         )
@@ -636,6 +691,7 @@ class WorkflowApp(tk.Tk):
                 self.status.set(f"Opened project: {workflow.project_root}")
         else:
             self.status.set(f"Opened project: {workflow.project_root}")
+        self.refresh_batch_images()
 
     def _selected(self) -> tuple[ProjectWorkflow, str]:
         if self.workflow is None:
@@ -805,6 +861,7 @@ class WorkflowApp(tk.Tk):
             self.status.set(f"Accepted orientation: {output}")
             self.orientation_proposal = None
             self.load_selected_source()
+            self._advance_manual_batch(uid)
 
     def skip_orientation(self) -> None:
         workflow, uid = self._selected()
@@ -817,6 +874,7 @@ class WorkflowApp(tk.Tk):
                     "Orientation skipped; downstream routes remain available."
                 )
                 self.load_selected_source()
+                self._advance_manual_batch(uid)
 
     def start_calibration(self) -> None:
         def action() -> None:
@@ -954,6 +1012,7 @@ class WorkflowApp(tk.Tk):
             self.status.set(f"Accepted plate crop: {output}")
             self.crop_proposal = None
             self.load_selected_source()
+            self._advance_manual_batch(uid)
 
     def skip_crop(self) -> None:
         workflow, uid = self._selected()
@@ -964,6 +1023,7 @@ class WorkflowApp(tk.Tk):
                 "Plate crop skipped; the existing four-point route remains available."
             )
             self.load_selected_source()
+            self._advance_manual_batch(uid)
 
     def attach_grid(self) -> None:
         path = filedialog.askopenfilename(
@@ -1005,6 +1065,40 @@ class WorkflowApp(tk.Tk):
                     columns.append(column)
         return tuple(columns)
 
+    def _culture_crop_settings(self) -> dict[str, int]:
+        width, height = int(self.crop_export_width.get()), int(self.crop_export_height.get())
+        if width < 1 or height < 1:
+            raise ValueError("Crop width and height must be positive integers.")
+        return {"width": width, "height": height}
+
+    def calculate_culture_crop_size(self) -> None:
+        result = self._run(lambda: calculate_box_from_roi(*(float(value.get()) for value in self.crop_export_roi)))
+        if result:
+            self.crop_export_width.set(str(result["width"]))
+            self.crop_export_height.set(str(result["height"]))
+            save_last("culture_crop", result)
+            self.status.set(f"Calculated reusable culture crop: {result['width']} × {result['height']} px.")
+
+    def save_culture_crop_preset(self) -> None:
+        settings = self._run(self._culture_crop_settings)
+        if settings is None:
+            return
+        name = simpledialog.askstring("Culture crop preset", "Preset name:", parent=self)
+        if name:
+            self._run(lambda: save_preset("culture_crop", name, settings))
+            self.crop_export_preset_box.configure(values=list_presets("culture_crop"))
+            self.crop_export_preset.set(name)
+            save_last("culture_crop", settings)
+
+    def load_culture_crop_preset(self) -> None:
+        if not self.crop_export_preset.get():
+            return
+        settings = self._run(lambda: load_preset("culture_crop", self.crop_export_preset.get()))
+        if settings:
+            self.crop_export_width.set(str(settings["width"]))
+            self.crop_export_height.set(str(settings["height"]))
+            save_last("culture_crop", settings)
+
     def _crop_export_signature_value(self) -> tuple[Any, ...]:
         _workflow, uid = self._selected()
         states = tuple(
@@ -1022,6 +1116,7 @@ class WorkflowApp(tk.Tk):
         height = int(self.crop_export_height.get())
         if width < 1 or height < 1:
             raise ValueError("Crop width and height must be positive integers.")
+        save_last("culture_crop", {"width": width, "height": height})
         return (
             uid,
             self.crop_export_tier.get(),
@@ -1246,6 +1341,115 @@ class WorkflowApp(tk.Tk):
             self.status.set(
                 f"Accepted annotated derivative: {output}\nRecord: {sidecar}"
             )
+
+    def refresh_batch_images(self) -> None:
+        if not hasattr(self, "batch_tree"):
+            return
+        for item in self.batch_tree.get_children():
+            self.batch_tree.delete(item)
+        if self.workflow is None:
+            return
+        for uid, record in self.workflow.state["images"].items():
+            def status(key: str) -> str:
+                value = record.get(key)
+                return str(value.get("status", "—")) if isinstance(value, dict) else "—"
+            grid = record.get("grid")
+            self.batch_tree.insert("", "end", iid=uid, values=(uid, status("orientation"), status("crop"), status("grid") if not isinstance(grid, dict) else grid.get("status", "—"), status("visibility"), status("annotation")))
+
+    def select_all_batch_images(self) -> None:
+        self.batch_tree.selection_set(self.batch_tree.get_children())
+
+    def _batch_selected_uids(self) -> list[str]:
+        selected = list(self.batch_tree.selection())
+        if not selected:
+            raise ValueError("Select at least one image in the Batch tab.")
+        return selected
+
+    def start_manual_batch(self, stage: str) -> None:
+        if stage not in {"orientation", "crop"}:
+            raise ValueError("Manual batch stage must be orientation or crop.")
+        selected = self._run(self._batch_selected_uids)
+        if not selected:
+            return
+        self.batch_queue, self.batch_queue_stage, self.batch_queue_index = selected, stage, 0
+        self._load_manual_batch_current()
+
+    def _load_manual_batch_current(self) -> None:
+        uid = self.batch_queue[self.batch_queue_index]
+        self.image_uid.set(uid)
+        self.load_selected_source()
+        if self.batch_queue_stage == "orientation":
+            self.start_orientation()
+        else:
+            self.start_crop_placement()
+        self.status.set(f"{self.batch_queue_stage.title()} batch {self.batch_queue_index + 1}/{len(self.batch_queue)}: {uid}.")
+
+    def _advance_manual_batch(self, completed_uid: str) -> None:
+        if not self.batch_queue_stage or self.batch_queue[self.batch_queue_index] != completed_uid:
+            return
+        self.batch_queue_index += 1
+        if self.batch_queue_index >= len(self.batch_queue):
+            stage = self.batch_queue_stage
+            self.batch_queue, self.batch_queue_stage, self.batch_queue_index = [], None, 0
+            self.refresh_batch_images()
+            self.status.set(f"{stage.title()} batch complete.")
+            return
+        self._load_manual_batch_current()
+
+    def plan_selected_batch(self, stage: str) -> None:
+        workflow, _uid = self._selected()
+        uids = self._run(self._batch_selected_uids)
+        if not uids:
+            return
+        if stage == "culture":
+            signature = self._run(self._crop_export_signature_value)
+            if signature is None:
+                return
+            _uid, tier, states, columns, width, height = signature
+            options = {"tier": tier, "states": states, "columns": columns, "crop_width": width, "crop_height": height}
+        elif stage == "visibility":
+            options = {"preset": self.visibility_preset.get()}
+        elif stage == "annotation":
+            overrides = {key: value.get().strip() for key, value in self.annotation_labels.items() if value.get().strip()}
+            preset = self._run(self._annotation_preset)
+            if preset is None:
+                return
+            options = {"label_overrides": overrides, "preset": preset}
+        else:
+            raise ValueError("Unknown batch stage.")
+        plan = self._run(lambda: plan_automatic_batch(workflow, stage, uids, options=options))
+        if plan:
+            self.batch_plan = plan
+            self.status.set(f"Batch dry-run valid: {len(plan['image_uids'])} images, {plan['output_count']} planned output(s); nothing written.")
+
+    def accept_batch_plan(self) -> None:
+        if self.batch_plan is None:
+            messagebox.showerror("Batch", "Create a current batch plan first.")
+            return
+        if not messagebox.askyesno("Accept batch", f"Accept {self.batch_plan['stage']} for {len(self.batch_plan['image_uids'])} preflighted images?"):
+            return
+        workflow, _uid = self._selected()
+        result = self._run(lambda: execute_automatic_batch(workflow, self.batch_plan))
+        if result:
+            self.batch_plan = None
+            self.refresh_batch_images()
+            self.status.set(f"Accepted batch {result['stage']} for {len(result['image_uids'])} images.")
+
+    def batch_attach_grids(self) -> None:
+        workflow, _uid = self._selected()
+        uids = self._run(self._batch_selected_uids)
+        if not uids:
+            return
+        directory = filedialog.askdirectory(title="Folder containing per-image grid JSON assets")
+        if not directory:
+            return
+        plan = self._run(lambda: plan_grid_directory(directory, uids))
+        if not plan or not messagebox.askyesno("Attach grids", f"Attach {len(plan['items'])} validated, uniquely matched grid assets?"):
+            return
+        result = self._run(lambda: execute_grid_batch(workflow, plan))
+        if result:
+            self.refresh_batch_images()
+            self.status.set(f"Attached grids for {len(result['image_uids'])} images.")
 
     def refresh_mixed_matrix_candidates(self) -> None:
         workflow, _uid = self._selected()
