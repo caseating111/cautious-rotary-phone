@@ -2,7 +2,7 @@
 
 ## Product and runtime
 
-workflow-C is the active product branch. The supported environment is Windows, Miniforge environment workflow-c, Python 3.11, Pillow, Tkinter, Fiji/ImageJ, ROI 1-click Tools, and AutoHotkey v2.
+workflow-integrated is the active integration product branch, anchored to the workflow-C production baseline at d600ed4. The supported environment is Windows, Miniforge environment workflow-c, Python 3.11, Pillow, Tkinter, Fiji/ImageJ, ROI 1-click Tools, and AutoHotkey v2.
 
 Start with start_controller.cmd. It validates exact Python 3.11 plus Pillow and Tkinter for every candidate and never tries another interpreter after the controller has run. start_custom_matrix.cmd uses the same contract.
 
@@ -18,7 +18,7 @@ The active route uses R1C1, R1C-last, R5C1, and R5C-last to interpolate the 8 by
 
 QC is optional. Accept exports and Retry repeats placement. Without QC, export follows four clicks. Both paths bounds-check every Top and Low rectangle before replacement archiving and before the first crop write. Crop dimensions default to 130 by 546 and remain configurable.
 
-Rerun reads authoritative images.csv and always forces a replacement manifest. Ordinary single remains pending-only. Selected files must be inside image_root. Accepted grid coordinates are not yet persisted; current docs must not claim they are.
+Rerun reads authoritative images.csv and always forces a replacement manifest. Ordinary single remains pending-only. Selected files must be inside image_root. After accepted crop export, batch, single, and rerun routes persist a versioned GridCoordinateAsset beside project metadata. It records the explicit source-image pixel coordinate system, four measured references, row/column geometry, and named spots such as r1c1.
 
 ## Lifecycle and AHK
 
@@ -40,6 +40,6 @@ Custom composition is Raw only. Presentation recipes and direct presentation shi
 
 ## Validation and remaining boundary
 
-Automated coverage includes compileall, Ruff checks, the current suite, synthetic prepare-only batch, single/rerun routing, bounds/archive ordering, every unified Pillow output family across experiments and states, run preservation/categorization, presets and WT naming, CSV/reconciliation safety, launchers, nondestructive Windows PID probing, AHK hotfix contracts, and failure-closed Fiji wrapper behavior.
+Automated coverage includes compileall, Ruff checks, the current suite, synthetic prepare-only batch, single/rerun routing, durable grid handoff/finalization and consumer reuse, bounds/archive ordering, every unified Pillow output family across experiments and states, run preservation/categorization, presets and WT naming, CSV/reconciliation safety, launchers, nondestructive Windows PID probing, AHK hotfix contracts, and failure-closed Fiji wrapper behavior.
 
 Manual-only boundaries are real visual click/QC quality and one installed Fiji/Jaunch desktop session confirming one usable GUI plus the redundant-launcher/window-stack workaround. Real image pixels remain image-blind to agents.

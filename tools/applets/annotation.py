@@ -4,6 +4,11 @@ import shutil
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 try:
+    from tools.grid_coordinates import spot_mapping as grid_asset_spot_mapping
+except ModuleNotFoundError:
+    from grid_coordinates import spot_mapping as grid_asset_spot_mapping
+
+try:
     from PIL import Image, ImageDraw, ImageFont
     PIL_AVAILABLE = True
 except ImportError:
@@ -81,7 +86,7 @@ def render_rotated_text_image(
 
 def derive_annotation_positions(
     plate_layout: Dict[str, Any],
-    grid_coordinates: Dict[Tuple[int, int], Tuple[float, float]],
+    grid_coordinates: Union[Dict[Tuple[int, int], Tuple[float, float]], Dict[str, Any]],
     preset: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
     """
@@ -91,6 +96,9 @@ def derive_annotation_positions(
 
     grid_coordinates: mapping of (row, col) -> (x, y) spot center
     """
+    if isinstance(grid_coordinates, dict) and grid_coordinates.get("asset_type") == "GridCoordinateAsset":
+        grid_coordinates = grid_asset_spot_mapping(grid_coordinates)
+
     preset = preset or DEFAULT_ANNOTATION_PRESET
     pad_top = preset.get("canvas_padding", {}).get("top", 0)
     pad_left = preset.get("canvas_padding", {}).get("left", 0)
@@ -184,7 +192,9 @@ def render_plate_annotation(
     rows = plate_layout.get("grid_rows", 8)
     cols = plate_layout.get("grid_cols", 12)
 
-    if isinstance(grid_coordinates, list):
+    if isinstance(grid_coordinates, dict) and grid_coordinates.get("asset_type") == "GridCoordinateAsset":
+        grid_map = grid_asset_spot_mapping(grid_coordinates)
+    elif isinstance(grid_coordinates, list):
         # Map sequential list to (r, c)
         grid_map = {}
         idx = 0

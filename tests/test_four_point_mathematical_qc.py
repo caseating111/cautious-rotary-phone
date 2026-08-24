@@ -62,6 +62,24 @@ class FourPointMathematicalQCTests(unittest.TestCase):
         self.assertLess(write, send)
         self.assertIn('FileAppend(action, controlPath, "UTF-8-RAW")', ahk)
 
+    def test_successful_export_records_reusable_grid_after_state_commit(self) -> None:
+        configured = batch.configure_source_settings(
+            self.source,
+            {
+                "grid_csv": "C:/metadata/grid.csv",
+                "image_root": "C:/raw",
+                "crop_output": "C:/crops",
+                "crop_width": 130,
+                "crop_height": 546,
+            },
+            run_label="Single",
+        )
+        text = batch.enhance_four_point_macro(configured)
+        state_commit = text.index('File.append(stateKey + "\\t" + runNumber')
+        grid_commit = text.index('File.append(gridLine + "\\n", gridCoordinateHandoff);')
+        self.assertLess(state_commit, grid_commit)
+        self.assertIn('gridRunLabel = "Single";', text)
+        self.assertIn('"\\t8\\t" + gridCols', text)
 
 if __name__ == "__main__":
     unittest.main()

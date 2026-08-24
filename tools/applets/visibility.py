@@ -5,6 +5,11 @@ import shutil
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 try:
+    from tools.grid_coordinates import spot_list as grid_asset_spot_list
+except ModuleNotFoundError:
+    from grid_coordinates import spot_list as grid_asset_spot_list
+
+try:
     from PIL import Image, ImageOps
     import numpy as np
     DEPS_AVAILABLE = True
@@ -37,7 +42,7 @@ DEFAULT_PRESETS = {
 
 
 def calculate_grid_roi(
-    grid_coordinates: List[Tuple[float, float]],
+    grid_coordinates: Union[List[Tuple[float, float]], Dict[str, Any]],
     padding: float = 20.0,
     max_width: Optional[int] = None,
     max_height: Optional[int] = None
@@ -45,6 +50,9 @@ def calculate_grid_roi(
     """
     Computes bounding box of all spot coordinates with optional padding.
     """
+    if isinstance(grid_coordinates, dict) and grid_coordinates.get("asset_type") == "GridCoordinateAsset":
+        grid_coordinates = grid_asset_spot_list(grid_coordinates)
+
     if not grid_coordinates:
         raise ValueError("grid_coordinates must be a non-empty list of (x, y) coordinates")
 
@@ -145,7 +153,7 @@ def apply_display_transform(
 
 def adjust_plate_visibility(
     source_image: Union[str, Any],
-    grid_coordinates: List[Tuple[float, float]],
+    grid_coordinates: Union[List[Tuple[float, float]], Dict[str, Any]],
     preset: Optional[Union[str, Dict[str, Any]]] = None,
     options: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:

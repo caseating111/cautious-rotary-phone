@@ -5,7 +5,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from tools import run_one_plate_validation as proof
 
@@ -129,6 +129,41 @@ class OnePlateValidationTests(unittest.TestCase):
         self.assertIn('replacementManifest = "C:/replace.tsv";', patched)
         self.assertIn('runLabel = "Single Rerun";', patched)
 
+    def test_run_with_process_launches_grid_finalizer(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            fiji = root / "ImageJ-win64.exe"
+            fiji.write_bytes(b"")
+            macro = root / "proof.ijm"
+            macro.write_text("macro", encoding="utf-8")
+            control = root / "control.request"
+            handoff = root / "grid.tsv"
+            log = root / "finalizer.log"
+            assets = root / "assets"
+            config = {"fiji_executable": str(fiji), "images_csv": str(root / "images.csv")}
+            fiji_process = MagicMock(pid=123)
+            finalizer_process = MagicMock(pid=456)
+            with patch.object(proof.batch, "ACTIVE_BATCH_FILE", root / "inactive"), patch.object(
+                proof.batch, "CONTROL_REQUEST_FILE", control
+            ), patch.object(proof.batch, "GRID_COORDINATE_HANDOFF", handoff), patch.object(
+                proof, "GRID_FINALIZER_LOG", log
+            ), patch.object(proof.batch, "load_config", return_value=config), patch.object(
+                proof, "ensure_roi_click_patch", return_value=False
+            ), patch.object(
+                proof, "prepare", return_value=(macro, {"Filename": "plate.jpg"})
+            ), patch.object(
+                proof.batch, "grid_coordinate_asset_directory", return_value=assets
+            ), patch.object(
+                proof.subprocess, "Popen", side_effect=[fiji_process, finalizer_process]
+            ) as popen:
+                selected, process = proof.run_with_process()
+        self.assertEqual(selected["Filename"], "plate.jpg")
+        self.assertIs(process, fiji_process)
+        self.assertEqual(popen.call_count, 2)
+        finalizer_command = popen.call_args_list[1].args[0]
+        self.assertEqual(Path(finalizer_command[1]), proof.GRID_FINALIZER)
+        self.assertEqual(Path(finalizer_command[2]), handoff)
+        self.assertEqual(Path(finalizer_command[3]), assets)
 
 if __name__ == "__main__":
     unittest.main()

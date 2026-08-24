@@ -21,6 +21,8 @@ APP_DIR = batch.APP_DIR
 PROOF_IMAGES_TSV = APP_DIR / "one_plate_validation_images.tsv"
 FOUR_POINT_PLATE_MACRO = APP_DIR / "one_plate_four_point.configured.ijm"
 REPLACEMENT_MANIFEST = APP_DIR / "one_plate_crop_replacements.tsv"
+GRID_FINALIZER = batch.REPO_ROOT / "tools" / "finalize_grid_handoff.py"
+GRID_FINALIZER_LOG = APP_DIR / "grid_coordinate_finalizer.log"
 
 
 def open_window_titles() -> list[str]:
@@ -246,6 +248,9 @@ def run_with_process(
             "Finish or close that plate before launching the same proof again. Other open Fiji images do not block this action."
         )
 
+    if batch.ACTIVE_BATCH_FILE.is_file():
+        raise SystemExit("A four-point batch is active; finish or cancel it before launching a single-image run.")
+
     config = batch.load_config(require_fiji=True, require_fiji_handoff_paths=False)
     fiji = Path(config["fiji_executable"])
     if not fiji.is_file():
@@ -258,11 +263,36 @@ def run_with_process(
         )
 
     macro, selected = prepare(filename, rerun_done=rerun_done, replace_existing=replace_existing)
+    batch.grid_coordinates.prepare_grid_handoff(batch.GRID_COORDINATE_HANDOFF)
+    try:
+        batch.CONTROL_REQUEST_FILE.unlink()
+    except FileNotFoundError:
+        pass
     command = [str(fiji), "--no-splash", "-macro", str(macro)]
     try:
         process = subprocess.Popen(command, cwd=fiji.parent)
     except OSError as exc:
         raise SystemExit(f"Could not launch Fiji one-plate validation: {exc}") from exc
+    finalizer_command = [
+        sys.executable,
+        str(GRID_FINALIZER),
+        str(batch.GRID_COORDINATE_HANDOFF),
+        str(batch.grid_coordinate_asset_directory(config)),
+        str(batch.CONTROL_REQUEST_FILE),
+    ]
+    creationflags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+    GRID_FINALIZER_LOG.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with GRID_FINALIZER_LOG.open("a", encoding="utf-8") as log:
+            subprocess.Popen(
+                finalizer_command,
+                stdout=log,
+                stderr=subprocess.STDOUT,
+                creationflags=creationflags,
+            )
+    except OSError as exc:
+        batch.kill_process_tree(process)
+        raise SystemExit(f"Could not launch grid-coordinate finalizer: {exc}") from exc
     return selected, process
 
 

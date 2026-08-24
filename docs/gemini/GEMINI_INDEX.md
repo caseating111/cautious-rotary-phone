@@ -4,9 +4,9 @@ Compact routing index for isolated prototype work. Keep this file short; detaile
 
 | Prototype | Status | Branch/commit | Interface | Handoff |
 | --- | --- | --- | --- | --- |
-| V10 adapter | READY FOR INTEGRATION | `gemini-v10` (`f3eddc8`) | `load_v10(path) -> ProjectModel` | `docs/gemini/prototypes/v10/HANDOFF.md` |
+| V10 adapter | INTEGRATED | `workflow-integrated` (`246efcb`) | `load_v10(path) -> ProjectModel` | `docs/gemini/prototypes/v10/HANDOFF.md` |
 | Project setup / working-copy rename | READY FOR INTEGRATION | `gemini-project-setup-rename` (`3afaad8`) | `prepare_working_copy(...) -> RenameResult` | `docs/gemini/prototypes/project_setup_rename/HANDOFF.md` |
-| Grid/layout derivation | READY FOR INTEGRATION | `gemini-layout` (`760ef96`) | `derive_plate_layout(project, image_uid) -> PlateLayout` | `docs/gemini/prototypes/layout/HANDOFF.md` |
+| Grid/layout derivation | INTEGRATED | `workflow-integrated` (`246efcb`) | `derive_plate_layout(project, image_uid) -> PlateLayout` | `docs/gemini/prototypes/layout/HANDOFF.md` |
 | Whole-plate orientation | READY FOR INTEGRATION | `gemini-plate-rotation` (`4b52d16`) | one horizontal-edge line drag -> `OrientationResult` | `docs/gemini/prototypes/plate_rotation/HANDOFF.md` |
 | Plate crop preprocessing | READY FOR INTEGRATION | `gemini-plate-crop` (`bed738b`) | reusable `CropSizeCalibration` + per-image `CropResult` | `docs/gemini/prototypes/plate_crop/HANDOFF.md` |
 | Visibility adjustment / review | READY FOR INTEGRATION | `gemini-visibility-adjustment` (`2e07d07`) | `adjust_plate_visibility(...) -> AdjustmentResult` | `docs/gemini/prototypes/visibility_adjustment/HANDOFF.md` |

@@ -1,6 +1,8 @@
 # V10 adapter prototype handoff
 
-Status: Planned
+Status: INTEGRATED
+
+Integrated on `workflow-integrated` at `246efcb`. The read-only adapter, canonical V10 terminology validation, diagnostics, embedded layouts, canonical multi-profile/Order mapping, and explicit legacy sanitized-fixture compatibility are covered by targeted tests.
 
 ## Goal
 

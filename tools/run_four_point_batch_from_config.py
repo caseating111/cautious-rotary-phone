@@ -13,9 +13,10 @@ import uuid
 from pathlib import Path
 
 try:
-    from tools import crop_replacement_manifest, preflight_batch
+    from tools import crop_replacement_manifest, grid_coordinates, preflight_batch
 except ModuleNotFoundError:
     import crop_replacement_manifest
+    import grid_coordinates
     import preflight_batch
 
 APP_DIR = Path.home() / ".cautious-rotary-phone"
@@ -27,6 +28,7 @@ PREFLIGHT = REPO_ROOT / "tools" / "preflight_batch.py"
 PREFLIGHT_REPORT = APP_DIR / "last_preflight.txt"
 # Generated Fiji handoff. Its first two fields are the exact source identity.
 PENDING_IMAGES_TSV = APP_DIR / "pending_images.tsv"
+GRID_COORDINATE_HANDOFF = APP_DIR / "grid_coordinate_handoff.tsv"
 CONFIGURED_FOUR_POINT_MACRO = APP_DIR / "four_point_batch.configured.ijm"
 FOUR_POINT_STATE_FILE = APP_DIR / "four_point_run.state.txt"
 REPLACEMENT_MANIFEST = APP_DIR / "four_point_batch_replacement_manifest.tsv"
@@ -221,6 +223,13 @@ def macro_path(value: str | Path) -> str:
     return str(Path(value)).replace("\\", "/").replace('"', '\\"')
 
 
+def grid_coordinate_asset_directory(config: dict) -> Path:
+    configured = str(config.get("grid_coordinate_asset_directory", "")).strip()
+    if configured:
+        return Path(configured)
+    return Path(config["images_csv"]).resolve().parent / "GridCoordinates"
+
+
 def replace_once(source: str, old: str, new: str) -> str:
     count = source.count(old)
     if count != 1:
@@ -228,13 +237,13 @@ def replace_once(source: str, old: str, new: str) -> str:
     return source.replace(old, new, 1)
 
 
-def configure_source_settings(source: str, config: dict, replacement_manifest: Path | None = None, state_file: Path | None = None) -> str:
+def configure_source_settings(source: str, config: dict, replacement_manifest: Path | None = None, state_file: Path | None = None, *, run_label: str = "Batch All") -> str:
     batch_qc = str(config.get("batch_grid_qc", "1")).casefold() not in {"0", "false", "no", "off"}
     hide_source = str(config.get("hide_source_during_alignment", "1")).casefold() not in {"0", "false", "no", "off"}
     source = replace_once(
         source,
         'replacementManifest = "path here";',
-        'replacementManifest = "path here";' + "\n" + 'controlFile = "path here";',
+        'replacementManifest = "path here";' + "\n" + 'controlFile = "path here";' + "\n" + 'gridCoordinateHandoff = "path here";' + "\n" + 'gridRunLabel = "Batch All";',
     )
     replacements = {
         'gridFile   = "path here";': f'gridFile   = "{macro_path(config["grid_csv"])}";',
@@ -242,6 +251,8 @@ def configure_source_settings(source: str, config: dict, replacement_manifest: P
         'stateFile  = "path here";': f'stateFile  = "{macro_path(state_file or FOUR_POINT_STATE_FILE)}";',
         'replacementManifest = "path here";': f'replacementManifest = "{macro_path(replacement_manifest)}";' if replacement_manifest else 'replacementManifest = "";',
         'controlFile = "path here";': f'controlFile = "{macro_path(CONTROL_REQUEST_FILE)}";',
+        'gridCoordinateHandoff = "path here";': f'gridCoordinateHandoff = "{macro_path(GRID_COORDINATE_HANDOFF)}";',
+        'gridRunLabel = "Batch All";': f'gridRunLabel = {json.dumps(run_label)};',
         'inputRoot  = "path here";': f'batchGridQC = {1 if batch_qc else 0};\nhideSourceDuringAlignment = {1 if hide_source else 0};\nresumeBatch = File.exists("{macro_path(RESUME_MARKER_FILE)}");\ninputRoot  = "{macro_path(config["image_root"])}";',
         'outputRoot = "path here";': f'outputRoot = "{macro_path(config["crop_output"])}";',
         "CROP_W = 130;": f'CROP_W = {config["crop_width"]};',
@@ -600,6 +611,12 @@ def enhance_four_point_macro(source: str) -> str:
     if completion_marker not in source:
         raise SystemExit("Legacy completion dialog changed; refusing to guess where to release the batch wrapper.")
     source = source.replace(completion_marker, completion_marker + 'File.saveString("complete\\n", controlFile);\n', 1)
+    export_success_marker = r'''        File.append(stateKey + "\t" + runNumber + "\n", stateFile);
+'''
+    grid_handoff = r'''        gridLine = cleanFolderName + "\t" + fileName + "\t" + experiment + "\t" + setName + "\t" + typeName + "\t\t" + gridRunLabel + "\t" + sourceW + "\t" + sourceH + "\t8\t" + gridCols + "\t" + R1LX + "\t" + R1LY + "\t" + R1RX + "\t" + R1RY + "\t" + R5LX + "\t" + R5LY + "\t" + R5RX + "\t" + R5RY;
+        File.append(gridLine + "\n", gridCoordinateHandoff);
+'''
+    source = replace_once(source, export_success_marker, export_success_marker + grid_handoff)
     return source[:start] + block + source[export:]
 
 
@@ -610,7 +627,7 @@ def build_four_point_macro(
     *,
     run_label: str = "Batch All",
 ) -> Path:
-    source = configure_source_settings(SOURCE_MACRO.read_text(encoding="utf-8"), config, replacement_manifest, state_file)
+    source = configure_source_settings(SOURCE_MACRO.read_text(encoding="utf-8"), config, replacement_manifest, state_file, run_label=run_label)
     source = enhance_metadata_lookup(source)
     source = enhance_four_point_macro(source)
     source = configure_run_logging(source, config, run_label)
@@ -719,6 +736,7 @@ def main() -> None:
     session_state = APP_DIR / f"four_point_session_{uuid.uuid4().hex}.state.txt"
     run_label = "Batch Folder" if args.subfolder else "Batch All"
     macro = build_four_point_macro(config, replacement_manifest, session_state, run_label=run_label)
+    grid_coordinates.prepare_grid_handoff(GRID_COORDINATE_HANDOFF)
 
     if args.prepare_only:
         action = "replacement-ready" if args.replace_existing_crops else "pending"
@@ -726,7 +744,18 @@ def main() -> None:
         return
 
     fiji = Path(config["fiji_executable"])
-    run_fiji_batch(fiji, macro, session_state)
+    try:
+        run_fiji_batch(fiji, macro, session_state)
+    finally:
+        outputs = grid_coordinates.persist_grid_handoff(
+            GRID_COORDINATE_HANDOFF, grid_coordinate_asset_directory(config)
+        )
+        try:
+            GRID_COORDINATE_HANDOFF.unlink()
+        except FileNotFoundError:
+            pass
+    if outputs:
+        print(f"Saved {len(outputs)} reusable grid coordinate asset(s).")
 
 
 

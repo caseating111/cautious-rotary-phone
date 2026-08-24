@@ -4,7 +4,7 @@ The reviewed prototype cores are integrated on `workflow-integrated` under `tool
 
 Integrated cores:
 
-- V10 workbook adapter
+- V10 workbook adapter and PlateLayout derivation (integrated and validated at `246efcb`)
 - project setup and non-destructive working-copy rename
 - plate layout derivation
 - whole-plate orientation
@@ -14,6 +14,6 @@ Integrated cores:
 
 `tools/applets/registry.py` is the controller-facing catalog. Applets remain independently callable and communicate through the schemas under `contracts/`. This checkpoint does not claim that every applet has an interactive GUI button yet.
 
-The production anchor remains the four-point Fiji route. Its accepted grid coordinates are the prerequisite asset for visibility and annotation. Persisting that grid as a durable project asset is the next integration boundary; applets must not recalculate or force the user to click it again.
+The production anchor remains the four-point Fiji route. Batch, single, and rerun now persist accepted coordinates as `GridCoordinateAsset` v1 after successful crop export. Visibility and annotation consume that asset through thin adapters and do not recalculate or force the user to click it again. This does not claim that the remaining applet GUI endpoints are production-complete.
 
 Runtime baseline: Windows, Miniforge/Conda environment `workflow-c`, Python 3.11. Pillow, NumPy, pandas and openpyxl are declared in `environment.yml`.

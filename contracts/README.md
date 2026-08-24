@@ -12,6 +12,10 @@ V10/other metadata adapter
         -> PlateLayout v1
         -> annotation/composition tools
 
+accepted Fiji four-point alignment
+        -> GridCoordinateAsset v1
+        -> visibility/annotation/crop consumers
+
 image path
         -> whole-plate rotation prototype
         -> RotationResult v1
@@ -37,6 +41,10 @@ For current prototype scope:
 - multiple strain-label bands are ordered top-to-bottom;
 - the widest strain band determines `grid_cols`;
 - two-band 8-row layouts may resolve to rows 1-4 / 5-8 when the source metadata makes that deterministic.
+
+## GridCoordinateAsset
+
+`grid_coordinate_asset.schema.json` persists accepted source-image geometry independently of immediate crop export. It declares pixel-axis semantics and dimensions, the four measured reference points, interpolation provenance, row and column coordinates, and every named `rNcM` spot. Runtime adapters expose the same asset as ordered spots or `(row, column)` mappings for mature existing consumers.
 
 ## RotationResult
 

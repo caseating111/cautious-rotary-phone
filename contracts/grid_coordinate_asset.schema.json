@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "grid_coordinate_asset.schema.json",
+  "title": "GridCoordinateAsset",
+  "type": "object",
+  "required": [
+    "contract_version",
+    "asset_type",
+    "asset_id",
+    "status",
+    "image_ref",
+    "coordinate_space",
+    "grid",
+    "reference_points",
+    "basis_vectors",
+    "row_coordinates",
+    "column_coordinates",
+    "spots",
+    "transform",
+    "provenance"
+  ],
+  "properties": {
+    "contract_version": {"const": 1},
+    "asset_type": {"const": "GridCoordinateAsset"},
+    "asset_id": {"type": "string", "minLength": 1},
+    "status": {"const": "accepted"},
+    "image_ref": {"type": "string", "minLength": 1},
+    "image_uid": {"type": ["string", "null"]},
+    "metadata": {"type": "object"},
+    "coordinate_space": {
+      "type": "object",
+      "required": ["id", "origin", "x_axis", "y_axis", "units", "position_semantics", "image_width", "image_height"],
+      "properties": {
+        "id": {"const": "source_image_pixels"},
+        "origin": {"const": "top_left"},
+        "x_axis": {"const": "right"},
+        "y_axis": {"const": "down"},
+        "units": {"const": "pixels"},
+        "position_semantics": {"const": "continuous_pixel_centres"},
+        "image_width": {"type": "integer", "minimum": 1},
+        "image_height": {"type": "integer", "minimum": 1}
+      },
+      "additionalProperties": false
+    },
+    "grid": {
+      "type": "object",
+      "required": ["rows", "columns"],
+      "properties": {
+        "rows": {"type": "integer", "minimum": 1},
+        "columns": {"type": "integer", "minimum": 2}
+      },
+      "additionalProperties": false
+    },
+    "reference_points": {"type": "object"},
+    "basis_vectors": {"type": "object"},
+    "row_coordinates": {"type": "array", "minItems": 1},
+    "column_coordinates": {"type": "array", "minItems": 2},
+    "spots": {"type": "object", "minProperties": 2},
+    "transform": {"type": "object"},
+    "provenance": {
+      "type": "object",
+      "required": ["method", "accepted_at", "accepted_after", "run_label"],
+      "properties": {
+        "method": {"const": "four_point_r1_r5_bilinear_v1"},
+        "accepted_at": {"type": "string", "minLength": 1},
+        "accepted_after": {"const": "accepted_alignment_and_crop_export"},
+        "run_label": {"type": "string"}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

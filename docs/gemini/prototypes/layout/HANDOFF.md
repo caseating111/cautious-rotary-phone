@@ -1,6 +1,8 @@
 # Grid/layout derivation prototype handoff
 
-Status: Planned
+Status: INTEGRATED
+
+Integrated on `workflow-integrated` at `246efcb`. PlateLayout is embedded in ProjectModel and is derived without reopening V10; row mapping provenance and unequal-width strain bands are explicit and tested.
 
 ## Goal
 
