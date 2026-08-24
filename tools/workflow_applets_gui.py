@@ -12,7 +12,9 @@ from PIL import Image, ImageTk
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from tools.applet_presets import load_last, save_last
 from tools.applet_workflows import ProjectWorkflow
+from tools.annotation_settings_gui import AnnotationSettingsDialog
 from tools.applets.plate_crop import calibrate_crop_size
 from tools.quick_figure_gui import QuickFigurePanel
 
@@ -193,11 +195,19 @@ class WorkflowApp(tk.Tk):
         self.visibility_proposal: dict[str, Any] | None = None
         self.annotation_proposal: dict[str, Any] | None = None
         self.annotation_labels = {
-            key: tk.StringVar() for key in ("date", "plate", "condition", "session")
+            key: tk.StringVar()
+            for key in ("date", "figure_description", "plate", "condition", "session", "media")
         }
+        self.annotation_label_enabled = {key: tk.BooleanVar(value=True) for key in self.annotation_labels}
+        self.annotation_header_enabled = tk.BooleanVar(value=True)
+        self.annotation_header_grouped = tk.BooleanVar(value=True)
+        self.annotation_in_image_enabled = tk.BooleanVar(value=False)
+        self.annotation_in_image_grouped = tk.BooleanVar(value=True)
+        self.annotation_preset_settings = load_last("annotation", {}) or {}
         self.annotation_strain_size = tk.StringVar(value="18")
         self.annotation_vertical_size = tk.StringVar(value="18")
         self.annotation_rotation = tk.StringVar(value="90")
+        self._sync_annotation_controls()
         self._build()
 
     def _build(self) -> None:
@@ -458,18 +468,25 @@ class WorkflowApp(tk.Tk):
             ),
             wraplength=360,
         ).pack(anchor="w", padx=8, pady=8)
+        master = ttk.Frame(annotation)
+        master.pack(fill="x", padx=8, pady=2)
+        ttk.Checkbutton(master, text="Master header", variable=self.annotation_header_enabled).pack(side="left")
+        ttk.Checkbutton(master, text="Grouped", variable=self.annotation_header_grouped).pack(side="left")
+        ttk.Checkbutton(master, text="Duplicate in image", variable=self.annotation_in_image_enabled).pack(side="left")
+        ttk.Checkbutton(master, text="Grouped", variable=self.annotation_in_image_grouped).pack(side="left")
         for key, label in (
             ("date", "Date"),
+            ("figure_description", "Figure description"),
             ("plate", "Plate"),
             ("condition", "Condition"),
             ("session", "Session"),
+            ("media", "Media"),
         ):
             row = ttk.Frame(annotation)
             row.pack(fill="x", padx=8, pady=2)
-            ttk.Label(row, text=label, width=11).pack(side="left")
-            ttk.Entry(row, textvariable=self.annotation_labels[key]).pack(
-                side="left", fill="x", expand=True
-            )
+            command = self._figure_description_toggled if key == "figure_description" else None
+            ttk.Checkbutton(row, text=label, width=17, variable=self.annotation_label_enabled[key], command=command).pack(side="left")
+            ttk.Entry(row, textvariable=self.annotation_labels[key]).pack(side="left", fill="x", expand=True)
         for variable, label in (
             (self.annotation_strain_size, "Strain font"),
             (self.annotation_vertical_size, "Vertical font"),
@@ -479,9 +496,10 @@ class WorkflowApp(tk.Tk):
             row.pack(fill="x", padx=8, pady=2)
             ttk.Label(row, text=label, width=14).pack(side="left")
             ttk.Entry(row, textvariable=variable, width=8).pack(side="left")
+        ttk.Button(annotation, text="Advanced styles / presets…", command=self.open_annotation_settings).pack(fill="x", padx=8, pady=(8, 3))
         ttk.Button(
             annotation, text="Preview annotation", command=self.preview_annotation
-        ).pack(fill="x", padx=8, pady=(8, 3))
+        ).pack(fill="x", padx=8, pady=3)
         ttk.Button(
             annotation,
             text="Accept annotated derivative",
@@ -1153,12 +1171,50 @@ class WorkflowApp(tk.Tk):
         rotation = float(self.annotation_rotation.get())
         if strain_size < 1 or vertical_size < 1:
             raise ValueError("Annotation font sizes must be positive integers.")
-        return {
+        preset = {
+            **self.annotation_preset_settings,
             "name": "user_preview",
             "strain_font_size": strain_size,
             "vertical_font_size": vertical_size,
             "strain_rotation_degrees": rotation,
+            "header_enabled": self.annotation_header_enabled.get(),
+            "header_grouped": self.annotation_header_grouped.get(),
+            "in_image_enabled": self.annotation_in_image_enabled.get(),
+            "in_image_grouped": self.annotation_in_image_grouped.get(),
+            "header_field_visibility": {key: value.get() for key, value in self.annotation_label_enabled.items()},
+            "in_image_field_visibility": {
+                **{key: value.get() for key, value in self.annotation_label_enabled.items()},
+                **self.annotation_preset_settings.get("in_image_field_visibility", {}),
+            },
         }
+        save_last("annotation", preset)
+        return preset
+
+    def _sync_annotation_controls(self) -> None:
+        settings = self.annotation_preset_settings
+        self.annotation_header_enabled.set(bool(settings.get("header_enabled", True)))
+        self.annotation_header_grouped.set(bool(settings.get("header_grouped", True)))
+        self.annotation_in_image_enabled.set(bool(settings.get("in_image_enabled", False)))
+        self.annotation_in_image_grouped.set(bool(settings.get("in_image_grouped", True)))
+        visibility = settings.get("header_field_visibility", {})
+        for key, variable in self.annotation_label_enabled.items():
+            variable.set(bool(visibility.get(key, True)))
+        self.annotation_strain_size.set(str(settings.get("strain_font_size", 18)))
+        self.annotation_vertical_size.set(str(settings.get("vertical_font_size", 18)))
+        self.annotation_rotation.set(str(settings.get("strain_rotation_degrees", 90)))
+
+    def _figure_description_toggled(self) -> None:
+        if self.annotation_label_enabled["figure_description"].get():
+            self.annotation_label_enabled["plate"].set(False)
+            self.annotation_label_enabled["condition"].set(False)
+
+    def _apply_annotation_settings(self, settings: dict[str, Any]) -> None:
+        self.annotation_preset_settings = settings
+        self._sync_annotation_controls()
+        self.status.set("Annotation style preset applied; preview to verify placement.")
+
+    def open_annotation_settings(self) -> None:
+        AnnotationSettingsDialog(self, self._annotation_preset(), self._apply_annotation_settings)
 
     def preview_annotation(self) -> None:
         workflow, uid = self._selected()
