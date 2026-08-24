@@ -13,6 +13,19 @@ if exist "%CLOSE_REQUEST%" (
 rem Production runtime: Miniforge workflow-c (Python 3.11). Candidate
 rem fallbacks are used only when this runtime is unavailable, never after a
 rem controller error or Ctrl+C.
+if defined WORKFLOW_C_PYTHON (
+    set "WORKFLOW_PY=%WORKFLOW_C_PYTHON%"
+    call :direct_available
+    if not errorlevel 1 goto :run_direct
+)
+if defined CONDA_PREFIX (
+    set "WORKFLOW_PY=%CONDA_PREFIX%\python.exe"
+    call :direct_available
+    if not errorlevel 1 goto :run_direct
+    set "WORKFLOW_PY=%CONDA_PREFIX%\envs\workflow-c\python.exe"
+    call :direct_available
+    if not errorlevel 1 goto :run_direct
+)
 set "WORKFLOW_PY=%USERPROFILE%\miniforge3\envs\workflow-c\python.exe"
 call :direct_available
 if not errorlevel 1 goto :run_direct
@@ -22,6 +35,11 @@ if not errorlevel 1 goto :run_direct
 set "WORKFLOW_PY=C:\ProgramData\miniforge3\envs\workflow-c\python.exe"
 call :direct_available
 if not errorlevel 1 goto :run_direct
+
+if defined CONDA_EXE if exist "%CONDA_EXE%" (
+    call "%CONDA_EXE%" run --no-capture-output -n workflow-c python -c "import PIL, tkinter, sys; raise SystemExit(sys.version_info[:2] != (3, 11))" >nul 2>nul
+    if not errorlevel 1 goto :run_conda_exe
+)
 
 where conda >nul 2>nul
 if not errorlevel 1 (
@@ -58,6 +76,9 @@ exit /b %ERRORLEVEL%
 goto :finish
 :run_conda
 call conda run --no-capture-output -n workflow-c python tools\workflow_controller_extended.py
+goto :finish
+:run_conda_exe
+call "%CONDA_EXE%" run --no-capture-output -n workflow-c python tools\workflow_controller_extended.py
 goto :finish
 :run_py311
 py -3.11 tools\workflow_controller_extended.py
