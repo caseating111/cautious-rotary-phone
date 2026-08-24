@@ -1,6 +1,8 @@
 # Plate crop preprocessing handoff
 
-Status: Planned
+Status: INTEGRATED
+
+Integrated on `workflow-integrated` at `c31d4f1`. The shared core and V10 applet GUI keep reusable size calibration separate from per-image left/top placement, preview before acceptance, preserve sources, and persist crop geometry/provenance.
 
 ## Goal
 

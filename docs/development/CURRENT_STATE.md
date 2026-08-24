@@ -12,7 +12,11 @@ Start with start_controller.cmd. It validates exact Python 3.11 plus Pillow and 
 
 ## Active endpoints
 
-The controller provides project setup and CSV discovery; metadata reconciliation/preflight; all-folder, subfolder, single, and rerun four-point crop export; and one unified **Build matrices and labelled crops** applet. One numbered applet run can publish any combination of per-experiment, selected all-strain, duplicate-WT-removed all-strain, and individually labelled outputs, with dataset presets, preferred-WT selection, optional separator normalization, recipes, and consolidated processing logs.
+The controller provides project setup and CSV discovery; metadata reconciliation/preflight; all-folder, subfolder, single, and rerun four-point processing; and one unified **Build matrices and labelled crops** applet. Four-point processing defaults to crop export and also offers an explicit, non-persisted **Register grid only (no crops)** option. Register-only uses the same proven placement/QC/handoff path, writes the durable grid asset, and skips crop bounds/archive/write/state operations. It cannot be combined with rerun or replacement.
+
+**Open V10 project applets** launches the stateful rich-metadata workflow. It can create/open project state, preview/apply UID-safe Working copies, orient and whole-plate crop derivatives, attach an accepted grid, adjust visibility or flag manual review, annotate from V10 layout plus measured spots, export Top/Low cultures later from either unprocessed or accepted processed whole plates, and build a matrix whose selected cells may independently use Top or Low. Preview and acceptance are separated for operations that write derivatives.
+
+The basic CSV matrix endpoint remains available. One numbered applet run can publish any combination of per-experiment, selected all-strain, duplicate-WT-removed all-strain, and individually labelled outputs, with dataset presets, preferred-WT selection, optional separator normalization, recipes, and consolidated processing logs.
 
 Retired user routes are the controller Pillow dropdown, separate preferred-WT applet, full-column detector, global-visibility launcher, presentation-normalized output, generic dedup CLI, partial-output flag, and direct unrecorded custom entrypoints. Their proven Pillow helpers remain internal to the unified endpoint.
 
@@ -22,7 +26,7 @@ The active route uses R1C1, R1C-last, R5C1, and R5C-last to interpolate the 8 by
 
 QC is optional. Accept exports and Retry repeats placement. Without QC, export follows four clicks. Both paths bounds-check every Top and Low rectangle before replacement archiving and before the first crop write. Crop dimensions default to 130 by 546 and remain configurable.
 
-Rerun reads authoritative images.csv and always forces a replacement manifest. Ordinary single remains pending-only. Selected files must be inside image_root. After accepted crop export, batch, single, and rerun routes persist a versioned GridCoordinateAsset beside project metadata. It records the explicit source-image pixel coordinate system, four measured references, row/column geometry, and named spots such as r1c1.
+Rerun reads authoritative images.csv and always forces a replacement manifest. Ordinary single remains pending-only. Selected files must be inside image_root. After accepted crop export—or after accepted register-only QC—batch and single routes persist a versioned GridCoordinateAsset beside project metadata. It records the explicit source-image pixel coordinate system, four measured references, row/column geometry, and named spots such as r1c1. Default export ordering remains bounds-check all crops, archive replacements, write crops, record crop completion, then publish the grid handoff.
 
 ## Lifecycle and AHK
 
@@ -38,12 +42,16 @@ The AHK v2 helper restricts Java-frame and shell-hook handling to fiji-windows-x
 
 CSV validation rejects unheaded extra fields, Windows case-only identities, unsafe output components, and Strain values that sanitize to the same folder. Reconciliation, finalization, freshness, and inventory use case-insensitive Windows identity while retaining physical spelling.
 
+The read-only V10 adapter preserves the workbook and canonical terminology, and validates required schema, field types/mappings, duplicate identities, missing values, starred machine columns, `sessionUID`/`Image UID`, profile `Pos`, and strain-profile `Order`. It embeds explicit `PlateLayout` row-band provenance while leaving the intentionally simpler CSV contract unchanged. Stateful project records live under `State/workflow_project.json` and reject stale/mismatched grid-dependent work.
+
+Saved-grid culture export validates every requested Top/Low rectangle before writing, publishes immutable numbered runs under distinct `Crops/Unprocessed` and `Crops/Processed` parents, and records source/grid/layout provenance. Mixed-tier composition accepts only current recorded crops, permits Top and Low choices in one matrix, previews without writes, validates a complete requested layout, and publishes immutable numbered runs under `Matrices/Mixed Tier`.
+
 The unified Pillow endpoint filters to selected groups/strains, conditions, and Top/Low states, then requires exact current crops only for that selected metadata contract. It stages disposable copies, normalizes only staging, runs all checked mature renderers before publishing, and never overwrites past numbered runs. Matrix outputs are categorized and copied to `!All Matrix Exports`; labelled crops are grouped by Experiment/Strain and excluded from the aggregate.
 
 Custom composition is Raw only. Presentation recipes and direct presentation shims fail explicitly. Deduplicated all-strains output requires a selected WT Experiment/Set; names record actual retained WT provenance in experiment order, with numeric Sets before lettered Sets.
 
 ## Validation and remaining boundary
 
-Automated coverage includes compileall, Ruff checks, the current suite, synthetic prepare-only batch, single/rerun routing, durable grid handoff/finalization and consumer reuse, bounds/archive ordering, every unified Pillow output family across experiments and states, run preservation/categorization, presets and WT naming, CSV/reconciliation safety, launchers, nondestructive Windows PID probing, AHK hotfix contracts, and failure-closed Fiji wrapper behavior.
+Automated coverage includes compileall, Ruff checks, the current suite, synthetic prepare-only batch, single/rerun/register-only routing, durable grid handoff/finalization and consumer reuse, V10 parsing/layout, stateful project applets, later culture export, mixed-tier composition, bounds/archive ordering, every unified Pillow output family across experiments and states, run preservation/categorization, presets and WT naming, CSV/reconciliation safety, launchers, nondestructive Windows PID probing, AHK hotfix contracts, and failure-closed Fiji wrapper behavior.
 
-Manual-only boundaries are real visual click/QC quality and one installed Fiji/Jaunch desktop session confirming one usable GUI plus the redundant-launcher/window-stack workaround. Real image pixels remain image-blind to agents.
+Manual-only boundaries are real visual click/QC and derivative presentation quality, plus an installed Fiji/Jaunch desktop session confirming default export and register-only behavior in the real window stack. Real image pixels remain image-blind to agents; the exact batched checks are in `MANUAL_VALIDATION_BACKLOG.md`.

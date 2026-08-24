@@ -1,6 +1,8 @@
 # Visibility adjustment / manual-review preprocessing handoff
 
-Status: Planned
+Status: INTEGRATED
+
+Integrated on `workflow-integrated` at `c31d4f1`. The shared core and V10 applet GUI derive statistics from the accepted grid ROI, preview a whole-image display derivative, persist accepted output, or record manual-review state without changing grid geometry.
 
 ## Goal
 

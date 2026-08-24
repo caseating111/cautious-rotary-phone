@@ -37,7 +37,7 @@ Examples of prerequisite behavior:
 - matrix/composition: require the selected crop assets;
 - visibility adjustment: require a compatible whole-plate image + accepted grid asset;
 - plate crop: require an image and, when reusing size, a compatible `CropSizeCalibration`;
-- grid registration: eventually becomes its own applet and produces `GridCoordinateAsset`; it should not own later crop/annotation/visibility workflows.
+- grid registration: the retained production four-click endpoint produces `GridCoordinateAsset`, including register-only; later crop/annotation/visibility workflows remain separate consumers.
 
 If a prerequisite is missing, report exactly what is missing (`GRID_REQUIRED`, compatible processed image missing, etc.) rather than forcing the user through steps that are irrelevant to that applet.
 
@@ -121,7 +121,7 @@ Gemini prototypes should be designed so the overall controller can later orchest
 - `derive_plate_layout(project, image_uid) -> PlateLayout`
 - `capture_plate_orientation(...) -> RotationResult`
 - `derive_plate_crop(...) -> CropResult`
-- `register_plate_grid(...) -> GridCoordinateAsset` (future divestment of the current production grid route)
+- accepted production four-click registration -> `GridCoordinateAsset` (default crop export or register-only)
 - `adjust_plate_visibility(...) -> AdjustmentResult`
 - `render_plate_annotation(...) -> AnnotationResult`
 - `compose_matrix(...) -> CompositionResult`

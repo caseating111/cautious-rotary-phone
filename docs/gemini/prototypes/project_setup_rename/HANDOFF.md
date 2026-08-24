@@ -1,6 +1,8 @@
 # Project setup / UID-safe working-copy renaming handoff
 
-Status: Planned
+Status: INTEGRATED
+
+Integrated on `workflow-integrated` at `c31d4f1`. `ProjectWorkflow` and the V10 applet GUI preview reconciliation, optionally create UID-safe Working copies without changing raw sources, persist dispositions, and write the human audit map.
 
 ## Goal
 

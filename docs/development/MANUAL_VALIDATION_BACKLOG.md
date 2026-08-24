@@ -14,7 +14,9 @@ This file is the durable queue for checks that genuinely require user visual/des
 
 ## Pending
 
-- One batched CSV-workflow desktop check: start the AHK v2 helper and four-point one-plate proof; confirm the Fiji toolbar is a usable size in the upper-right, each of the four 108 x 108 placement dialogs moves upper-left, and Z advances them. Place R1C1, R1C(last), R5C1 and R5C(last); confirm the disposable preview receives acceptable whole-image CLAHE, the rotated/skewed full-grid QC follows the plate, Accept/Retry works, and fixed-size crops are exported from the unchanged source. Do not send image screenshots to Codex.
+- One installed-Fiji session covering both four-point modes after passing the image-blind privacy gate. On one pending plate, run default export: confirm the toolbar/dialog placement and Z advance, acceptable disposable CLAHE/QC overlay, Accept/Retry, unchanged source, expected Top/Low crops, grid asset, and completed-run log. On a different pending plate, enable **Register grid only (no crops)**: confirm the same placement/QC, registration-specific wording, a finalized grid asset, no crop files/archive/crop-completion state, and a completed log that does not claim crop export. Do not send screenshots or pixels to an agent.
+
+- One V10-apps visual/QC session using local real images only after the privacy gate: create/open project state; preview/apply optional Working copies; confirm orientation and plate-crop previews before acceptance; attach the saved grid; inspect visibility and annotation previews; export later Unprocessed and Processed Top/Low cultures; then compose one matrix mixing at least one Top and one Low crop. Confirm raw sources remain unchanged, rejected previews write nothing, accepted outputs use numbered/provenance-recorded locations, and label/crop/matrix presentation is usable. Report observations textually only.
 
 ## Completed
 

@@ -1,6 +1,8 @@
 # Whole-plate orientation prototype handoff
 
-Status: Planned
+Status: INTEGRATED
+
+Integrated on `workflow-integrated` at `c31d4f1`. The shared core and V10 applet GUI implement line-drag proposal, non-destructive preview, Accept/Retry/Skip, derivative output, transform provenance, and project-state persistence.
 
 ## Goal
 

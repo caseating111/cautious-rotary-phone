@@ -1,8 +1,8 @@
-# Intended future workflow / mini-app map
+# Integrated V10 workflow / mini-app functional map
 
-This document records the intended end-to-end user workflow so isolated Gemini prototypes fit together later. It is a **functional specification**, not an instruction to implement everything in one GUI or one branch.
+This document retains the end-to-end functional specification that guided the isolated prototypes. Its core stages are integrated on `workflow-integrated`; it remains the behavioral map, not a second production contract and not an instruction to combine every core into one implementation.
 
-The current working four-click Fiji culture-grid route is a proven component and should be integrated around, not casually replaced.
+The workflow-C four-click Fiji culture-grid route remains the production registration owner. Its additive register-only option and durable handoff supply later V10 applets without changing default crop-export behavior.
 
 See `docs/development/PROJECT_ASSET_CONTRACT.md` for the reusable-state contract. In particular, accepted grid coordinates are a durable project asset rather than a one-time crop-export intermediate.
 
@@ -218,7 +218,7 @@ Optional organization: per-Condition subfolders under crop parents, while retain
 
 Accepted reference points, coordinate-space/version, grid basis/transform, row/column counts, every culture-center coordinate and logical identity mapping.
 
-This component is currently production/Codex-owned; Gemini should consume the saved-grid contract rather than replacing the proven route.
+This endpoint is integrated through the retained production route. Register-only persists the accepted grid without crops; saved-grid culture export can run later for unprocessed or accepted processed sources.
 
 ---
 
@@ -260,7 +260,7 @@ Raw/working source images remain available separately.
 
 ---
 
-## 8. Optional processed-image culture crop export
+## 8. Processed-image culture crop export (integrated)
 
 This action may run **at any later time** once both exist:
 
@@ -313,7 +313,7 @@ Annotation is a presentation derivative. Changing fonts/styles must not invalida
 
 ---
 
-## 11. Matrices/compositions once crops exist
+## 11. Matrices/compositions once crops exist (integrated)
 
 Matrix generation is independent of whole-plate annotation and may start as soon as the required culture crops exist.
 

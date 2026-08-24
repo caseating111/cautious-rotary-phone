@@ -1,6 +1,8 @@
 # Annotation/composition prototype handoff
 
-Status: Planned
+Status: INTEGRATED
+
+Integrated on `workflow-integrated` at `c31d4f1`, with mixed-tier matrix composition added at `fdac0df`. Annotation uses embedded V10 layout plus accepted grid geometry for preview/final derivatives; matrix composition uses verified recorded crops and may mix Top/Low selections in one immutable run.
 
 ## Goal
 
@@ -141,7 +143,7 @@ A later small CSV controller may feed the same canonical request model.
 
 ### Mixed crop-tier selection
 
-Matrix selection must not assume every selected strain uses the same crop tier. A future matrix request should be able to choose, for example:
+Matrix selection must not assume every selected strain uses the same crop tier. The integrated mixed-tier request can choose, for example:
 
 - WT1 -> `top` crop;
 - STRAIN2 -> `low` crop;
@@ -149,7 +151,7 @@ Matrix selection must not assume every selected strain uses the same crop tier. 
 
 within the same matrix.
 
-The current all-top/all-low behavior should therefore not be baked into the composition contract.
+Top/Low is recorded per selected candidate rather than imposed globally by the composition contract.
 
 ## Output expectations
 

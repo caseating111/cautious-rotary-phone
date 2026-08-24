@@ -31,7 +31,7 @@ Reusable group/project calibration state may additionally include a `CropSizeCal
 
 Standalone mini-apps and the eventual main controller need a small persistent interoperability layer. Use a machine-readable project manifest/state area that maps canonical image identity to the relevant assets/results above.
 
-The exact file/database representation can remain lightweight (for example JSON plus small per-image result files, or another simple mature store), but it should satisfy these rules:
+The integrated store is `State/workflow_project.json`, validated by `contracts/workflow_project_state.schema.json`, plus versioned per-result sidecars/assets. It satisfies these rules:
 
 - project state persists when no controller/app is open;
 - applets can be launched directly with a project root/state reference;
@@ -138,7 +138,7 @@ Where practical, one callable/core implementation should serve all of these entr
 
 Do not maintain separate controller-only and standalone processing implementations for the same operation.
 
-Grid registration should eventually follow this same rule: the current proven four-click route can later be divested into a focused grid-registration applet whose principal output is `GridCoordinateAsset`. It should not remain the owner of crop export, visibility, annotation or matrix workflows.
+The current proven four-click batch/single route is retained as the focused grid-registration endpoint. Its optional register-only mode publishes `GridCoordinateAsset` without crop output. Crop export, visibility, annotation, and matrix composition are separate project-state consumers, so registration no longer owns those later actions.
 
 ## Transform discipline
 
@@ -182,7 +182,8 @@ Examples:
 - grid registration -> `GridCoordinateAsset`;
 - visibility app -> `AdjustmentResult`;
 - annotation app -> `AnnotationResult`;
-- matrix app -> composition result.
+- culture-crop app -> immutable `CultureCropExport`;
+- matrix app -> immutable mixed-tier composition result.
 
 The controller should orchestrate state and prerequisites without absorbing all implementation details.
 

@@ -9,6 +9,10 @@ Detailed future behavior now lives in:
 
 Use those documents when implementing a future stage. Do not reread them during unrelated bounded stabilization unless the current change affects those contracts.
 
+## Integrated checkpoint
+
+Priorities 1-8 are integrated on `workflow-integrated`. V10/layout, optional Working copies, orientation, whole-plate crop, saved-grid visibility, annotation, later unprocessed/processed culture export, and mixed Top/Low matrices are available through the stateful V10 applets. The proven four-point route remains the registration owner; its additive register-only mode separates accepted grid persistence from crop export without replacing production behavior. The sections below retain the behavioral contract and dependency order, not an unfinished-status claim.
+
 ## Priority 1 — keep the current basic CSV/Fiji route reliable and slim
 
 The current Windows + Miniforge `workflow-c` Python 3.11 + Fiji + AHK v2 four-click route is the production baseline.
@@ -29,7 +33,7 @@ The basic CSV route intentionally remains simpler than V10. **Do not retrofit V1
 
 ### Reusable-grid requirement
 
-The accepted four-click grid result is no longer conceptually just an immediate crop-export intermediate. Persist/expose it as a durable project asset so later actions can reuse it for raw/unprocessed crop export, processed crop export later without realignment, overall-grid ROI statistics, automatic annotation placement, QC overlays/previews and selected-strain/matrix crop resolution.
+The accepted four-click grid result is no longer conceptually just an immediate crop-export intermediate. It is persisted/exposed as a durable project asset so later actions can reuse it for raw/unprocessed crop export, processed crop export later without realignment, overall-grid ROI statistics, automatic annotation placement, QC overlays/previews and selected-strain/matrix crop resolution.
 
 Registration and crop export should therefore remain separable.
 
@@ -132,7 +136,7 @@ Crop exports should be runnable later whenever the required saved grid + source 
 
 Support distinct raw/unprocessed and processed crop parents, plus optional Condition subfolders.
 
-Matrix/composition selection must eventually support **per-strain crop tier choices** within one matrix, e.g. WT1 `top` together with STRAIN2 `low`, rather than global all-top/all-low only.
+Matrix/composition selection supports **per-strain crop tier choices** within one matrix, e.g. WT1 `top` together with STRAIN2 `low`, rather than global all-top/all-low only.
 
 ## Lightweight CSV mini-project input
 

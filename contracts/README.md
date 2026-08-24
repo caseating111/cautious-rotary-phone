@@ -1,26 +1,19 @@
 # Shared prototype contract
 
-These schemas are the small versioned handshake between isolated prototype components and the eventual integration layer. They are intentionally narrower than the full application.
+These schemas are the versioned handshake between integrated applet cores, durable project state, and production adapters. They remain intentionally narrower than GUI/runtime implementation details.
 
 Current contract version: **1**.
 
 ## Core flow
 
 ```text
-V10/other metadata adapter
-        -> ProjectModel v1
-        -> PlateLayout v1
-        -> annotation/composition tools
-
-accepted Fiji four-point alignment
-        -> GridCoordinateAsset v1
-        -> visibility/annotation/crop consumers
-
-image path
-        -> whole-plate rotation prototype
-        -> RotationResult v1
+V10 adapter -> ProjectModel + PlateLayout
+                  -> WorkflowProjectState
+image -> RotationResult / CropResult / VisibilityResult / AnnotationResult
+accepted four-point registration -> GridCoordinateAsset
+                  -> visibility / annotation / CultureCropExport
+recorded culture crops -> MixedTierMatrix
 ```
-
 The contracts describe stable data boundaries, not GUI/runtime implementation details.
 
 ## ProjectModel
@@ -45,6 +38,12 @@ For current prototype scope:
 ## GridCoordinateAsset
 
 `grid_coordinate_asset.schema.json` persists accepted source-image geometry independently of immediate crop export. It declares pixel-axis semantics and dimensions, the four measured reference points, interpolation provenance, row and column coordinates, and every named `rNcM` spot. Runtime adapters expose the same asset as ordered spots or `(row, column)` mappings for mature existing consumers.
+
+## WorkflowProjectState and derivative contracts
+
+`workflow_project_state.schema.json` is the durable integration manifest. It embeds canonical project/layout data and records per-image setup, orientation, crop, grid, visibility, annotation, and culture-export state plus project-level matrix exports.
+
+`crop_size_calibration.schema.json`, `crop_result.schema.json`, `visibility_result.schema.json`, `annotation_request.schema.json`, and `annotation_result.schema.json` keep each applet boundary explicit. `culture_crop_export.schema.json` records immutable later exports with source/grid/layout provenance. `mixed_tier_matrix.schema.json` records verified per-cell crop choices, including mixed Top/Low tiers, layout, and immutable output provenance.
 
 ## RotationResult
 
