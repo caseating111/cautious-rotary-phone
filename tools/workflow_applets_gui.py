@@ -174,6 +174,14 @@ class WorkflowApp(tk.Tk):
         self.enable_rename = tk.BooleanVar(value=True)
         self.setup_preview: dict[str, Any] | None = None
         self.setup_signature: tuple[str, bool] | None = None
+        self.crop_export_tier = tk.StringVar(value="Unprocessed")
+        self.crop_export_top = tk.BooleanVar(value=True)
+        self.crop_export_low = tk.BooleanVar(value=True)
+        self.crop_export_columns = tk.StringVar()
+        self.crop_export_width = tk.StringVar(value="130")
+        self.crop_export_height = tk.StringVar(value="546")
+        self.crop_export_plan: dict[str, Any] | None = None
+        self.crop_export_signature: tuple[Any, ...] | None = None
         self.visibility_preset = tk.StringVar(value="background_aware_linear")
         self.visibility_proposal: dict[str, Any] | None = None
         self.annotation_proposal: dict[str, Any] | None = None
@@ -214,12 +222,14 @@ class WorkflowApp(tk.Tk):
         orientation = ttk.Frame(notebook)
         crop = ttk.Frame(notebook)
         grid = ttk.Frame(notebook)
+        culture_crops = ttk.Frame(notebook)
         visibility = ttk.Frame(notebook)
         annotation = ttk.Frame(notebook)
         notebook.add(setup, text="Setup")
         notebook.add(orientation, text="Orientation")
         notebook.add(crop, text="Plate crop")
         notebook.add(grid, text="Grid asset")
+        notebook.add(culture_crops, text="Culture crops")
         notebook.add(visibility, text="Visibility")
         notebook.add(annotation, text="Annotation")
 
@@ -329,6 +339,75 @@ class WorkflowApp(tk.Tk):
         )
         self.grid_label = ttk.Label(grid, text="No current grid asset", wraplength=245)
         self.grid_label.pack(anchor="w", padx=8, pady=6)
+        ttk.Label(
+            culture_crops,
+            text=(
+                "Export exact Top/Low cultures later from the accepted grid. "
+                "Preview validates every rectangle before any file is written."
+            ),
+            wraplength=360,
+        ).pack(anchor="w", padx=8, pady=8)
+        ttk.Combobox(
+            culture_crops,
+            textvariable=self.crop_export_tier,
+            state="readonly",
+            values=("Unprocessed", "Processed"),
+        ).pack(fill="x", padx=8, pady=3)
+        states_row = ttk.Frame(culture_crops)
+        states_row.pack(fill="x", padx=8, pady=3)
+        ttk.Checkbutton(states_row, text="Top", variable=self.crop_export_top).pack(
+            side="left"
+        )
+        ttk.Checkbutton(states_row, text="Low", variable=self.crop_export_low).pack(
+            side="left", padx=(10, 0)
+        )
+        columns_row = ttk.Frame(culture_crops)
+        columns_row.pack(fill="x", padx=8, pady=3)
+        ttk.Label(columns_row, text="Columns", width=10).pack(side="left")
+        ttk.Entry(columns_row, textvariable=self.crop_export_columns).pack(
+            side="left", fill="x", expand=True
+        )
+        ttk.Label(
+            culture_crops,
+            text="Blank = all; examples: 1,3-5,10",
+        ).pack(anchor="w", padx=8)
+        dimensions_row = ttk.Frame(culture_crops)
+        dimensions_row.pack(fill="x", padx=8, pady=3)
+        ttk.Label(dimensions_row, text="Width").pack(side="left")
+        ttk.Entry(dimensions_row, textvariable=self.crop_export_width, width=7).pack(
+            side="left", padx=(4, 12)
+        )
+        ttk.Label(dimensions_row, text="Height").pack(side="left")
+        ttk.Entry(dimensions_row, textvariable=self.crop_export_height, width=7).pack(
+            side="left", padx=(4, 0)
+        )
+        crop_actions = ttk.Frame(culture_crops)
+        crop_actions.pack(fill="x", padx=8, pady=5)
+        ttk.Button(
+            crop_actions,
+            text="Preview plan",
+            command=self.preview_culture_crop_export,
+        ).pack(side="left", fill="x", expand=True)
+        ttk.Button(
+            crop_actions,
+            text="Export",
+            command=self.accept_culture_crop_export,
+        ).pack(side="left", fill="x", expand=True, padx=(5, 0))
+        self.crop_export_tree = ttk.Treeview(
+            culture_crops,
+            columns=("state", "column", "strain", "rectangle"),
+            show="headings",
+            height=12,
+        )
+        for key, label, width in (
+            ("state", "State", 55),
+            ("column", "Col", 40),
+            ("strain", "Strain", 90),
+            ("rectangle", "Rectangle", 150),
+        ):
+            self.crop_export_tree.heading(key, text=label)
+            self.crop_export_tree.column(key, width=width, stretch=True)
+        self.crop_export_tree.pack(fill="both", expand=True, padx=8, pady=(2, 8))
         ttk.Label(
             visibility,
             text=(
@@ -472,6 +551,8 @@ class WorkflowApp(tk.Tk):
     def load_selected_source(self, _event: object | None = None) -> None:
         def action() -> None:
             workflow, uid = self._selected()
+            self.crop_export_plan = None
+            self.crop_export_signature = None
             source = workflow.source_for(uid)
             with Image.open(source) as image:
                 self.viewer.show(image)
@@ -800,6 +881,128 @@ class WorkflowApp(tk.Tk):
             self._refresh_asset_labels()
             self.status.set(
                 f"Attached {asset['asset_id']} with {len(asset['spots'])} reusable spot coordinates."
+            )
+
+    @staticmethod
+    def _parse_crop_columns(text: str) -> tuple[int, ...] | None:
+        value = text.strip()
+        if not value:
+            return None
+        columns: list[int] = []
+        for part in value.split(","):
+            token = part.strip()
+            if not token:
+                raise ValueError("Crop columns contain an empty item.")
+            if "-" in token:
+                pieces = token.split("-", 1)
+                start, end = int(pieces[0]), int(pieces[1])
+                if start > end:
+                    raise ValueError("Crop column ranges must increase.")
+                wanted = range(start, end + 1)
+            else:
+                wanted = (int(token),)
+            for column in wanted:
+                if column < 1:
+                    raise ValueError("Crop columns must be positive.")
+                if column not in columns:
+                    columns.append(column)
+        return tuple(columns)
+
+    def _crop_export_signature_value(self) -> tuple[Any, ...]:
+        _workflow, uid = self._selected()
+        states = tuple(
+            state
+            for state, enabled in (
+                ("Top", self.crop_export_top.get()),
+                ("Low", self.crop_export_low.get()),
+            )
+            if enabled
+        )
+        if not states:
+            raise ValueError("Select Top and/or Low culture crops.")
+        columns = self._parse_crop_columns(self.crop_export_columns.get())
+        width = int(self.crop_export_width.get())
+        height = int(self.crop_export_height.get())
+        if width < 1 or height < 1:
+            raise ValueError("Crop width and height must be positive integers.")
+        return (
+            uid,
+            self.crop_export_tier.get(),
+            states,
+            columns,
+            width,
+            height,
+        )
+
+    def preview_culture_crop_export(self) -> None:
+        workflow, _uid = self._selected()
+        signature = self._run(self._crop_export_signature_value)
+        if signature is None:
+            return
+        uid, tier, states, columns, width, height = signature
+        plan = self._run(
+            lambda: workflow.preview_culture_crop_export(
+                uid,
+                tier=tier,
+                states=states,
+                columns=columns,
+                crop_width=width,
+                crop_height=height,
+            )
+        )
+        if not plan:
+            return
+        self.crop_export_plan = plan
+        self.crop_export_signature = signature
+        for item in self.crop_export_tree.get_children():
+            self.crop_export_tree.delete(item)
+        for crop in plan["crops"]:
+            box = crop["rectangle"]
+            self.crop_export_tree.insert(
+                "",
+                "end",
+                values=(
+                    crop["state"],
+                    crop["column"],
+                    crop["strain_label"],
+                    f"{box['left']},{box['top']} {box['width']}×{box['height']}",
+                ),
+            )
+        disposition = (
+            "already current" if plan["status"] == "UNCHANGED_CURRENT" else "new"
+        )
+        self.status.set(
+            f"Validated {len(plan['crops'])} {tier} crops ({disposition}); "
+            "no files were written."
+        )
+
+    def accept_culture_crop_export(self) -> None:
+        workflow, _uid = self._selected()
+        signature = self._run(self._crop_export_signature_value)
+        if signature is None:
+            return
+        if self.crop_export_plan is None or self.crop_export_signature != signature:
+            messagebox.showerror(
+                "Culture crops",
+                "Preview the current image, tier, states, columns and dimensions first.",
+            )
+            return
+        plan = self.crop_export_plan
+        if not messagebox.askyesno(
+            "Export culture crops",
+            f"Publish {len(plan['crops'])} validated crops to:\n\n"
+            f"{plan['output_directory']}?",
+        ):
+            return
+        result = self._run(
+            lambda: workflow.accept_culture_crop_export(signature[0], plan)
+        )
+        if result:
+            self.crop_export_plan = None
+            self.crop_export_signature = None
+            self.status.set(
+                f"Accepted {len(result['crops'])} {result['tier']} crops: "
+                f"{result['output_directory']}"
             )
 
     def preview_visibility(self) -> None:

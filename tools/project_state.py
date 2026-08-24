@@ -10,9 +10,10 @@ from typing import Any
 CONTRACT_VERSION = 1
 STATE_NAME = "workflow_project.json"
 DOWNSTREAM = {
-    "orientation": ("crop", "grid", "visibility", "annotation"),
-    "crop": ("grid", "visibility", "annotation"),
-    "grid": ("visibility", "annotation"),
+    "orientation": ("crop", "grid", "visibility", "annotation", "crop_exports"),
+    "crop": ("grid", "visibility", "annotation", "crop_exports"),
+    "grid": ("visibility", "annotation", "crop_exports"),
+    "visibility": ("annotation",),
 }
 
 
@@ -86,6 +87,18 @@ def validate_project_state(state: dict[str, Any]) -> None:
             raise ValueError(f"Invalid project-state image record: {uid}")
     if not isinstance(state.get("crop_calibrations"), dict):
         raise TypeError("crop_calibrations must be an object.")
+    for uid, record in images.items():
+        exports = record.get("crop_exports")
+        if exports is not None and not isinstance(exports, dict):
+            raise TypeError(f"crop_exports for {uid} must be an object.")
+        if isinstance(exports, dict):
+            for tier, result in exports.items():
+                if (
+                    not isinstance(tier, str)
+                    or not tier.strip()
+                    or not isinstance(result, dict)
+                ):
+                    raise ValueError(f"Invalid crop export record for {uid}.")
 
 
 def save_project_state(state: dict[str, Any], path: str | Path | None = None) -> Path:
@@ -130,10 +143,34 @@ def _record(state: dict[str, Any], image_uid: str) -> dict[str, Any]:
 def _mark_stale(record: dict[str, Any], changed_asset: str) -> None:
     for dependent in DOWNSTREAM.get(changed_asset, ()):
         value = record.get(dependent)
-        if isinstance(value, dict) and value.get("status") != "STALE":
+        if dependent == "crop_exports" and isinstance(value, dict):
+            for export in value.values():
+                if isinstance(export, dict) and export.get("status") != "STALE":
+                    export["status"] = "STALE"
+                    export["stale_reason"] = f"{changed_asset} changed"
+                    export["stale_at"] = _timestamp()
+        elif isinstance(value, dict) and value.get("status") != "STALE":
             value["status"] = "STALE"
             value["stale_reason"] = f"{changed_asset} changed"
             value["stale_at"] = _timestamp()
+
+    # Visibility changes affect only crops exported from the processed derivative.
+    if changed_asset == "visibility":
+        exports = record.get("crop_exports")
+        if isinstance(exports, dict):
+            for tier, export in exports.items():
+                processed = isinstance(export, dict) and (
+                    str(tier).casefold() == "processed"
+                    or str(export.get("source_kind", "")).casefold() == "processed"
+                )
+                if (
+                    processed
+                    and isinstance(export, dict)
+                    and export.get("status") != "STALE"
+                ):
+                    export["status"] = "STALE"
+                    export["stale_reason"] = "visibility changed"
+                    export["stale_at"] = _timestamp()
 
 
 def record_setup_result(state: dict[str, Any], result: dict[str, Any]) -> None:
@@ -206,6 +243,38 @@ def record_grid_asset(
         _mark_stale(record, "grid")
 
 
+def record_crop_export(
+    state: dict[str, Any],
+    image_uid: str,
+    tier: str,
+    result: dict[str, Any],
+) -> None:
+    tier_name = str(tier or "").strip()
+    if tier_name not in {"Unprocessed", "Processed"}:
+        raise ValueError("Crop export tier must be Unprocessed or Processed.")
+    if result.get("status") != "ACCEPTED":
+        raise ValueError("Only accepted crop exports may be recorded.")
+    record = _record(state, image_uid)
+    exports = record.setdefault("crop_exports", {})
+    if not isinstance(exports, dict):
+        raise TypeError("crop_exports must be an object.")
+    current = copy.deepcopy(result)
+    current["tier"] = tier_name
+    prior = exports.get(tier_name)
+    same_request = (
+        isinstance(prior, dict)
+        and prior.get("request_id")
+        and prior.get("request_id") == current.get("request_id")
+    )
+    if same_request:
+        current["recorded_at"] = prior.get("recorded_at", _timestamp())
+    else:
+        current["recorded_at"] = _timestamp()
+        if prior is not None:
+            current["replaced_at"] = _timestamp()
+    exports[tier_name] = current
+
+
 def record_derivative(
     state: dict[str, Any],
     image_uid: str,
@@ -216,4 +285,9 @@ def record_derivative(
         raise ValueError(f"Unsupported derivative kind: {kind}")
     if result.get("status") != "ACCEPTED":
         raise ValueError("Only accepted derivative results may be recorded.")
-    _record(state, image_uid)[kind] = copy.deepcopy(result)
+    record = _record(state, image_uid)
+    prior = record.get(kind)
+    current = copy.deepcopy(result)
+    record[kind] = current
+    if prior != current:
+        _mark_stale(record, kind)

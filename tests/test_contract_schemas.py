@@ -21,6 +21,7 @@ def test_workflow_contract_schemas_are_json_and_versioned() -> None:
         ("rotation_result.schema.json", "RotationResult"),
         ("visibility_result.schema.json", "VisibilityResult"),
         ("annotation_result.schema.json", "AnnotationResult"),
+        ("culture_crop_export.schema.json", "CultureCropExport"),
     ):
         schema = read_schema(name)
         assert schema["title"] == title
@@ -40,3 +41,8 @@ def test_registry_declares_result_contracts_for_each_geometry_consumer() -> None
     assert "grid_coordinate_asset.schema.json" in by_key["annotation"].contracts
     assert "visibility_result.schema.json" in by_key["visibility"].contracts
     assert "annotation_result.schema.json" in by_key["annotation"].contracts
+    assert set(by_key["culture-crop-export"].contracts) == {
+        "culture_crop_export.schema.json",
+        "grid_coordinate_asset.schema.json",
+        "plate_layout.schema.json",
+    }

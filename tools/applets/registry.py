@@ -53,6 +53,17 @@ APPLETS = (
         "source image",
     ),
     Applet(
+        "culture-crop-export",
+        "Culture crop export from saved grid",
+        "tools.applets.culture_crop_export",
+        (
+            "culture_crop_export.schema.json",
+            "grid_coordinate_asset.schema.json",
+            "plate_layout.schema.json",
+        ),
+        "accepted grid coordinates and matching source image",
+    ),
+    Applet(
         "visibility",
         "Visibility adjustment",
         "tools.applets.visibility",

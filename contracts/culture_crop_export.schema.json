@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "culture_crop_export.schema.json",
+  "title": "CultureCropExport",
+  "type": "object",
+  "required": ["contract_version", "asset_type", "status", "preview_only", "request_id", "source_path", "tier", "crops"],
+  "properties": {
+    "contract_version": {"const": 1},
+    "asset_type": {"enum": ["CultureCropExportPlan", "CultureCropExportResult"]},
+    "status": {"enum": ["PROPOSED", "UNCHANGED_CURRENT", "ACCEPTED"]},
+    "preview_only": {"type": "boolean"},
+    "request_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "source_path": {"type": "string", "minLength": 1},
+    "source_sha256": {"type": "string", "pattern": "^[0-9a-fA-F]{64}$"},
+    "image_uid": {"type": "string"},
+    "source_dimensions": {"type": "array", "prefixItems": [{"type": "integer", "minimum": 1}, {"type": "integer", "minimum": 1}], "items": false},
+    "grid_asset_id": {"type": "string", "minLength": 1},
+    "layout_id": {"type": "string", "minLength": 1},
+    "tier": {"enum": ["Unprocessed", "Processed"]},
+    "output_directory": {"type": "string", "minLength": 1},
+    "crops": {"type": "array", "items": {"$ref": "#/$defs/crop"}},
+    "existing_result": {"$ref": "#"}
+  },
+  "allOf": [
+    {"if": {"properties": {"asset_type": {"const": "CultureCropExportResult"}}}, "then": {"required": ["source_sha256", "source_dimensions", "grid_asset_id", "layout_id", "output_directory"]}},
+    {"if": {"properties": {"status": {"const": "ACCEPTED"}}}, "then": {"properties": {"preview_only": {"const": false}}}}
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "crop": {
+      "type": "object",
+      "required": ["crop_id", "state", "column", "strain_label", "strain_band_order", "representative_row", "centre", "rectangle", "filename"],
+      "properties": {
+        "crop_id": {"type": "string", "minLength": 1},
+        "state": {"enum": ["Top", "Low"]},
+        "column": {"type": "integer", "minimum": 1},
+        "strain_label": {"type": "string"},
+        "strain_band_order": {"type": "integer", "minimum": 1},
+        "representative_row": {"type": "number"},
+        "centre": {"type": "object", "required": ["x", "y"], "properties": {"x": {"type": "number"}, "y": {"type": "number"}}, "additionalProperties": false},
+        "rectangle": {"type": "object", "required": ["left", "top", "right", "bottom", "width", "height"], "properties": {"left": {"type": "integer"}, "top": {"type": "integer"}, "right": {"type": "integer"}, "bottom": {"type": "integer"}, "width": {"type": "integer", "minimum": 1}, "height": {"type": "integer", "minimum": 1}}, "additionalProperties": false},
+        "filename": {"type": "string", "minLength": 1},
+        "sha256": {"type": "string", "pattern": "^[0-9a-fA-F]{64}$"}
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -14,6 +14,10 @@ from tools.applets.annotation import (
     render_plate_annotation,
     write_annotation_result,
 )
+from tools.applets.culture_crop_export import (
+    export_culture_crops,
+    plan_culture_crop_export,
+)
 from tools.applets.plate_crop import (
     apply_plate_crop,
     calibrate_crop_size,
@@ -36,6 +40,7 @@ from tools.project_state import (
     new_project_state,
     record_crop,
     record_crop_calibration,
+    record_crop_export,
     record_derivative,
     record_grid_asset,
     record_orientation,
@@ -457,6 +462,121 @@ class ProjectWorkflow:
             raise ValueError(
                 f"Image UID {image_uid} has no usable embedded PlateLayout."
             ) from exc
+
+    def _culture_crop_source(
+        self, image_uid: str, tier: str
+    ) -> tuple[Path, dict[str, Any]]:
+        asset = self.grid_asset(image_uid)
+        if tier == "Unprocessed":
+            source = self.source_for(image_uid)
+        elif tier == "Processed":
+            visibility = self.image_record(image_uid).get("visibility")
+            if (
+                not isinstance(visibility, dict)
+                or visibility.get("status") != "ACCEPTED"
+            ):
+                raise ValueError(
+                    "Processed culture crops require an accepted visibility result."
+                )
+            if visibility.get("grid_asset_id") != asset.get("asset_id"):
+                raise ValueError(
+                    "Accepted visibility output uses stale or different grid coordinates."
+                )
+            source = Path(visibility.get("output_path", ""))
+            if not source.is_absolute():
+                source = self.project_root / source
+            source = source.resolve()
+            if not source.is_file():
+                raise FileNotFoundError(
+                    f"Processed visibility output not found: {source}"
+                )
+        else:
+            raise ValueError("tier must be Unprocessed or Processed.")
+        self._assert_grid_matches_source(image_uid, asset, source)
+        return source, asset
+
+    def _culture_crop_root(self, image_uid: str, tier: str) -> Path:
+        if tier not in {"Unprocessed", "Processed"}:
+            raise ValueError("tier must be Unprocessed or Processed.")
+        image = self._model_image(image_uid)
+        session_uid = str(image.get("session_uid") or "")
+        session = next(
+            (
+                value
+                for value in self.project_model.get("sessions", [])
+                if str(value.get("session_uid") or "") == session_uid
+            ),
+            {},
+        )
+        context = (
+            image.get("exp"),
+            image.get("set"),
+            image.get("condition"),
+            session.get("date"),
+        )
+        root = self.project_root / "Crops" / tier
+        for value in context:
+            root /= _safe_stem(str(value or "Unknown"))
+        return root / _safe_stem(image_uid)
+
+    def preview_culture_crop_export(
+        self,
+        image_uid: str,
+        *,
+        tier: str = "Unprocessed",
+        states: tuple[str, ...] = ("Top", "Low"),
+        columns: tuple[int, ...] | None = None,
+        crop_width: int = 130,
+        crop_height: int = 546,
+    ) -> dict[str, Any]:
+        source, asset = self._culture_crop_source(image_uid, tier)
+        image = self._model_image(image_uid)
+        metadata = {
+            "exp": image.get("exp"),
+            "set": image.get("set"),
+            "type": image.get("condition"),
+            "image_uid": image_uid,
+        }
+        return plan_culture_crop_export(
+            source,
+            asset,
+            self._plate_layout(image_uid),
+            metadata,
+            self._culture_crop_root(image_uid, tier),
+            tier=tier,
+            states=states,
+            columns=columns,
+            crop_width=crop_width,
+            crop_height=crop_height,
+        )
+
+    def accept_culture_crop_export(
+        self, image_uid: str, plan: dict[str, Any]
+    ) -> dict[str, Any]:
+        if plan.get("status") not in {"PROPOSED", "UNCHANGED_CURRENT"}:
+            raise ValueError("Culture crop acceptance requires a current preview plan.")
+        if plan.get("image_uid") != image_uid:
+            raise ValueError("Culture crop plan belongs to a different Image UID.")
+        tier = str(plan.get("tier") or "")
+        source, asset = self._culture_crop_source(image_uid, tier)
+        if plan.get("grid_asset_id") != asset.get("asset_id"):
+            raise ValueError(
+                "Culture crop plan uses stale or different grid coordinates."
+            )
+        if Path(plan["source_path"]).resolve() != source.resolve():
+            raise ValueError(
+                "Culture crop source changed after preview; preview again."
+            )
+        expected_root = self._culture_crop_root(image_uid, tier).resolve()
+        planned_output = Path(plan["output_directory"]).resolve()
+        if not planned_output.is_relative_to(expected_root):
+            raise ValueError(
+                "Culture crop plan output is outside this image's project folder."
+            )
+        result = export_culture_crops(plan)
+        record_crop_export(self.state, image_uid, result["tier"], result)
+        self.save()
+        return result
 
     def default_annotation_request(self, image_uid: str) -> dict[str, Any]:
         image = self._model_image(image_uid)
