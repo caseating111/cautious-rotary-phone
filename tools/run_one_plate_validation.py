@@ -148,7 +148,7 @@ def patch_prepared_macro(
         count=1,
     )
     if substitutions == 0:
-        # Compatibility with compact fixture/older generated macros that do
+        # Compatibility with compact or older generated macros that do
         # not yet have persistent run-state logging.
         source, substitutions = re.subn(
             r"(processedImages\+\+;)\s*(print\()",

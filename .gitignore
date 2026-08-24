@@ -40,3 +40,6 @@ __pycache__/
 .venv/
 .vscode/
 .idea/
+
+# Local release artifacts are built from tracked runtime allowlists.
+dist/

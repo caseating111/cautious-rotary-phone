@@ -6,6 +6,10 @@ workflow-integrated is the active integration product branch, anchored to the wo
 
 Start with start_controller.cmd. It validates exact Python 3.11 plus Pillow and Tkinter for every candidate and never tries another interpreter after the controller has run. start_custom_matrix.cmd uses the same contract.
 
+## Portable pre-release
+
+`tools/build_portable_release.py` creates `dist/workflow-integrated-prerelease.zip` from an explicit tracked runtime allowlist. The archive includes Windows launch/setup files, required Python/AHK/Fiji/legacy renderer assets, JSON contracts, and anonymous sample CSVs. It excludes Git metadata, repository docs/tests/fixtures/V10 data, caches, images, personal paths, AI/development material, and user state. The current artifact passes deterministic archive checks, anonymity/content scanning, extracted Python compilation, and packaged sample-CSV validation.
+
 ## Active endpoints
 
 The controller provides project setup and CSV discovery; metadata reconciliation/preflight; all-folder, subfolder, single, and rerun four-point crop export; and one unified **Build matrices and labelled crops** applet. One numbered applet run can publish any combination of per-experiment, selected all-strain, duplicate-WT-removed all-strain, and individually labelled outputs, with dataset presets, preferred-WT selection, optional separator normalization, recipes, and consolidated processing logs.
