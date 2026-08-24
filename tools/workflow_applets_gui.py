@@ -14,6 +14,7 @@ if __package__ in {None, ""}:
 
 from tools.applet_workflows import ProjectWorkflow
 from tools.applets.plate_crop import calibrate_crop_size
+from tools.quick_figure_gui import QuickFigurePanel
 
 
 class ImageCanvas(ttk.Frame):
@@ -232,6 +233,7 @@ class WorkflowApp(tk.Tk):
         visibility = ttk.Frame(notebook)
         annotation = ttk.Frame(notebook)
         mixed_matrix = ttk.Frame(notebook)
+        quick_figures = ttk.Frame(notebook)
         notebook.add(setup, text="Setup")
         notebook.add(orientation, text="Orientation")
         notebook.add(crop, text="Plate crop")
@@ -240,6 +242,9 @@ class WorkflowApp(tk.Tk):
         notebook.add(visibility, text="Visibility")
         notebook.add(annotation, text="Annotation")
         notebook.add(mixed_matrix, text="Mixed matrix")
+        notebook.add(quick_figures, text="Quick Figures")
+        self.quick_figure_panel = QuickFigurePanel(quick_figures, self.viewer, self.status)
+        self.quick_figure_panel.pack(fill="both", expand=True)
 
         ttk.Label(
             setup,
