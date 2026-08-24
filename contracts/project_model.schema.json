@@ -44,6 +44,23 @@
         },
         "additionalProperties": false
       }
+    },
+    "layouts": {
+      "type": "object",
+      "additionalProperties": {"$ref": "plate_layout.schema.json"}
+    },
+    "diagnostics": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["code", "message"],
+        "properties": {
+          "code": {"type": "string", "minLength": 1},
+          "annotation_set": {"type": "string"},
+          "message": {"type": "string", "minLength": 1}
+        },
+        "additionalProperties": false
+      }
     }
   },
   "additionalProperties": false

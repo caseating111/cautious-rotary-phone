@@ -32,6 +32,15 @@
           "profile": {"type": ["string", "null"]},
           "row_start": {"type": "integer", "minimum": 1},
           "row_end": {"type": "integer", "minimum": 1},
+          "local_grid_cols": {"type": "integer", "minimum": 1},
+          "row_mapping_provenance": {
+            "enum": [
+              "full_rows",
+              "even_split",
+              "explicit_override",
+              "legacy_set_blocks_even_split"
+            ]
+          },
           "labels": {
             "type": "array",
             "minItems": 1,

@@ -119,7 +119,7 @@ def load_v10(excel_path: str) -> Dict[str, Any]:
         exp_val = row.get("Exp")
         exp_str = str(int(exp_val)) if isinstance(exp_val, (int, float)) and not pd.isna(exp_val) and float(exp_val).is_integer() else str(exp_val) if pd.notnull(exp_val) else ""
 
-        set_val = row.get("Set")
+        set_val = row.get("Set*") if pd.notnull(row.get("Set*")) else row.get("Set")
         set_str = str(set_val).strip() if pd.notnull(set_val) else ""
 
         media_val = row.get("Media")
@@ -342,6 +342,14 @@ def extract_layouts(excel_path: str, row_band_overrides: Optional[Dict[str, List
     return layouts
 
 
+_legacy_load_v10 = load_v10
+_legacy_extract_layouts = extract_layouts
+from .v10_core import build_project_model, extract_layouts
+
+
+def load_v10(excel_path: str) -> Dict[str, Any]:
+    return build_project_model(_legacy_load_v10(excel_path), excel_path)
+
 def derive_plate_layout(
     project_model: Dict[str, Any],
     image_uid: str,
@@ -352,9 +360,11 @@ def derive_plate_layout(
     Derives the PlateLayout corresponding to a specific image_uid in the ProjectModel.
     """
     if layouts is None:
-        if v10_path is None:
-            raise ValueError("Must provide either pre-extracted layouts dict or v10_path to derive layout.")
-        layouts = extract_layouts(v10_path)
+        layouts = project_model.get("layouts")
+        if layouts is None:
+            if v10_path is None:
+                raise ValueError("ProjectModel has no embedded layouts and no v10_path was provided.")
+            layouts = extract_layouts(v10_path)
 
     # Find image in project_model
     img_entry = next((img for img in project_model.get("images", []) if img.get("image_uid") == image_uid), None)
@@ -507,7 +517,7 @@ def project_to_legacy_images_rows(project_model: Dict[str, Any]) -> List[Dict[st
         fn = img.get("working_filename") or img.get("original") or ""
         rows.append({
             "Filename": fn,
-            "Exp": img.get("exp", ""),
+            "Experiment": img.get("exp", ""),
             "Set": img.get("set", ""),
             "Media": media,
             "Condition": cond,

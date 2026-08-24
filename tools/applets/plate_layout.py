@@ -43,6 +43,7 @@ def validate_plate_layout(layout: Dict[str, Any]) -> bool:
 
     occupied_rows = set()
     max_band_col = 0
+    band_orders = []
 
     for idx, b in enumerate(bands):
         order = b.get("order")
@@ -52,6 +53,7 @@ def validate_plate_layout(layout: Dict[str, Any]) -> bool:
 
         if not isinstance(order, int) or order < 1:
             raise ValueError(f"Band order must be an integer >= 1, got {order}")
+        band_orders.append(order)
         if not isinstance(r_start, int) or not isinstance(r_end, int) or r_start < 1 or r_end < r_start or r_end > rows:
             raise ValueError(f"Invalid row range ({r_start}, {r_end}) for grid_rows={rows}")
 
@@ -69,6 +71,15 @@ def validate_plate_layout(layout: Dict[str, Any]) -> bool:
             raise ValueError(f"Duplicate positions found in band order {order}: {band_positions}")
 
         max_band_col = max(max_band_col, max(band_positions))
+        local_cols = b.get("local_grid_cols")
+        if local_cols is not None and local_cols != max(band_positions):
+            raise ValueError(f"Band order {order} local_grid_cols does not match its widest Pos")
+
+    if sorted(band_orders) != list(range(1, len(bands) + 1)):
+        raise ValueError(f"Band orders must be unique and sequential 1..{len(bands)}, got {band_orders}")
+    if occupied_rows != set(range(1, rows + 1)):
+        raise ValueError(f"Strain bands must cover every physical row 1..{rows} exactly once")
+
 
     if max_band_col != cols:
         raise ValueError(f"grid_cols ({cols}) does not match widest strain band width ({max_band_col})")
@@ -104,8 +115,10 @@ def derive_plate_layout_from_spec(
         if len(row_band_overrides) != num_bands:
             raise ValueError(f"row_band_overrides length ({len(row_band_overrides)}) does not match number of bands ({num_bands})")
         row_ranges = row_band_overrides
+        row_mapping_provenance = "explicit_override"
     elif num_bands == 1:
         row_ranges = [(1, grid_rows)]
+        row_mapping_provenance = "full_rows"
     else:
         if grid_rows % num_bands != 0:
             raise ValueError(
@@ -118,6 +131,7 @@ def derive_plate_layout_from_spec(
             r_start = i * band_size + 1
             r_end = (i + 1) * band_size
             row_ranges.append((r_start, r_end))
+        row_mapping_provenance = "even_split"
 
     # Sort strain bands by order
     sorted_specs = sorted(strain_bands_spec, key=lambda s: s.get("order", 1))
@@ -141,6 +155,8 @@ def derive_plate_layout_from_spec(
             "profile": spec.get("profile"),
             "row_start": r_start,
             "row_end": r_end,
+            "local_grid_cols": band_max,
+            "row_mapping_provenance": row_mapping_provenance,
             "labels": [{"pos": l["pos"], "label": str(l["label"])} for l in sorted_labels]
         })
 
