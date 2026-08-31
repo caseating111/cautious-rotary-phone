@@ -169,6 +169,34 @@ class CropAppletTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "rounding_direction"):
             calibrate_crop_size(*points, rounding_direction="sideways")
 
+    def test_rounding_tolerance_absorbs_display_pixel_quantization(self) -> None:
+        points = ((100.6, 0), (1849.25, 0), (0, 99.5), (0, 1848.33))
+        raw_down = calibrate_crop_size(
+            *points, increment=50, rounding_direction="down"
+        )
+        tolerant_down = calibrate_crop_size(
+            *points,
+            increment=50,
+            rounding_direction="down",
+            rounding_tolerance_pixels=3.5,
+        )
+        self.assertEqual(raw_down["side_pixels"], 1700)
+        self.assertEqual(tolerant_down["side_pixels"], 1750)
+        self.assertTrue(tolerant_down["rounding_snapped_to_increment"])
+        self.assertEqual(tolerant_down["rounding_input_side_pixels"], 1750.0)
+
+        genuinely_smaller = calibrate_crop_size(
+            (100, 0),
+            (1840, 0),
+            (0, 100),
+            (0, 1840),
+            increment=50,
+            rounding_direction="down",
+            rounding_tolerance_pixels=3.5,
+        )
+        self.assertEqual(genuinely_smaller["side_pixels"], 1700)
+        self.assertFalse(genuinely_smaller["rounding_snapped_to_increment"])
+
     def test_exact_numeric_calibration_bypasses_pointer_measurement(self) -> None:
         calibration = calibrate_exact_crop_size(
             1750,

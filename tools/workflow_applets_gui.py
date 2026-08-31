@@ -27,6 +27,7 @@ from tools.applets.batch_actions import (
     plan_automatic_batch,
     plan_grid_directory,
 )
+from tools.applets.culture_crop_export import culture_crop_signature
 from tools.applets.plate_crop import calibrate_crop_size
 from tools.applets.quick_figure import calculate_box_from_roi
 from tools.applets.v10_adapter import load_v10
@@ -51,28 +52,61 @@ def next_image_uid(image_uids: list[str], current_uid: str) -> str | None:
     return image_uids[index + 1] if index + 1 < len(image_uids) else None
 
 
+_TERMINAL_STAGE_STATUSES = {
+    "orientation": {"accepted", "skipped"},
+    "crop": {"accepted", "skipped"},
+    "grid": {"accepted", "skipped"},
+    "culture": {"accepted", "skipped"},
+    "visibility": {"accepted", "skipped", "manual_review"},
+    "annotation": {"accepted", "skipped"},
+}
+
+
+def stage_is_terminal(
+    record: dict[str, Any],
+    stage: str,
+    *,
+    signature: dict[str, Any] | None = None,
+) -> bool:
+    terminal = _TERMINAL_STAGE_STATUSES.get(stage)
+    if terminal is None:
+        return False
+    value = record.get(stage)
+    status = str(value.get("status", "")).casefold() if isinstance(value, dict) else ""
+    if status not in terminal:
+        return False
+    if stage == "culture":
+        return signature is not None and value.get("signature") == signature
+    return True
+
+
+def pending_selected_uids(
+    images: dict[str, dict[str, Any]], selected: list[str], stage: str
+) -> list[str]:
+    return [
+        uid
+        for uid in selected
+        if uid in images and not stage_is_terminal(images[uid], stage)
+    ]
+
+
 def next_pending_image_uid(
-    images: dict[str, dict[str, Any]], current_uid: str, stage: str
+    images: dict[str, dict[str, Any]],
+    current_uid: str,
+    stage: str,
+    *,
+    signature: dict[str, Any] | None = None,
 ) -> str | None:
     image_uids = list(images)
     try:
         start = image_uids.index(current_uid)
     except ValueError:
         return None
-    terminal = {
-        "orientation": {"accepted", "skipped"},
-        "crop": {"accepted", "skipped"},
-        "grid": {"accepted", "skipped"},
-        "visibility": {"accepted", "skipped", "manual_review"},
-        "annotation": {"accepted", "skipped"},
-    }.get(stage)
-    if terminal is None:
+    if stage not in _TERMINAL_STAGE_STATUSES:
         return next_image_uid(image_uids, current_uid)
     ordered = image_uids[start + 1 :] + image_uids[:start]
     for uid in ordered:
-        value = images[uid].get(stage)
-        status = str(value.get("status", "")).casefold() if isinstance(value, dict) else ""
-        if status not in terminal:
+        if not stage_is_terminal(images[uid], stage, signature=signature):
             return uid
     return None
 
@@ -1414,13 +1448,34 @@ class WorkflowApp(tk.Tk):
             self.setup_signature = signature
             self._show_setup_result(result)
 
-    def apply_project_setup(self) -> None:
-        workflow, _uid = self._selected()
-        signature = self._setup_signature_value()
-        if self.setup_preview is None or self.setup_signature != signature:
+    def _ensure_setup_preview(
+        self, workflow: ProjectWorkflow, signature: tuple[str, bool, str]
+    ) -> bool:
+        if self.setup_preview is not None and self.setup_signature == signature:
+            return True
+        if self.setup_review.get():
             messagebox.showerror(
                 "Project setup", "Preview the current Raw root and rename choice first."
             )
+            return False
+        result = self._run(
+            lambda: workflow.preview_setup(
+                raw_root=signature[0],
+                enable_rename=signature[1],
+                filename_date_style=signature[2],
+            )
+        )
+        if result is None:
+            return False
+        self.setup_preview = result
+        self.setup_signature = signature
+        self._show_setup_result(result)
+        return True
+
+    def apply_project_setup(self) -> None:
+        workflow, _uid = self._selected()
+        signature = self._setup_signature_value()
+        if not self._ensure_setup_preview(workflow, signature):
             return
         summary = self.setup_preview["summary"]
         if self.setup_review.get() and not messagebox.askyesno(
@@ -1802,7 +1857,17 @@ class WorkflowApp(tk.Tk):
                 "auto_preview": self.crop_auto_preview.get(),
             },
         )
-        return options
+        display_pixel_tolerance = min(
+            max(
+                1.0 / max(self.viewer.scale_x, 1e-9),
+                1.0 / max(self.viewer.scale_y, 1e-9),
+            ),
+            increment / 4,
+        )
+        return {
+            **options,
+            "rounding_tolerance_pixels": display_pixel_tolerance,
+        }
 
     def _current_calibration_id(self) -> str:
         workflow, _uid = self._selected()
@@ -2151,23 +2216,51 @@ class WorkflowApp(tk.Tk):
             lambda: workflow.accept_culture_crop_export(signature[0], plan)
         )
         if result:
+            status_signature = culture_crop_signature(
+                tier=signature[1],
+                source_kind=signature[2],
+                states=signature[3],
+                columns=signature[4],
+                crop_width=signature[5],
+                crop_height=signature[6],
+            )
             self.crop_export_plan = None
             self.crop_export_signature = None
             self.status.set(
                 f"Accepted {len(result['crops'])} {result['tier']} crops: "
                 f"{result['output_directory']}"
             )
-            self._advance_after_stage(signature[0], "culture")
+            self._advance_after_stage(
+                signature[0], "culture", stage_signature=status_signature
+            )
 
     def skip_culture_crop_export(self) -> None:
         selected = self._run(self._selected)
         if not selected:
             return
-        _workflow, uid = selected
+        workflow, uid = selected
+        signature = self._run(self._crop_export_signature_value)
+        if signature is None:
+            return
+        status_signature = culture_crop_signature(
+            tier=signature[1],
+            source_kind=signature[2],
+            states=signature[3],
+            columns=signature[4],
+            crop_width=signature[5],
+            crop_height=signature[6],
+        )
+        result = self._run(
+            lambda: workflow.skip_culture_crop_export(uid, status_signature)
+        )
+        if result is None:
+            return
         self.crop_export_plan = None
         self.crop_export_signature = None
-        self.status.set("Culture-crop export skipped for this pass.")
-        self._advance_after_stage(uid, "culture")
+        self.status.set("Culture-crop export skipped and saved for these settings.")
+        self._advance_after_stage(
+            uid, "culture", stage_signature=status_signature
+        )
 
     def preview_visibility(self) -> None:
         workflow, uid = self._selected()
@@ -2372,6 +2465,17 @@ class WorkflowApp(tk.Tk):
         selected = self._run(self._batch_selected_uids)
         if not selected:
             return
+        if self.workflow is None:
+            return
+        selected = pending_selected_uids(
+            self.workflow.state["images"], selected, stage
+        )
+        if not selected:
+            self.status.set(
+                f"Selected images already have terminal {stage} state; use the "
+                "single-image Start/Retry control for an intentional rerun."
+            )
+            return
         self.batch_queue, self.batch_queue_stage, self.batch_queue_index = selected, stage, 0
         self._load_manual_batch_current()
 
@@ -2401,7 +2505,13 @@ class WorkflowApp(tk.Tk):
             return
         self._load_manual_batch_current()
 
-    def _advance_after_stage(self, completed_uid: str, stage: str) -> None:
+    def _advance_after_stage(
+        self,
+        completed_uid: str,
+        stage: str,
+        *,
+        stage_signature: dict[str, Any] | None = None,
+    ) -> None:
         if (
             self.batch_queue_stage
             and self.batch_queue_index < len(self.batch_queue)
@@ -2416,7 +2526,10 @@ class WorkflowApp(tk.Tk):
         if self.workflow is None:
             return
         following = next_pending_image_uid(
-            self.workflow.state["images"], completed_uid, stage
+            self.workflow.state["images"],
+            completed_uid,
+            stage,
+            signature=stage_signature,
         )
         if following is None:
             self.load_selected_source()

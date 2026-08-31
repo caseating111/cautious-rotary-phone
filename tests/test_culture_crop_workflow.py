@@ -112,6 +112,7 @@ def test_accept_publishes_numbered_run_and_records_current_tier(
     )
     result = workflow.accept_culture_crop_export("img-1", plan)
     assert result["status"] == "ACCEPTED"
+    assert workflow.image_record("img-1")["culture"]["status"] == "ACCEPTED"
     assert Path(result["output_directory"]).name == "Run 001"
     assert (
         workflow.state["images"]["img-1"]["crop_exports"]["Unprocessed"]["request_id"]

@@ -275,6 +275,10 @@ def plan_culture_crop_export(
                     "layout_id": layout["layout_id"],
                     "output_directory": str(run),
                     "tier": tier,
+                    "states": request["states"],
+                    "columns": request["columns"],
+                    "crop_width": request["crop_width"],
+                    "crop_height": request["crop_height"],
                     "crops": records,
                     "existing_result": existing,
                 }
@@ -295,6 +299,10 @@ def plan_culture_crop_export(
         "grid_asset_id": asset["asset_id"],
         "layout_id": layout["layout_id"],
         "tier": tier,
+        "states": request["states"],
+        "columns": request["columns"],
+        "crop_width": request["crop_width"],
+        "crop_height": request["crop_height"],
         "output_directory": str(output_directory),
         "crops": records,
     }
@@ -349,3 +357,32 @@ def export_culture_crops(plan: dict[str, Any]) -> dict[str, Any]:
     except Exception:
         shutil.rmtree(staging, ignore_errors=True)
         raise
+
+
+def culture_crop_signature(
+    *,
+    tier: str,
+    source_kind: str,
+    states: tuple[str, ...] | list[str],
+    columns: tuple[int, ...] | list[int] | None,
+    crop_width: int,
+    crop_height: int,
+) -> dict[str, Any]:
+    """Return the canonical user-request signature used for resume decisions."""
+    tier_name = str(tier).strip()
+    if tier_name not in {"Unprocessed", "Processed"}:
+        raise ValueError("tier must be Unprocessed or Processed.")
+    state_names = [str(value) for value in states]
+    if not state_names:
+        raise ValueError("At least one culture crop state is required.")
+    width, height = int(crop_width), int(crop_height)
+    if width < 1 or height < 1:
+        raise ValueError("Crop width and height must be positive integers.")
+    return {
+        "tier": tier_name,
+        "source_kind": str(source_kind).strip().casefold(),
+        "states": state_names,
+        "columns": [int(value) for value in columns] if columns is not None else None,
+        "crop_width": width,
+        "crop_height": height,
+    }

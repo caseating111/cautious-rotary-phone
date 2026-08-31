@@ -15,6 +15,7 @@ from tools.applets.annotation import (
     write_annotation_result,
 )
 from tools.applets.culture_crop_export import (
+    culture_crop_signature,
     export_culture_crops,
     plan_culture_crop_export,
 )
@@ -69,6 +70,7 @@ from tools.project_state import (
     record_crop,
     record_crop_calibration,
     record_crop_export,
+    record_culture_status,
     record_derivative,
     record_derivative_transition,
     record_grid_asset,
@@ -557,6 +559,7 @@ class ProjectWorkflow:
         margin_value: float = 0.0,
         margin_unit: str = "pixels",
         source_dimensions: tuple[int, int] | None = None,
+        rounding_tolerance_pixels: float = 0.0,
     ) -> dict[str, Any]:
         calibration = calibrate_crop_size(
             left,
@@ -571,6 +574,7 @@ class ProjectWorkflow:
             margin_value=margin_value,
             margin_unit=margin_unit,
             source_dimensions=source_dimensions,
+            rounding_tolerance_pixels=rounding_tolerance_pixels,
         )
         record_crop_calibration(self.state, calibration)
         self.save()
@@ -954,8 +958,24 @@ class ProjectWorkflow:
             )
         result = export_culture_crops(plan)
         record_crop_export(self.state, image_uid, result["tier"], result)
+        signature = culture_crop_signature(
+            tier=result["tier"],
+            source_kind=str(plan.get("source_kind") or "auto"),
+            states=plan["states"],
+            columns=plan.get("columns"),
+            crop_width=plan["crop_width"],
+            crop_height=plan["crop_height"],
+        )
+        record_culture_status(self.state, image_uid, "ACCEPTED", signature)
         self.save()
         return result
+
+    def skip_culture_crop_export(
+        self, image_uid: str, signature: dict[str, Any]
+    ) -> dict[str, Any]:
+        record_culture_status(self.state, image_uid, "SKIPPED", signature)
+        self.save()
+        return copy.deepcopy(self.state["images"][image_uid]["culture"])
 
     def mixed_tier_crop_candidates(self) -> dict[str, dict[str, Any]]:
         return enumerate_crop_candidates(self.state)

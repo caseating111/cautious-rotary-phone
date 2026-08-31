@@ -27,6 +27,7 @@ def calibrate_crop_size(
     margin_value: float = 0.0,
     margin_unit: str = "pixels",
     source_dimensions: tuple[int, int] | None = None,
+    rounding_tolerance_pixels: float = 0.0,
 ) -> dict[str, Any]:
     """Derive a proposed or accepted reusable square crop-size calibration."""
     if not isinstance(increment, int) or increment <= 0:
@@ -38,6 +39,11 @@ def calibrate_crop_size(
     margin_value = float(margin_value)
     if not math.isfinite(margin_value) or margin_value < 0:
         raise ValueError("margin_value must be a finite number of zero or greater.")
+    rounding_tolerance_pixels = float(rounding_tolerance_pixels)
+    if not math.isfinite(rounding_tolerance_pixels) or rounding_tolerance_pixels < 0:
+        raise ValueError(
+            "rounding_tolerance_pixels must be a finite number of zero or greater."
+        )
     measured_width = abs(float(right_pt[0]) - float(left_pt[0]))
     measured_height = abs(float(bottom_pt[1]) - float(top_pt[1]))
     if not all(
@@ -48,8 +54,14 @@ def calibrate_crop_size(
             "Boundary points must define positive finite width and height."
         )
     measured_side = min(measured_width, measured_height)
+    rounding_side = measured_side
+    snapped_to_increment = False
     if rounding_enabled:
-        units = measured_side / increment
+        nearest_increment = math.floor(measured_side / increment + 0.5) * increment
+        if abs(nearest_increment - measured_side) <= rounding_tolerance_pixels:
+            rounding_side = float(nearest_increment)
+            snapped_to_increment = True
+        units = rounding_side / increment
         if rounding_direction == "down":
             core_side = math.floor(units) * increment
         elif rounding_direction == "up":
@@ -76,6 +88,9 @@ def calibrate_crop_size(
         "rounding_increment": increment,
         "rounding_enabled": bool(rounding_enabled),
         "rounding_direction": rounding_direction,
+        "rounding_tolerance_pixels": round(rounding_tolerance_pixels, 4),
+        "rounding_input_side_pixels": round(rounding_side, 4),
+        "rounding_snapped_to_increment": snapped_to_increment,
         "margin_value": margin_value,
         "margin_unit": margin_unit,
         "margin_pixels": round(margin_pixels, 4),

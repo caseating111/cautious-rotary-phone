@@ -42,6 +42,16 @@
         "grid": {"type": "object", "additionalProperties": true},
         "visibility": {"type": "object", "additionalProperties": true},
         "annotation": {"type": "object", "additionalProperties": true},
+        "culture": {
+          "type": "object",
+          "required": ["status", "signature", "recorded_at"],
+          "properties": {
+            "status": {"enum": ["ACCEPTED", "SKIPPED", "STALE"]},
+            "signature": {"type": "object", "additionalProperties": true},
+            "recorded_at": {"type": "string", "minLength": 1}
+          },
+          "additionalProperties": true
+        },
         "crop_exports": {"type": "object", "additionalProperties": {"type": "object", "additionalProperties": true}}
       },
       "additionalProperties": true

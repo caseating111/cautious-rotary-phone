@@ -8,6 +8,7 @@ import pytest
 from PIL import Image
 
 from tools.applet_workflows import ProjectWorkflow
+from tools.applets.culture_crop_export import culture_crop_signature
 from tools.grid_coordinates import (
     build_grid_coordinate_asset,
     save_grid_coordinate_asset,
@@ -265,6 +266,22 @@ def test_optional_derivative_skips_are_recorded_and_resumable(tmp_path: Path) ->
     reopened = ProjectWorkflow.open(tmp_path)
     assert reopened.image_record("Image 1")["visibility"]["status"] == "SKIPPED"
     assert reopened.image_record("Image 1")["annotation"]["status"] == "SKIPPED"
+
+
+def test_culture_skip_is_recorded_and_resumable(tmp_path: Path) -> None:
+    workflow = ProjectWorkflow(new_project_state(tmp_path, _model()))
+    signature = culture_crop_signature(
+        tier="Unprocessed",
+        source_kind="cropped",
+        states=("Top",),
+        columns=(1, 2),
+        crop_width=130,
+        crop_height=546,
+    )
+    skipped = workflow.skip_culture_crop_export("Image 1", signature)
+    assert skipped["status"] == "SKIPPED"
+    reopened = ProjectWorkflow.open(tmp_path)
+    assert reopened.image_record("Image 1")["culture"]["signature"] == signature
 
 
 @pytest.mark.parametrize("transition", ["SKIPPED", "MANUAL_REVIEW"])

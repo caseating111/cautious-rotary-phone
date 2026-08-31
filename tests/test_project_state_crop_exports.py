@@ -2,14 +2,18 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from tools.applets.culture_crop_export import culture_crop_signature
 from tools.project_state import (
+    load_project_state,
     new_project_state,
     record_crop,
     record_crop_export,
+    record_culture_status,
     record_derivative,
     record_derivative_transition,
     record_grid_asset,
     record_orientation,
+    save_project_state,
     validate_project_state,
 )
 
@@ -63,6 +67,56 @@ def test_record_crop_exports_by_tier_and_validate(tmp_path: Path) -> None:
     assert (
         state["images"]["I1"]["crop_exports"]["Processed"]["source_kind"] == "processed"
     )
+
+
+def test_culture_status_persists_without_replacing_exports(tmp_path: Path) -> None:
+    state = new_project_state(tmp_path, model())
+    record_crop_export(state, "I1", "Unprocessed", {"status": "ACCEPTED"})
+    signature = culture_crop_signature(
+        tier="Unprocessed",
+        source_kind="cropped",
+        states=("Top", "Low"),
+        columns=None,
+        crop_width=130,
+        crop_height=546,
+    )
+    record_culture_status(state, "I1", "SKIPPED", signature)
+    save_project_state(state)
+    reopened = load_project_state(tmp_path)
+    image = reopened["images"]["I1"]
+    assert image["culture"]["status"] == "SKIPPED"
+    assert image["culture"]["signature"] == signature
+    assert image["crop_exports"]["Unprocessed"]["status"] == "ACCEPTED"
+
+
+def test_culture_status_stales_with_its_actual_sources(tmp_path: Path) -> None:
+    state = new_project_state(tmp_path, model())
+    unprocessed = culture_crop_signature(
+        tier="Unprocessed",
+        source_kind="cropped",
+        states=("Top",),
+        columns=None,
+        crop_width=130,
+        crop_height=546,
+    )
+    record_culture_status(state, "I1", "SKIPPED", unprocessed)
+    record_orientation(state, "I1", {"status": "ACCEPTED", "angle_degrees": 1})
+    assert state["images"]["I1"]["culture"]["status"] == "STALE"
+
+    processed = culture_crop_signature(
+        tier="Processed",
+        source_kind="processed",
+        states=("Top",),
+        columns=None,
+        crop_width=130,
+        crop_height=546,
+    )
+    record_culture_status(state, "I1", "ACCEPTED", processed)
+    record_derivative(
+        state, "I1", "visibility", {"status": "ACCEPTED", "output_path": "v.png"}
+    )
+    assert state["images"]["I1"]["culture"]["status"] == "STALE"
+    assert state["images"]["I1"]["culture"]["stale_reason"] == "visibility changed"
 
 
 def test_orientation_crop_and_grid_changes_stale_all_crop_exports(

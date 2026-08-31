@@ -44,8 +44,9 @@ Meaningful searches on 2026-09-01 included:
    - `GetCursorPos`/`ScreenToClient` and `GetClientRect` remain within one native client domain; only their ratio crosses into Tk.
    - A factor-2 synthetic proof shows identical fractions for 820×560 logical and 1640×1120 physical client spaces.
    - A clean-process 2047×2047 pointer round trip passes within two source pixels without Per-Monitor-v2.
-   - Production confirmation must cover the 4K monitor, a move to the second monitor, and a single-monitor launch.
+   - With both current displays connected (`DISPLAY1` and `DISPLAY9`), an invisible synthetic 2047×2047 canvas was placed on each display at 900×650 and 1120×780 window sizes. All four runs used `normalized_win32_client`, mapped within 1.18 source pixels, measured approximately 1749–1752 pixels, and proposed 1750 after accounting for at most one displayed pixel of quantization.
+   - Human visual confirmation remains limited to UI proportion and real click placement; numeric cross-monitor mapping is automated and passing.
 
 ## Smallest next proof
 
-On the new build, use a synthetic/public 2047×2047 target or one private real image locally: record the calibration line on the 4K monitor, move the same window to the second monitor and repeat, then repeat once with only the 4K monitor. Expected measured source-pixel bounds must remain stable and the UI must remain proportionate. No image pixels need to leave the machine.
+On the new build, use one private real image locally: record the calibration line on the 4K monitor, move the same window to the second monitor and repeat, then repeat once with only the 4K monitor. Expected measured source-pixel bounds must remain stable and the UI must remain proportionate. This is the remaining human-visible check after the automated two-display synthetic proof. No image pixels need to leave the machine.

@@ -160,9 +160,17 @@ class QuickFigurePanel(ttk.Frame):
 
     CATEGORY = "quick_figure"
 
-    def __init__(self, parent: tk.Misc, viewer: Any, status: tk.StringVar) -> None:
+    def __init__(
+        self,
+        parent: tk.Misc,
+        viewer: Any,
+        status: tk.StringVar,
+        *,
+        allow_detach: bool = True,
+    ) -> None:
         super().__init__(parent)
         self.viewer, self.status = viewer, status
+        self.allow_detach = allow_detach
         self.image_path: Path | None = None
         self.image: Image.Image | None = None
         self.csv_data: dict[str, Any] | None = None
@@ -282,9 +290,10 @@ class QuickFigurePanel(ttk.Frame):
         self.preset_box.pack(side="left", fill="x", expand=True)
         ttk.Button(presets, text="Load", command=self.load_named).pack(side="left")
         ttk.Button(presets, text="Save as…", command=self.save_named).pack(side="left")
-        ttk.Button(self, text="Detach Quick Figures window", command=self.detach).pack(
-            fill="x", padx=8, pady=(2, 8)
-        )
+        if self.allow_detach:
+            ttk.Button(
+                self, text="Detach Quick Figures window", command=self.detach
+            ).pack(fill="x", padx=8, pady=(2, 8))
         self.hotkey_button = ttk.Button(
             self, text="Hotkeys ▸", command=self._toggle_hotkey_help
         )
@@ -345,6 +354,8 @@ class QuickFigurePanel(ttk.Frame):
             "Spinbox",
             "TSpinbox",
             "TCombobox",
+            "Treeview",
+            "Listbox",
         }:
             return None
         actions: dict[str, Callable[[], None]] = {
@@ -637,7 +648,9 @@ class QuickFigurePanel(ttk.Frame):
         body.add(controls, weight=0)
         body.add(viewer, weight=1)
         status = tk.StringVar(value="Choose any figure image and a label CSV.")
-        QuickFigurePanel(controls, viewer, status).pack(fill="both", expand=True)
+        QuickFigurePanel(
+            controls, viewer, status, allow_detach=False
+        ).pack(fill="both", expand=True)
         ttk.Label(window, textvariable=status, anchor="w").pack(
             fill="x", padx=8, pady=4
         )
