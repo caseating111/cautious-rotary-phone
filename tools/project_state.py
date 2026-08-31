@@ -294,6 +294,19 @@ def record_grid_asset(
         _mark_stale(record, "grid")
 
 
+def record_grid_skip(state: dict[str, Any], image_uid: str) -> None:
+    record = _record(state, image_uid)
+    prior = record.get("grid")
+    current = {
+        "status": "SKIPPED",
+        "reason": "User skipped grid attachment.",
+        "recorded_at": _timestamp(),
+    }
+    record["grid"] = current
+    if prior != current:
+        _mark_stale(record, "grid")
+
+
 def record_crop_export(
     state: dict[str, Any],
     image_uid: str,
@@ -353,6 +366,19 @@ def record_derivative(
         raise ValueError(f"Unsupported derivative kind: {kind}")
     if result.get("status") != "ACCEPTED":
         raise ValueError("Only accepted derivative results may be recorded.")
+    record_derivative_transition(state, image_uid, kind, result)
+
+
+def record_derivative_transition(
+    state: dict[str, Any],
+    image_uid: str,
+    kind: str,
+    result: dict[str, Any],
+) -> None:
+    if kind not in {"visibility", "annotation"}:
+        raise ValueError(f"Unsupported derivative kind: {kind}")
+    if result.get("status") not in {"ACCEPTED", "SKIPPED", "MANUAL_REVIEW"}:
+        raise ValueError("Derivative transition has an unsupported status.")
     record = _record(state, image_uid)
     prior = record.get(kind)
     current = copy.deepcopy(result)

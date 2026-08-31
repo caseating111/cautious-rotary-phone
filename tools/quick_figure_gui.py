@@ -271,6 +271,29 @@ class QuickFigurePanel(ttk.Frame):
         ttk.Button(self, text="Detach Quick Figures window", command=self.detach).pack(
             fill="x", padx=8, pady=(2, 8)
         )
+        self.hotkey_button = ttk.Button(
+            self, text="Hotkeys ▸", command=self._toggle_hotkey_help
+        )
+        self.hotkey_button.pack(fill="x", padx=8, pady=(0, 4))
+        self.hotkey_frame = ttk.LabelFrame(self, text="Quick Figures hotkeys")
+        ttk.Label(
+            self.hotkey_frame,
+            text=(
+                "X align · V preview annotation · Z save annotation · C export wells · "
+                "A accept QC · F flag QC · Q whole crop · W register grid · "
+                "E rotate left · R rotate right. Ignored while typing."
+            ),
+            wraplength=350,
+            justify="left",
+        ).pack(fill="x", padx=5, pady=4)
+
+    def _toggle_hotkey_help(self) -> None:
+        if self.hotkey_frame.winfo_manager():
+            self.hotkey_frame.pack_forget()
+            self.hotkey_button.configure(text="Hotkeys ▸")
+            return
+        self.hotkey_frame.pack(fill="x", padx=8, pady=(0, 4))
+        self.hotkey_button.configure(text="Hotkeys ▾")
 
     def _bind_hotkeys(self) -> None:
         root = self.winfo_toplevel()
@@ -294,6 +317,39 @@ class QuickFigurePanel(ttk.Frame):
         root.bind(
             "<Control-e>", lambda _event: self._hotkey(self.export_cultures), add="+"
         )
+        if isinstance(root, tk.Toplevel):
+            root.bind("<KeyPress>", self._plain_hotkey, add="+")
+
+    def _plain_hotkey(self, event: tk.Event) -> str | None:
+        if int(getattr(event, "state", 0)) & 0x000C:
+            return None
+        focus = self.focus_get()
+        if focus is not None and focus.winfo_class() in {
+            "Entry",
+            "TEntry",
+            "Text",
+            "Spinbox",
+            "TSpinbox",
+            "TCombobox",
+        }:
+            return None
+        actions: dict[str, Callable[[], None]] = {
+            "x": self.start_alignment,
+            "v": self.preview_annotation,
+            "z": self.save_annotation,
+            "c": self.export_cultures,
+            "a": lambda: self.set_qc(True),
+            "f": lambda: self.set_qc(False),
+            "q": self.start_whole_crop,
+            "w": self.start_grid,
+            "e": lambda: self.orient("rotate_90_ccw"),
+            "r": lambda: self.orient("rotate_90_cw"),
+        }
+        action = actions.get(str(getattr(event, "keysym", "")).casefold())
+        if action is None:
+            return None
+        self._hotkey(action)
+        return "break"
 
     def _hotkey(self, action: Callable[[], None]) -> None:
         if self.winfo_ismapped():

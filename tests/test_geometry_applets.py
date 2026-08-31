@@ -114,6 +114,60 @@ class CropAppletTests(unittest.TestCase):
                 options={"accepted": True},
             )
 
+    def test_original_pixel_rounding_margin_and_no_rounding(self) -> None:
+        points = ((100, 0), (1878, 0), (0, 80), (0, 1870))
+        down = calibrate_crop_size(
+            *points,
+            increment=50,
+            rounding_direction="down",
+            source_dimensions=(2048, 2048),
+            accepted=True,
+        )
+        self.assertEqual(down["side_pixels"], 1750)
+        self.assertEqual(down["source_dimensions"], [2048, 2048])
+        self.assertEqual(down["measured_extents"]["measured_width"], 1778.0)
+
+        up = calibrate_crop_size(
+            *points, increment=50, rounding_direction="up", accepted=True
+        )
+        exact = calibrate_crop_size(
+            *points, rounding_enabled=False, accepted=True
+        )
+        self.assertEqual(up["side_pixels"], 1800)
+        self.assertEqual(exact["side_pixels"], 1778)
+
+        margin = calibrate_crop_size(
+            *points,
+            increment=50,
+            rounding_direction="down",
+            margin_value=25,
+            accepted=True,
+        )
+        self.assertEqual(margin["side_pixels"], 1800)
+        placed = place_plate_crop(
+            margin,
+            (100, 0),
+            (0, 100),
+            {"width": 2048, "height": 2048},
+            options={"accepted": True},
+        )
+        self.assertEqual(placed["crop_box"]["left"], 75)
+        self.assertEqual(placed["crop_box"]["top"], 75)
+
+        nearest_percent = calibrate_crop_size(
+            *points,
+            increment=50,
+            rounding_direction="nearest",
+            margin_value=10,
+            margin_unit="percent",
+            accepted=True,
+        )
+        self.assertEqual(nearest_percent["core_side_pixels"], 1800)
+        self.assertEqual(nearest_percent["margin_pixels"], 180.0)
+        self.assertEqual(nearest_percent["side_pixels"], 2160)
+        with self.assertRaisesRegex(ValueError, "rounding_direction"):
+            calibrate_crop_size(*points, rounding_direction="sideways")
+
     def test_proposed_is_preview_only_and_orientation_output_feeds_crop(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

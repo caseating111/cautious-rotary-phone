@@ -166,6 +166,12 @@ def _prepare_output(path: str | Path) -> Path:
     return output
 
 
+def _save_transformed(image: Any, output: Path) -> None:
+    if output.suffix.casefold() == ".png" and image.mode in {"CMYK", "YCbCr"}:
+        image = image.convert("RGB")
+    image.save(output)
+
+
 def apply_plate_orientation(
     source_image: str | Path | Any,
     orientation_result: dict[str, Any],
@@ -185,7 +191,7 @@ def apply_plate_orientation(
         source = Path(source_image)
         if not source.is_file():
             raise FileNotFoundError(f"Source image does not exist: {source}")
-        if status == "SKIPPED" or abs(angle) < 1e-5:
+        if status == "SKIPPED":
             if output_path:
                 output = _prepare_output(output_path)
                 shutil.copy2(source, output)
@@ -196,19 +202,25 @@ def apply_plate_orientation(
             expected = orientation_result.get("transform", {}).get("source_dimensions")
             if expected and list(image.size) != expected:
                 raise ValueError("Source dimensions do not match OrientationResult.")
-            rotated = image.rotate(angle, resample=filter_mode, expand=False)
+            rotated = (
+                image.copy()
+                if abs(angle) < 1e-5
+                else image.rotate(angle, resample=filter_mode, expand=False)
+            )
             if output_path:
                 output = _prepare_output(output_path)
-                rotated.save(output)
+                _save_transformed(rotated, output)
                 return str(output)
             return rotated
 
     image = source_image
-    if status == "SKIPPED" or abs(angle) < 1e-5:
-        return image.copy()
-    rotated = image.rotate(angle, resample=filter_mode, expand=False)
+    rotated = (
+        image.copy()
+        if status == "SKIPPED" or abs(angle) < 1e-5
+        else image.rotate(angle, resample=filter_mode, expand=False)
+    )
     if output_path:
         output = _prepare_output(output_path)
-        rotated.save(output)
+        _save_transformed(rotated, output)
         return str(output)
     return rotated

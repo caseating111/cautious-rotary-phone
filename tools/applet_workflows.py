@@ -69,7 +69,9 @@ from tools.project_state import (
     record_crop_calibration,
     record_crop_export,
     record_derivative,
+    record_derivative_transition,
     record_grid_asset,
+    record_grid_skip,
     record_matrix_export,
     record_orientation,
     record_setup_result,
@@ -359,8 +361,27 @@ class ProjectWorkflow:
             f"No existing source derivative is recorded for Image UID {image_uid}."
         )
 
-    def _derivative_path(self, image_uid: str, stage: str, source: Path) -> Path:
-        suffix = source.suffix if source.suffix else ".png"
+    def orientation_source_for(self, image_uid: str) -> Path:
+        for source_kind in ("working", "raw"):
+            try:
+                return self.source_for(
+                    image_uid, include_crop=False, source_kind=source_kind
+                )
+            except FileNotFoundError:
+                continue
+        raise FileNotFoundError(
+            f"No pre-orientation source is recorded for Image UID {image_uid}."
+        )
+
+    def _derivative_path(
+        self,
+        image_uid: str,
+        stage: str,
+        source: Path,
+        *,
+        preserve_source_format: bool = False,
+    ) -> Path:
+        suffix = (source.suffix or ".png") if preserve_source_format else ".png"
         key = {"Oriented": "orientation", "Cropped": "cropped", "Visibility": "processed"}.get(stage)
         if key is None:
             raise ValueError(f"Unknown derivative stage: {stage}")
@@ -434,6 +455,20 @@ class ProjectWorkflow:
         self.save()
         return result
 
+    def preview_grid_discovery(self) -> dict[str, Any]:
+        matches = discover_grid_assets(self.project_root, self.state["images"])
+        return {
+            "unique": {
+                uid: str(paths[0]) for uid, paths in matches.items() if len(paths) == 1
+            },
+            "ambiguous": {
+                uid: [str(path) for path in paths]
+                for uid, paths in matches.items()
+                if len(paths) > 1
+            },
+            "missing": sorted(uid for uid, paths in matches.items() if not paths),
+        }
+
     def propose_orientation(
         self,
         image_uid: str,
@@ -441,7 +476,7 @@ class ProjectWorkflow:
         *,
         skip: bool = False,
     ) -> tuple[dict[str, Any], Any]:
-        source = self.source_for(image_uid, include_crop=False)
+        source = self.orientation_source_for(image_uid)
         with Image.open(source) as image:
             dimensions = image.size
         result = capture_plate_orientation(
@@ -478,7 +513,12 @@ class ProjectWorkflow:
             accepted["status"] = "ACCEPTED"
             accepted["confidence"] = 1.0
             accepted["needs_manual_review"] = False
-        output = self._derivative_path(image_uid, "Oriented", source)
+        output = self._derivative_path(
+            image_uid,
+            "Oriented",
+            source,
+            preserve_source_format=accepted["status"] == "SKIPPED",
+        )
         accepted["image_uid"] = image_uid
         accepted["source_path"] = str(source.resolve())
         accepted["output_path"] = str(output.resolve())
@@ -498,6 +538,11 @@ class ProjectWorkflow:
         *,
         increment: int = 50,
         calibration_id: str = "plate-default",
+        rounding_enabled: bool = True,
+        rounding_direction: str = "down",
+        margin_value: float = 0.0,
+        margin_unit: str = "pixels",
+        source_dimensions: tuple[int, int] | None = None,
     ) -> dict[str, Any]:
         calibration = calibrate_crop_size(
             left,
@@ -507,6 +552,11 @@ class ProjectWorkflow:
             increment,
             calibration_id,
             accepted=True,
+            rounding_enabled=rounding_enabled,
+            rounding_direction=rounding_direction,
+            margin_value=margin_value,
+            margin_unit=margin_unit,
+            source_dimensions=source_dimensions,
         )
         record_crop_calibration(self.state, calibration)
         self.save()
@@ -557,7 +607,12 @@ class ProjectWorkflow:
         accepted = copy.deepcopy(proposed)
         if accepted["status"] == "PROPOSED":
             accepted["status"] = "ACCEPTED"
-        output = self._derivative_path(image_uid, "Cropped", source)
+        output = self._derivative_path(
+            image_uid,
+            "Cropped",
+            source,
+            preserve_source_format=accepted["status"] == "SKIPPED",
+        )
         accepted["source_path"] = str(source.resolve())
         accepted["source_sha256"] = _hash_file(source)
         accepted["output_path"] = str(output.resolve())
@@ -605,6 +660,11 @@ class ProjectWorkflow:
         record_grid_asset(self.state, image_uid, asset, path)
         self.save()
         return asset
+
+    def skip_grid(self, image_uid: str) -> dict[str, Any]:
+        record_grid_skip(self.state, image_uid)
+        self.save()
+        return self.image_record(image_uid)["grid"]
 
     def grid_asset(self, image_uid: str) -> dict[str, Any]:
         record = self.image_record(image_uid).get("grid")
@@ -680,6 +740,7 @@ class ProjectWorkflow:
         sidecar = output.with_suffix(output.suffix + ".visibility.json")
         write_visibility_result(accepted, str(sidecar))
         record_derivative(self.state, image_uid, "visibility", accepted)
+        self.image_record(image_uid).pop("visibility_review", None)
         self.save()
         return accepted, output, sidecar
 
@@ -700,9 +761,25 @@ class ProjectWorkflow:
             reason.strip() or "User requested manual review."
         )
         review.pop("output_path", None)
-        self.image_record(image_uid)["visibility_review"] = review
+        record_derivative_transition(self.state, image_uid, "visibility", review)
+        self.image_record(image_uid)["visibility_review"] = copy.deepcopy(review)
         self.save()
         return review
+
+    def skip_derivative(self, image_uid: str, kind: str) -> dict[str, Any]:
+        if kind not in {"visibility", "annotation"}:
+            raise ValueError("Only visibility or annotation may be skipped here.")
+        result = {
+            "status": "SKIPPED",
+            "image_uid": image_uid,
+            "reason": "User skipped this optional derivative.",
+        }
+        record_derivative_transition(self.state, image_uid, kind, result)
+        record = self.image_record(image_uid)
+        if kind == "visibility":
+            record.pop("visibility_review", None)
+        self.save()
+        return result
 
     def _model_image(self, image_uid: str) -> dict[str, Any]:
         for image in self.project_model.get("images", []):

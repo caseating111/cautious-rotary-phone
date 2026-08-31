@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import tempfile
 import shutil
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -72,7 +72,7 @@ def test_create_from_sanitized_v10_persists_openable_state(tmp_path: Path) -> No
 def test_stateful_orientation_crop_grid_chain_is_non_destructive() -> None:
     with tempfile.TemporaryDirectory() as directory:
         root = Path(directory)
-        source = root / "Raw" / "session" / "source.png"
+        source = root / "Raw" / "session" / "source.jpg"
         source.parent.mkdir(parents=True)
         Image.new("L", (220, 180), 80).save(source)
         original = source.read_bytes()
@@ -101,6 +101,13 @@ def test_stateful_orientation_crop_grid_chain_is_non_destructive() -> None:
         )
         assert accepted_orientation["status"] == "ACCEPTED"
         assert oriented_path.is_file()
+        assert oriented_path.suffix == ".png"
+        with Image.open(oriented_path) as oriented_image:
+            assert oriented_image.size == (220, 180)
+        retry_orientation, _ = workflow.propose_orientation(
+            "Image 1", (10, 20, 210, 30)
+        )
+        assert Path(retry_orientation["source_path"]) == source
 
         calibration = workflow.accept_crop_calibration(
             (10, 0), (145, 0), (0, 5), (0, 177), calibration_id="C1"
@@ -114,6 +121,9 @@ def test_stateful_orientation_crop_grid_chain_is_non_destructive() -> None:
         accepted_crop, crop_path = workflow.accept_crop("Image 1", proposed_crop)
         assert accepted_crop["status"] == "ACCEPTED"
         assert crop_path.is_file()
+        assert crop_path.suffix == ".png"
+        with Image.open(crop_path) as cropped_image:
+            assert cropped_image.size == (100, 100)
         assert source.read_bytes() == original
         assert workflow.source_for("Image 1") == crop_path
 
@@ -148,6 +158,7 @@ def test_stateful_orientation_crop_grid_chain_is_non_destructive() -> None:
         )
         assert visibility["status"] == "ACCEPTED"
         assert visibility_path.is_file() and visibility_sidecar.is_file()
+        assert visibility_path.suffix == ".png"
 
         annotation_proposal, annotation_preview = workflow.propose_annotation("Image 1")
         assert annotation_proposal["status"] == "PROPOSED"
@@ -165,6 +176,47 @@ def test_stateful_orientation_crop_grid_chain_is_non_destructive() -> None:
         assert record["grid"]["status"] == "ACCEPTED"
         assert record["visibility"]["status"] == "ACCEPTED"
         assert record["annotation"]["status"] == "ACCEPTED"
+
+
+def test_orientation_retry_and_skip_use_pre_orientation_source(tmp_path: Path) -> None:
+    source = tmp_path / "source.jpg"
+    Image.new("L", (220, 180), 80).save(source)
+    workflow = ProjectWorkflow(new_project_state(tmp_path, _model()))
+    workflow.record_setup(
+        {
+            "images": [
+                {
+                    "image_uid": "Image 1",
+                    "raw_path": str(source),
+                    "working_path": str(source),
+                    "disposition": "READY",
+                }
+            ]
+        }
+    )
+    proposed, _ = workflow.propose_orientation("Image 1", (10, 20, 210, 30))
+    _accepted, first_output = workflow.accept_orientation("Image 1", proposed)
+    assert first_output.suffix == ".png"
+    retry, _ = workflow.propose_orientation("Image 1", (10, 20, 210, 30))
+    assert Path(retry["source_path"]) == source
+    skipped_proposal, _ = workflow.propose_orientation("Image 1", None, skip=True)
+    skipped, skipped_output = workflow.accept_orientation(
+        "Image 1", skipped_proposal
+    )
+    assert skipped["status"] == "SKIPPED"
+    assert skipped_output != first_output
+    assert skipped_output.read_bytes() == source.read_bytes()
+
+
+def test_optional_derivative_skips_are_recorded_and_resumable(tmp_path: Path) -> None:
+    workflow = ProjectWorkflow(new_project_state(tmp_path, _model()))
+    visibility = workflow.skip_derivative("Image 1", "visibility")
+    annotation = workflow.skip_derivative("Image 1", "annotation")
+    assert visibility["status"] == "SKIPPED"
+    assert annotation["status"] == "SKIPPED"
+    reopened = ProjectWorkflow.open(tmp_path)
+    assert reopened.image_record("Image 1")["visibility"]["status"] == "SKIPPED"
+    assert reopened.image_record("Image 1")["annotation"]["status"] == "SKIPPED"
 
 
 def test_proposals_cannot_cross_image_or_unknown_calibration_boundaries(

@@ -22,10 +22,22 @@ def calibrate_crop_size(
     calibration_id: str | None = None,
     *,
     accepted: bool = False,
+    rounding_enabled: bool = True,
+    rounding_direction: str = "down",
+    margin_value: float = 0.0,
+    margin_unit: str = "pixels",
+    source_dimensions: tuple[int, int] | None = None,
 ) -> dict[str, Any]:
     """Derive a proposed or accepted reusable square crop-size calibration."""
     if not isinstance(increment, int) or increment <= 0:
         raise ValueError(f"increment must be a positive integer, got {increment}")
+    if rounding_direction not in {"down", "nearest", "up"}:
+        raise ValueError("rounding_direction must be down, nearest, or up.")
+    if margin_unit not in {"pixels", "percent"}:
+        raise ValueError("margin_unit must be pixels or percent.")
+    margin_value = float(margin_value)
+    if not math.isfinite(margin_value) or margin_value < 0:
+        raise ValueError("margin_value must be a finite number of zero or greater.")
     measured_width = abs(float(right_pt[0]) - float(left_pt[0]))
     measured_height = abs(float(bottom_pt[1]) - float(top_pt[1]))
     if not all(
@@ -35,7 +47,23 @@ def calibrate_crop_size(
         raise ValueError(
             "Boundary points must define positive finite width and height."
         )
-    side = int(math.floor(min(measured_width, measured_height) / increment) * increment)
+    measured_side = min(measured_width, measured_height)
+    if rounding_enabled:
+        units = measured_side / increment
+        if rounding_direction == "down":
+            core_side = math.floor(units) * increment
+        elif rounding_direction == "up":
+            core_side = math.ceil(units) * increment
+        else:
+            core_side = math.floor(units + 0.5) * increment
+    else:
+        core_side = math.floor(measured_side + 0.5)
+    margin_pixels = (
+        margin_value
+        if margin_unit == "pixels"
+        else core_side * margin_value / 100.0
+    )
+    side = round(core_side + 2.0 * margin_pixels)
     if side <= 0:
         raise ValueError("Calculated crop side must be positive.")
     return {
@@ -46,6 +74,13 @@ def calibrate_crop_size(
         "side_pixels": side,
         "is_square": True,
         "rounding_increment": increment,
+        "rounding_enabled": bool(rounding_enabled),
+        "rounding_direction": rounding_direction,
+        "margin_value": margin_value,
+        "margin_unit": margin_unit,
+        "margin_pixels": round(margin_pixels, 4),
+        "core_side_pixels": int(core_side),
+        "source_dimensions": list(source_dimensions) if source_dimensions else None,
         "measured_extents": {
             "measured_width": round(measured_width, 2),
             "measured_height": round(measured_height, 2),
@@ -54,7 +89,7 @@ def calibrate_crop_size(
             "top_y": float(top_pt[1]),
             "bottom_y": float(bottom_pt[1]),
         },
-        "method": "four_boundary_points_floor_increment",
+        "method": "four_boundary_points_configurable_rounding_margin",
     }
 
 
@@ -108,8 +143,9 @@ def place_plate_crop(
     x_anchor, y_anchor = float(left_edge_pt[0]), float(top_edge_pt[1])
     if not math.isfinite(x_anchor) or not math.isfinite(y_anchor):
         raise ValueError("Crop anchors must be finite.")
-    left = round(x_anchor + inset_offset[0])
-    top = round(y_anchor + inset_offset[1])
+    margin = float(calibration.get("margin_pixels", 0.0))
+    left = round(x_anchor + inset_offset[0] - margin)
+    top = round(y_anchor + inset_offset[1] - margin)
     right, bottom = left + side, top + side
     if dimensions and (
         left < 0 or top < 0 or right > dimensions[0] or bottom > dimensions[1]
@@ -153,6 +189,12 @@ def _prepare_output(path: str | Path) -> Path:
     return output
 
 
+def _save_transformed(image: Any, output: Path) -> None:
+    if output.suffix.casefold() == ".png" and image.mode in {"CMYK", "YCbCr"}:
+        image = image.convert("RGB")
+    image.save(output)
+
+
 def apply_plate_crop(
     source_image: str | Path | Any,
     crop_result: dict[str, Any],
@@ -187,14 +229,14 @@ def apply_plate_crop(
             result = transform(image)
             if output_path:
                 output = _prepare_output(output_path)
-                result.save(output)
+                _save_transformed(result, output)
                 return str(output)
             return result
 
     result = transform(source_image)
     if output_path:
         output = _prepare_output(output_path)
-        result.save(output)
+        _save_transformed(result, output)
         return str(output)
     return result
 

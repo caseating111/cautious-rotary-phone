@@ -7,6 +7,7 @@ from tools.project_state import (
     record_crop,
     record_crop_export,
     record_derivative,
+    record_derivative_transition,
     record_grid_asset,
     record_orientation,
     validate_project_state,
@@ -117,6 +118,29 @@ def test_visibility_stales_processed_exports_and_annotation_only(
     assert image["crop_exports"]["Processed"]["status"] == "STALE"
     assert image["annotation"]["status"] == "STALE"
     assert image["annotation"]["stale_reason"] == "visibility changed"
+
+
+def test_visibility_skip_and_review_also_stale_processed_dependents(
+    tmp_path: Path,
+) -> None:
+    for status in ("SKIPPED", "MANUAL_REVIEW"):
+        state = new_project_state(tmp_path / status, model())
+        record_crop_export(
+            state, "I1", "Unprocessed", {"status": "ACCEPTED", "source_kind": "working"}
+        )
+        record_crop_export(
+            state, "I1", "Processed", {"status": "ACCEPTED", "source_kind": "processed"}
+        )
+        record_derivative(state, "I1", "visibility", {"status": "ACCEPTED"})
+        record_derivative(state, "I1", "annotation", {"status": "ACCEPTED"})
+        record_derivative_transition(
+            state, "I1", "visibility", {"status": status}
+        )
+        image = state["images"]["I1"]
+        assert image["visibility"]["status"] == status
+        assert image["annotation"]["status"] == "STALE"
+        assert image["crop_exports"]["Processed"]["status"] == "STALE"
+        assert image["crop_exports"]["Unprocessed"]["status"] == "ACCEPTED"
 
 
 def test_crop_export_requires_accepted_nonempty_tier(tmp_path: Path) -> None:

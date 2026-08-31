@@ -42,6 +42,55 @@ from tools.project_paths import preferred_project_path
 from tools.quick_figure_gui import QuickFigurePanel
 
 
+def next_image_uid(image_uids: list[str], current_uid: str) -> str | None:
+    try:
+        index = image_uids.index(current_uid)
+    except ValueError:
+        return None
+    return image_uids[index + 1] if index + 1 < len(image_uids) else None
+
+
+def next_pending_image_uid(
+    images: dict[str, dict[str, Any]], current_uid: str, stage: str
+) -> str | None:
+    image_uids = list(images)
+    try:
+        start = image_uids.index(current_uid)
+    except ValueError:
+        return None
+    terminal = {
+        "orientation": {"accepted", "skipped"},
+        "crop": {"accepted", "skipped"},
+        "grid": {"accepted", "skipped"},
+        "visibility": {"accepted", "skipped", "manual_review"},
+        "annotation": {"accepted", "skipped"},
+    }.get(stage)
+    if terminal is None:
+        return next_image_uid(image_uids, current_uid)
+    ordered = image_uids[start + 1 :] + image_uids[:start]
+    for uid in ordered:
+        value = images[uid].get(stage)
+        status = str(value.get("status", "")).casefold() if isinstance(value, dict) else ""
+        if status not in terminal:
+            return uid
+    return None
+
+
+def fitted_image_geometry(
+    image_size: tuple[int, int], canvas_size: tuple[int, int]
+) -> tuple[tuple[int, int], tuple[float, float], tuple[float, float]]:
+    image_width, image_height = image_size
+    canvas_width, canvas_height = canvas_size
+    scale = min(canvas_width / image_width, canvas_height / image_height)
+    shown = (
+        max(1, round(image_width * scale)),
+        max(1, round(image_height * scale)),
+    )
+    scales = (shown[0] / image_width, shown[1] / image_height)
+    offset = ((canvas_width - shown[0]) / 2, (canvas_height - shown[1]) / 2)
+    return shown, scales, offset
+
+
 class ImageCanvas(ttk.Frame):
     """Fit-to-window image display with image-coordinate click/drag mapping."""
 
@@ -59,6 +108,8 @@ class ImageCanvas(ttk.Frame):
         self.image: Image.Image | None = None
         self.photo: ImageTk.PhotoImage | None = None
         self.scale = 1.0
+        self.scale_x = 1.0
+        self.scale_y = 1.0
         self.offset = (0.0, 0.0)
         self.click_handler: Callable[[tuple[float, float]], None] | None = None
         self.drag_handler: (
@@ -89,8 +140,8 @@ class ImageCanvas(ttk.Frame):
     def canvas_to_image(self, x: float, y: float) -> tuple[float, float] | None:
         if self.image is None:
             return None
-        px = (x - self.offset[0]) / self.scale
-        py = (y - self.offset[1]) / self.scale
+        px = (x - self.offset[0]) / self.scale_x
+        py = (y - self.offset[1]) / self.scale_y
         if 0 <= px < self.image.width and 0 <= py < self.image.height:
             return px, py
         return None
@@ -98,8 +149,8 @@ class ImageCanvas(ttk.Frame):
     def draw_points(self, points: list[tuple[float, float]]) -> None:
         self.clear_overlays()
         for index, (x, y) in enumerate(points, start=1):
-            cx = self.offset[0] + x * self.scale
-            cy = self.offset[1] + y * self.scale
+            cx = self.offset[0] + x * self.scale_x
+            cy = self.offset[1] + y * self.scale_y
             radius = 5
             self.canvas.create_oval(
                 cx - radius,
@@ -122,20 +173,20 @@ class ImageCanvas(ttk.Frame):
     def draw_line(self, start: tuple[float, float], end: tuple[float, float]) -> None:
         self.clear_overlays()
         coords = [
-            self.offset[0] + start[0] * self.scale,
-            self.offset[1] + start[1] * self.scale,
-            self.offset[0] + end[0] * self.scale,
-            self.offset[1] + end[1] * self.scale,
+            self.offset[0] + start[0] * self.scale_x,
+            self.offset[1] + start[1] * self.scale_y,
+            self.offset[0] + end[0] * self.scale_x,
+            self.offset[1] + end[1] * self.scale_y,
         ]
         self.canvas.create_line(*coords, fill="#00ffff", width=3, tags="overlay")
 
     def draw_box(self, box: dict[str, Any]) -> None:
         self.clear_overlays()
         self.canvas.create_rectangle(
-            self.offset[0] + box["left"] * self.scale,
-            self.offset[1] + box["top"] * self.scale,
-            self.offset[0] + box["right"] * self.scale,
-            self.offset[1] + box["bottom"] * self.scale,
+            self.offset[0] + box["left"] * self.scale_x,
+            self.offset[1] + box["top"] * self.scale_y,
+            self.offset[0] + box["right"] * self.scale_x,
+            self.offset[1] + box["bottom"] * self.scale_y,
             outline="#00ffff",
             width=3,
             tags="overlay",
@@ -153,16 +204,16 @@ class ImageCanvas(ttk.Frame):
             return
         width = max(self.canvas.winfo_width(), 100)
         height = max(self.canvas.winfo_height(), 100)
-        self.scale = min(width / self.image.width, height / self.image.height)
+        shown_size, scales, self.offset = fitted_image_geometry(
+            self.image.size, (width, height)
+        )
+        self.scale_x, self.scale_y = scales
+        self.scale = min(scales)
         shown = self.image.resize(
-            (
-                max(1, round(self.image.width * self.scale)),
-                max(1, round(self.image.height * self.scale)),
-            ),
+            shown_size,
             Image.Resampling.LANCZOS,
         )
         self.photo = ImageTk.PhotoImage(shown)
-        self.offset = ((width - shown.width) / 2, (height - shown.height) / 2)
         self.canvas.create_image(*self.offset, image=self.photo, anchor="nw")
 
     def _press(self, event: tk.Event) -> None:
@@ -191,11 +242,20 @@ class WorkflowApp(tk.Tk):
         self.image_uid = tk.StringVar()
         self.status = tk.StringVar(value="Create or open a V10 project state.")
         self.orientation_proposal: dict[str, Any] | None = None
+        orientation_settings = load_last("orientation", {}) or {}
+        self.orientation_input_mode = tk.StringVar(
+            value=str(orientation_settings.get("input_mode", "line"))
+        )
+        self.orientation_auto_preview = tk.BooleanVar(
+            value=bool(orientation_settings.get("auto_preview", True))
+        )
+        self.orientation_points: list[tuple[float, float]] = []
         self.calibration_points: list[tuple[float, float]] = []
         self.calibration_proposal: dict[str, Any] | None = None
         self.crop_points: list[tuple[float, float]] = []
         self.crop_proposal: dict[str, Any] | None = None
         self.crop_previewed = False
+        self.calibration_source_dimensions: tuple[int, int] | None = None
         self.raw_root_var = tk.StringVar()
         setup_settings = load_last("project_setup", {}) or {}
         self.enable_rename = tk.BooleanVar(value=bool(setup_settings.get("enable_rename", True)))
@@ -203,7 +263,29 @@ class WorkflowApp(tk.Tk):
         self.filename_date_style = tk.StringVar(value=str(setup_settings.get("filename_date_style", "yyyy.mm.dd")))
         self.rename_folder_date = tk.BooleanVar(value=bool(setup_settings.get("rename_folder_date", False)))
         self.auto_move_working = tk.BooleanVar(value=bool(setup_settings.get("auto_move_working", True)))
+        self.auto_advance_images = tk.BooleanVar(
+            value=bool(setup_settings.get("auto_advance_images", True))
+        )
         self.csv_mode = tk.StringVar(value=str(setup_settings.get("csv_mode", "refreshable")))
+        plate_crop_settings = load_last("plate_crop", {}) or {}
+        self.crop_rounding_enabled = tk.BooleanVar(
+            value=bool(plate_crop_settings.get("rounding_enabled", True))
+        )
+        self.crop_rounding_increment = tk.StringVar(
+            value=str(plate_crop_settings.get("rounding_increment", 50))
+        )
+        self.crop_rounding_direction = tk.StringVar(
+            value=str(plate_crop_settings.get("rounding_direction", "down"))
+        )
+        self.crop_margin_value = tk.StringVar(
+            value=str(plate_crop_settings.get("margin_value", 0))
+        )
+        self.crop_margin_unit = tk.StringVar(
+            value=str(plate_crop_settings.get("margin_unit", "pixels"))
+        )
+        self.crop_auto_preview = tk.BooleanVar(
+            value=bool(plate_crop_settings.get("auto_preview", True))
+        )
         self.setup_preview: dict[str, Any] | None = None
         self.setup_signature: tuple[str, bool, str] | None = None
         culture_settings = load_last("culture_crop", {}) or {}
@@ -252,6 +334,7 @@ class WorkflowApp(tk.Tk):
         self.bind("<Alt-o>", lambda _event: self.start_orientation())
         self.bind("<Alt-c>", lambda _event: self.start_crop_placement())
         self.bind("<Alt-b>", lambda _event: self.refresh_batch_images())
+        self.bind("<KeyPress>", self._letter_hotkey)
 
     def _build(self) -> None:
         top = ttk.Frame(self)
@@ -268,6 +351,10 @@ class WorkflowApp(tk.Tk):
         ttk.Button(top, text="Open project…", command=self.open_project).pack(
             side="left", padx=(6, 0)
         )
+        self.hotkey_help_button = ttk.Button(
+            top, text="Hotkeys ▸", command=self._toggle_hotkey_help
+        )
+        self.hotkey_help_button.pack(side="right")
         ttk.Label(top, text="Image UID").pack(side="left", padx=(18, 5))
         self.image_picker = ttk.Combobox(
             top, textvariable=self.image_uid, state="readonly", width=34
@@ -275,7 +362,26 @@ class WorkflowApp(tk.Tk):
         self.image_picker.pack(side="left")
         self.image_picker.bind("<<ComboboxSelected>>", self.load_selected_source)
 
+        self.hotkey_help_frame = ttk.LabelFrame(self, text="Keyboard shortcuts")
+        ttk.Label(
+            self.hotkey_help_frame,
+            text=(
+                "Common stage keys: X start/retry · V preview · Z accept/export · C skip/next. "
+                "Orientation: A line/two-point. Plate crop: A recalibrate · S accept size. "
+                "Grid: X find+attach · V preview matches · Z attach one. Culture: X/V preview · Z export. "
+                "Visibility: A flag. Annotation: A styles. Matrix: X refresh.\n"
+                "Quick Figures: X align · V preview annotation · Z save annotation · C export wells · "
+                "A accept QC · F flag QC · Q whole crop · W grid · E/R rotate. "
+                "Batch: X refresh · A select all · Q/W orientation/crop queues · E/R/F plan "
+                "culture/visibility/annotation · V preview setup · Z accept plan · S apply setup · G grids. "
+                "Shortcuts are ignored while typing in a field."
+            ),
+            wraplength=1040,
+            justify="left",
+        ).pack(fill="x", padx=8, pady=5)
+
         body = ttk.Panedwindow(self, orient="horizontal")
+        self.body = body
         body.pack(fill="both", expand=True, padx=8)
         controls = ttk.Frame(body, width=390)
         body.add(controls, weight=0)
@@ -283,6 +389,7 @@ class WorkflowApp(tk.Tk):
         body.add(self.viewer, weight=1)
 
         notebook = ttk.Notebook(controls)
+        self.notebook = notebook
         notebook.pack(fill="both", expand=True)
         setup = ttk.Frame(notebook)
         orientation = ttk.Frame(notebook)
@@ -345,6 +452,11 @@ class WorkflowApp(tk.Tk):
         ttk.Checkbutton(
             setup, text="Move Working beneath Cropped when complete", variable=self.auto_move_working
         ).pack(anchor="w", padx=8, pady=3)
+        ttk.Checkbutton(
+            setup,
+            text="Automatically advance to the next image",
+            variable=self.auto_advance_images,
+        ).pack(anchor="w", padx=8, pady=3)
         setup_actions = ttk.Frame(setup)
         setup_actions.pack(fill="x", padx=8, pady=3)
         ttk.Button(
@@ -382,20 +494,39 @@ class WorkflowApp(tk.Tk):
         self.setup_tree.pack(fill="both", expand=True, padx=8, pady=(5, 8))
         ttk.Label(
             orientation,
-            text="Drag one line along a top or bottom plate edge, preview, then accept.",
+            text="Mark two locations that should form a horizontal plate edge, preview, then accept.",
             wraplength=245,
         ).pack(anchor="w", padx=8, pady=8)
+        orientation_mode = ttk.Frame(orientation)
+        orientation_mode.pack(fill="x", padx=8, pady=3)
+        ttk.Radiobutton(
+            orientation_mode,
+            text="Drag line",
+            variable=self.orientation_input_mode,
+            value="line",
+        ).pack(side="left")
+        ttk.Radiobutton(
+            orientation_mode,
+            text="Click two points",
+            variable=self.orientation_input_mode,
+            value="two_points",
+        ).pack(side="left", padx=(8, 0))
+        ttk.Checkbutton(
+            orientation,
+            text="Automatically preview after input",
+            variable=self.orientation_auto_preview,
+        ).pack(anchor="w", padx=8, pady=3)
         ttk.Button(
-            orientation, text="Start / retry line", command=self.start_orientation
+            orientation, text="Start / retry (X)", command=self.start_orientation
         ).pack(fill="x", padx=8, pady=3)
         ttk.Button(
-            orientation, text="Preview correction", command=self.preview_orientation
+            orientation, text="Preview correction (V)", command=self.preview_orientation
         ).pack(fill="x", padx=8, pady=3)
         ttk.Button(
-            orientation, text="Accept orientation", command=self.accept_orientation
+            orientation, text="Accept orientation (Z)", command=self.accept_orientation
         ).pack(fill="x", padx=8, pady=3)
         ttk.Button(
-            orientation, text="Skip orientation", command=self.skip_orientation
+            orientation, text="Skip orientation (C)", command=self.skip_orientation
         ).pack(fill="x", padx=8, pady=3)
 
         ttk.Label(
@@ -407,27 +538,66 @@ class WorkflowApp(tk.Tk):
             wraplength=245,
         ).pack(anchor="w", padx=8, pady=8)
         ttk.Button(
-            crop, text="Recalibrate size (4 clicks)", command=self.start_calibration
+            crop, text="Recalibrate size (4 clicks, A)", command=self.start_calibration
         ).pack(fill="x", padx=8, pady=3)
+        crop_size_options = ttk.LabelFrame(crop, text="Reusable size rule")
+        crop_size_options.pack(fill="x", padx=8, pady=3)
+        ttk.Checkbutton(
+            crop_size_options,
+            text="Round measured size",
+            variable=self.crop_rounding_enabled,
+        ).grid(row=0, column=0, columnspan=2, sticky="w", padx=4, pady=2)
+        ttk.Label(crop_size_options, text="Increment").grid(
+            row=1, column=0, sticky="w", padx=4, pady=2
+        )
+        ttk.Entry(
+            crop_size_options, textvariable=self.crop_rounding_increment, width=8
+        ).grid(row=1, column=1, sticky="ew", padx=4, pady=2)
+        ttk.Combobox(
+            crop_size_options,
+            textvariable=self.crop_rounding_direction,
+            state="readonly",
+            values=("down", "nearest", "up"),
+            width=10,
+        ).grid(row=1, column=2, sticky="ew", padx=4, pady=2)
+        ttk.Label(crop_size_options, text="Margin / side").grid(
+            row=2, column=0, sticky="w", padx=4, pady=2
+        )
+        ttk.Entry(
+            crop_size_options, textvariable=self.crop_margin_value, width=8
+        ).grid(row=2, column=1, sticky="ew", padx=4, pady=2)
+        ttk.Combobox(
+            crop_size_options,
+            textvariable=self.crop_margin_unit,
+            state="readonly",
+            values=("pixels", "percent"),
+            width=10,
+        ).grid(row=2, column=2, sticky="ew", padx=4, pady=2)
+        crop_size_options.columnconfigure(1, weight=1)
+        ttk.Checkbutton(
+            crop,
+            text="Automatically preview after crop placement",
+            variable=self.crop_auto_preview,
+        ).pack(anchor="w", padx=8, pady=3)
         self.calibration_label = ttk.Label(crop, text="No accepted calibration")
         self.calibration_label.pack(anchor="w", padx=8, pady=3)
         ttk.Button(
-            crop, text="Accept size calibration", command=self.accept_calibration
+            crop, text="Accept size calibration (S)", command=self.accept_calibration
         ).pack(fill="x", padx=8, pady=3)
         ttk.Separator(crop).pack(fill="x", padx=8, pady=8)
         ttk.Button(
-            crop, text="Place crop (left, top)", command=self.start_crop_placement
+            crop, text="Place / retry crop (X)", command=self.start_crop_placement
         ).pack(fill="x", padx=8, pady=3)
-        ttk.Button(crop, text="Preview crop", command=self.preview_crop).pack(
+        ttk.Button(crop, text="Preview crop (V)", command=self.preview_crop).pack(
             fill="x", padx=8, pady=3
         )
-        ttk.Button(crop, text="Accept crop", command=self.accept_crop).pack(
+        ttk.Button(crop, text="Accept crop (Z)", command=self.accept_crop).pack(
             fill="x", padx=8, pady=3
         )
         ttk.Button(
             crop, text="Retry placement", command=self.start_crop_placement
         ).pack(fill="x", padx=8, pady=3)
-        ttk.Button(crop, text="Skip crop", command=self.skip_crop).pack(
+        ttk.Button(crop, text="Skip crop (C)", command=self.skip_crop).pack(
             fill="x", padx=8, pady=3
         )
 
@@ -439,10 +609,16 @@ class WorkflowApp(tk.Tk):
             ),
             wraplength=245,
         ).pack(anchor="w", padx=8, pady=8)
-        ttk.Button(grid, text="Attach grid asset…", command=self.attach_grid).pack(
+        ttk.Button(grid, text="Attach grid asset… (Z)", command=self.attach_grid).pack(
             fill="x", padx=8, pady=3
         )
-        ttk.Button(grid, text="Find and attach project grids", command=self.auto_attach_grids).pack(
+        ttk.Button(grid, text="Find and attach project grids (X)", command=self.auto_attach_grids).pack(
+            fill="x", padx=8, pady=3
+        )
+        ttk.Button(grid, text="Preview grid matches (V)", command=self.preview_grid_discovery).pack(
+            fill="x", padx=8, pady=3
+        )
+        ttk.Button(grid, text="Skip to next image (C)", command=self.skip_current_grid).pack(
             fill="x", padx=8, pady=3
         )
         self.grid_label = ttk.Label(grid, text="No current grid asset", wraplength=245)
@@ -506,14 +682,19 @@ class WorkflowApp(tk.Tk):
         crop_actions.pack(fill="x", padx=8, pady=5)
         ttk.Button(
             crop_actions,
-            text="Preview plan",
+            text="Preview plan (X or V)",
             command=self.preview_culture_crop_export,
         ).pack(side="left", fill="x", expand=True)
         ttk.Button(
             crop_actions,
-            text="Export",
+            text="Export (Z)",
             command=self.accept_culture_crop_export,
         ).pack(side="left", fill="x", expand=True, padx=(5, 0))
+        ttk.Button(
+            culture_crops,
+            text="Skip to next image (C)",
+            command=self.skip_culture_crop_export,
+        ).pack(fill="x", padx=8, pady=(0, 3))
         self.crop_export_tree = ttk.Treeview(
             culture_crops,
             columns=("state", "column", "strain", "rectangle"),
@@ -544,15 +725,18 @@ class WorkflowApp(tk.Tk):
             values=("background_aware_linear", "gamma_boost"),
         ).pack(fill="x", padx=8, pady=3)
         ttk.Button(
-            visibility, text="Preview adjustment", command=self.preview_visibility
+            visibility, text="Start / retry preview (X or V)", command=self.preview_visibility
         ).pack(fill="x", padx=8, pady=3)
         ttk.Button(
             visibility,
-            text="Accept processed derivative",
+            text="Accept processed derivative (Z)",
             command=self.accept_visibility,
         ).pack(fill="x", padx=8, pady=3)
         ttk.Button(
-            visibility, text="Flag for manual review", command=self.flag_visibility
+            visibility, text="Flag for manual review (A)", command=self.flag_visibility
+        ).pack(fill="x", padx=8, pady=3)
+        ttk.Button(
+            visibility, text="Skip visibility (C)", command=self.skip_visibility
         ).pack(fill="x", padx=8, pady=3)
         ttk.Button(
             visibility, text="Return to source", command=self.load_selected_source
@@ -598,14 +782,17 @@ class WorkflowApp(tk.Tk):
         source_group.pack(fill="x", padx=8, pady=(6, 3))
         for label in ("Automatic", "Processed", "Cropped", "Working"):
             ttk.Radiobutton(source_group, text=label, value=label, variable=self.annotation_source).pack(side="left")
-        ttk.Button(annotation, text="Advanced styles / presets…", command=self.open_annotation_settings).pack(fill="x", padx=8, pady=(8, 3))
+        ttk.Button(annotation, text="Advanced styles / presets… (A)", command=self.open_annotation_settings).pack(fill="x", padx=8, pady=(8, 3))
         ttk.Button(
-            annotation, text="Preview annotation", command=self.preview_annotation
+            annotation, text="Start / retry preview (X or V)", command=self.preview_annotation
         ).pack(fill="x", padx=8, pady=3)
         ttk.Button(
             annotation,
-            text="Accept annotated derivative",
+            text="Accept annotated derivative (Z)",
             command=self.accept_annotation,
+        ).pack(fill="x", padx=8, pady=3)
+        ttk.Button(
+            annotation, text="Skip annotation (C)", command=self.skip_annotation
         ).pack(fill="x", padx=8, pady=3)
         ttk.Button(
             annotation, text="Return to source", command=self.load_selected_source
@@ -646,17 +833,17 @@ class WorkflowApp(tk.Tk):
         matrix_actions.pack(fill="x", padx=8, pady=5)
         ttk.Button(
             matrix_actions,
-            text="Refresh crops",
+            text="Refresh crops (X)",
             command=self.refresh_mixed_matrix_candidates,
         ).pack(side="left", fill="x", expand=True)
         ttk.Button(
             matrix_actions,
-            text="Preview selected",
+            text="Preview selected (V)",
             command=self.preview_mixed_tier_matrix,
         ).pack(side="left", fill="x", expand=True, padx=(5, 0))
         ttk.Button(
             mixed_matrix,
-            text="Export previewed matrix",
+            text="Export previewed matrix (Z)",
             command=self.accept_mixed_tier_matrix,
         ).pack(fill="x", padx=8, pady=(0, 5))
         self.matrix_tree = ttk.Treeview(
@@ -720,6 +907,132 @@ class WorkflowApp(tk.Tk):
             self.status.set(str(exc))
             return None
 
+    def _toggle_hotkey_help(self) -> None:
+        if self.hotkey_help_frame.winfo_manager():
+            self.hotkey_help_frame.pack_forget()
+            self.hotkey_help_button.configure(text="Hotkeys ▸")
+            return
+        self.hotkey_help_frame.pack(
+            fill="x", padx=8, pady=(0, 4), before=self.body
+        )
+        self.hotkey_help_button.configure(text="Hotkeys ▾")
+
+    def _letter_hotkey(self, event: tk.Event) -> str | None:
+        if event.widget.winfo_toplevel() is not self:
+            return None
+        if int(getattr(event, "state", 0)) & 0x000C:
+            return None
+        key = str(getattr(event, "keysym", "")).casefold()
+        if key not in {"a", "c", "e", "f", "g", "q", "r", "s", "v", "w", "x", "z"}:
+            return None
+        focus = self.focus_get()
+        if focus is not None and focus.winfo_class() in {
+            "Entry",
+            "TEntry",
+            "Text",
+            "Spinbox",
+            "TSpinbox",
+            "TCombobox",
+        }:
+            return None
+        tab = str(self.notebook.tab(self.notebook.select(), "text"))
+        if self._stage_hotkey(tab, key):
+            return "break"
+        return None
+
+    def _stage_hotkey(self, tab: str, key: str) -> bool:
+        common: dict[str, dict[str, Callable[[], Any]]] = {
+            "Setup": {
+                "x": self.preview_project_setup,
+                "v": self.preview_project_setup,
+                "z": self.apply_project_setup,
+            },
+            "Orientation": {
+                "x": self.start_orientation,
+                "v": self.preview_orientation,
+                "z": self.accept_orientation,
+                "c": self.skip_orientation,
+                "a": self._toggle_orientation_mode,
+            },
+            "Plate crop": {
+                "x": self.start_crop_placement,
+                "v": self.preview_crop,
+                "z": self.accept_crop,
+                "c": self.skip_crop,
+                "a": self.start_calibration,
+                "s": self.accept_calibration,
+            },
+            "Grid asset": {
+                "x": self.auto_attach_grids,
+                "v": self.preview_grid_discovery,
+                "z": self.attach_grid,
+                "c": self.skip_current_grid,
+            },
+            "Culture crops": {
+                "x": self.preview_culture_crop_export,
+                "v": self.preview_culture_crop_export,
+                "z": self.accept_culture_crop_export,
+                "c": self.skip_culture_crop_export,
+            },
+            "Visibility": {
+                "x": self.preview_visibility,
+                "v": self.preview_visibility,
+                "z": self.accept_visibility,
+                "c": self.skip_visibility,
+                "a": self.flag_visibility,
+            },
+            "Annotation": {
+                "x": self.preview_annotation,
+                "v": self.preview_annotation,
+                "z": self.accept_annotation,
+                "c": self.skip_annotation,
+                "a": self.open_annotation_settings,
+            },
+            "Mixed matrix": {
+                "x": self.refresh_mixed_matrix_candidates,
+                "v": self.preview_mixed_tier_matrix,
+                "z": self.accept_mixed_tier_matrix,
+            },
+            "Quick Figures": {
+                "x": self.quick_figure_panel.start_alignment,
+                "v": self.quick_figure_panel.preview_annotation,
+                "z": self.quick_figure_panel.save_annotation,
+                "c": self.quick_figure_panel.export_cultures,
+                "a": lambda: self.quick_figure_panel.set_qc(True),
+                "f": lambda: self.quick_figure_panel.set_qc(False),
+                "q": self.quick_figure_panel.start_whole_crop,
+                "w": self.quick_figure_panel.start_grid,
+                "e": lambda: self.quick_figure_panel.orient("rotate_90_ccw"),
+                "r": lambda: self.quick_figure_panel.orient("rotate_90_cw"),
+            },
+            "Batch": {
+                "x": self.refresh_batch_images,
+                "a": self.select_all_batch_images,
+                "q": lambda: self.start_manual_batch("orientation"),
+                "w": lambda: self.start_manual_batch("crop"),
+                "e": lambda: self.plan_selected_batch("culture"),
+                "r": lambda: self.plan_selected_batch("visibility"),
+                "f": lambda: self.plan_selected_batch("annotation"),
+                "v": self.preview_project_setup,
+                "z": self.accept_batch_plan,
+                "s": self.apply_project_setup,
+                "g": self.batch_attach_grids,
+            },
+        }
+        action = common.get(tab, {}).get(key)
+        if action is None:
+            return False
+        self._run(action)
+        return True
+
+    def _toggle_orientation_mode(self) -> None:
+        self.orientation_input_mode.set(
+            "two_points"
+            if self.orientation_input_mode.get() == "line"
+            else "line"
+        )
+        self.start_orientation()
+
     def create_project(self) -> None:
         workbook = filedialog.askopenfilename(
             title="Select V10 workbook",
@@ -741,6 +1054,7 @@ class WorkflowApp(tk.Tk):
             "filename_date_style": self.filename_date_style.get(),
             "rename_folder_date": self.rename_folder_date.get(),
             "auto_move_working": self.auto_move_working.get(),
+            "auto_advance_images": self.auto_advance_images.get(),
             "csv_mode": self.csv_mode.get(),
         }
 
@@ -942,6 +1256,13 @@ class WorkflowApp(tk.Tk):
             self.filename_date_style.set(str(project_settings.get("filename_date_style", self.filename_date_style.get())))
             self.rename_folder_date.set(bool(project_settings.get("rename_folder_date", self.rename_folder_date.get())))
             self.auto_move_working.set(bool(project_settings.get("auto_move_working", self.auto_move_working.get())))
+            self.auto_advance_images.set(
+                bool(
+                    project_settings.get(
+                        "auto_advance_images", self.auto_advance_images.get()
+                    )
+                )
+            )
             self.csv_mode.set(str(project_settings.get("csv_mode", self.csv_mode.get())))
         self.raw_root_var.set(str(preferred_project_path(workflow.project_root, "raw")))
         self._run(workflow.auto_attach_grids)
@@ -1144,13 +1465,29 @@ class WorkflowApp(tk.Tk):
             messagebox.showinfo("V10 comparison", f"Current exported CSVs versus V10: {result['status']}", parent=self)
 
     def auto_attach_grids(self) -> None:
-        workflow, _uid = self._selected()
+        selected = self._run(self._selected)
+        if not selected:
+            return
+        workflow, _uid = selected
         result = self._run(workflow.auto_attach_grids)
         if result is not None:
             self._refresh_asset_labels()
             self.status.set(
                 f"Grid search: {len(result['attached'])} attached, "
                 f"{len(result['ambiguous'])} ambiguous, {len(result['missing'])} not found."
+            )
+
+    def preview_grid_discovery(self) -> None:
+        selected = self._run(self._selected)
+        if not selected:
+            return
+        workflow, _uid = selected
+        result = self._run(workflow.preview_grid_discovery)
+        if result is not None:
+            self.status.set(
+                f"Grid preview only: {len(result['unique'])} unique, "
+                f"{len(result['ambiguous'])} ambiguous, {len(result['missing'])} missing; "
+                "project state is unchanged."
             )
 
     def start_orientation(self) -> None:
@@ -1160,14 +1497,42 @@ class WorkflowApp(tk.Tk):
             with Image.open(source) as image:
                 self.viewer.show(image)
             self.orientation_proposal = None
-            self.viewer.set_handlers(drag=self._orientation_dragged)
-            self.status.set(
-                "Drag a line from left to right along a horizontal plate edge."
-            )
+            self.orientation_points = []
+            settings = {
+                "input_mode": self.orientation_input_mode.get(),
+                "auto_preview": self.orientation_auto_preview.get(),
+            }
+            save_last("orientation", settings)
+            if self.orientation_input_mode.get() == "two_points":
+                self.viewer.set_handlers(click=self._orientation_point_clicked)
+                self.status.set(
+                    "Click the first point, then the second point on the edge that should be horizontal."
+                )
+            else:
+                self.viewer.set_handlers(drag=self._orientation_dragged)
+                self.status.set(
+                    "Drag a line from left to right along the edge that should be horizontal."
+                )
 
         self._run(action)
 
     def _orientation_dragged(
+        self, start: tuple[float, float], end: tuple[float, float]
+    ) -> None:
+        self._propose_orientation_points(start, end)
+
+    def _orientation_point_clicked(self, point: tuple[float, float]) -> None:
+        self.orientation_points.append(point)
+        self.viewer.draw_points(self.orientation_points)
+        if len(self.orientation_points) == 1:
+            self.status.set("First alignment point recorded; click the second point.")
+            return
+        self.viewer.set_handlers()
+        self._propose_orientation_points(
+            self.orientation_points[0], self.orientation_points[1]
+        )
+
+    def _propose_orientation_points(
         self, start: tuple[float, float], end: tuple[float, float]
     ) -> None:
         workflow, uid = self._selected()
@@ -1175,10 +1540,15 @@ class WorkflowApp(tk.Tk):
         if result:
             self.orientation_proposal, _preview = result
             line = self.orientation_proposal["diagnostics"]["line"]
-            self.viewer.draw_line((line["x1"], line["y1"]), (line["x2"], line["y2"]))
+            if self.orientation_input_mode.get() == "line":
+                self.viewer.draw_line(
+                    (line["x1"], line["y1"]), (line["x2"], line["y2"])
+                )
             self.status.set(
                 f"Proposed correction: {self.orientation_proposal['angle_degrees']:.4f}°. Preview before accepting."
             )
+            if self.orientation_auto_preview.get():
+                self.preview_orientation()
 
     def preview_orientation(self) -> None:
         if self.orientation_proposal is None:
@@ -1213,8 +1583,7 @@ class WorkflowApp(tk.Tk):
             _accepted, output = result
             self.status.set(f"Accepted orientation: {output}")
             self.orientation_proposal = None
-            self.load_selected_source()
-            self._advance_manual_batch(uid)
+            self._advance_after_stage(uid, "orientation")
 
     def skip_orientation(self) -> None:
         workflow, uid = self._selected()
@@ -1226,8 +1595,8 @@ class WorkflowApp(tk.Tk):
                 self.status.set(
                     "Orientation skipped; downstream routes remain available."
                 )
-                self.load_selected_source()
-                self._advance_manual_batch(uid)
+                self.orientation_proposal = None
+                self._advance_after_stage(uid, "orientation")
 
     def start_calibration(self) -> None:
         def action() -> None:
@@ -1235,6 +1604,7 @@ class WorkflowApp(tk.Tk):
             source = workflow.source_for(uid, include_crop=False)
             with Image.open(source) as image:
                 self.viewer.show(image)
+                self.calibration_source_dimensions = image.size
             self.calibration_points = []
             self.calibration_proposal = None
             self.viewer.set_handlers(click=self._calibration_clicked)
@@ -1254,12 +1624,25 @@ class WorkflowApp(tk.Tk):
             )
             return
         self.viewer.set_handlers()
+        options = self._crop_calibration_options()
         self.calibration_proposal = self._run(
-            lambda: calibrate_crop_size(*self.calibration_points)
+            lambda: calibrate_crop_size(
+                *self.calibration_points,
+                **options,
+                source_dimensions=self.calibration_source_dimensions,
+            )
         )
         if self.calibration_proposal:
             side = self.calibration_proposal["side_pixels"]
-            self.calibration_label.configure(text=f"Proposed size: {side} × {side} px")
+            measured = self.calibration_proposal["measured_extents"]
+            source = self.calibration_source_dimensions or ("?", "?")
+            self.calibration_label.configure(
+                text=(
+                    f"Source {source[0]}×{source[1]} px; measured "
+                    f"{measured['measured_width']:.0f}×{measured['measured_height']:.0f}; "
+                    f"proposed {side}×{side} px"
+                )
+            )
             self.status.set(
                 "Review the proposed reusable size, then accept or recalibrate."
             )
@@ -1276,9 +1659,13 @@ class WorkflowApp(tk.Tk):
         if not calibration_id:
             return
         workflow, _uid = self._selected()
+        options = self._crop_calibration_options()
         result = self._run(
             lambda: workflow.accept_crop_calibration(
-                *self.calibration_points, calibration_id=calibration_id
+                *self.calibration_points,
+                calibration_id=calibration_id,
+                **options,
+                source_dimensions=self.calibration_source_dimensions,
             )
         )
         if result:
@@ -1289,6 +1676,30 @@ class WorkflowApp(tk.Tk):
                 "Crop size accepted and reusable; placement remains per image."
             )
 
+    def _crop_calibration_options(self) -> dict[str, Any]:
+        increment = int(self.crop_rounding_increment.get())
+        margin = float(self.crop_margin_value.get())
+        if increment < 1:
+            raise ValueError("Crop rounding increment must be a positive integer.")
+        if margin < 0:
+            raise ValueError("Crop margin cannot be negative.")
+        options = {
+            "rounding_enabled": self.crop_rounding_enabled.get(),
+            "increment": increment,
+            "rounding_direction": self.crop_rounding_direction.get(),
+            "margin_value": margin,
+            "margin_unit": self.crop_margin_unit.get(),
+        }
+        save_last(
+            "plate_crop",
+            {
+                **options,
+                "rounding_increment": increment,
+                "auto_preview": self.crop_auto_preview.get(),
+            },
+        )
+        return options
+
     def _current_calibration_id(self) -> str:
         workflow, _uid = self._selected()
         if not workflow.state["crop_calibrations"]:
@@ -1296,6 +1707,10 @@ class WorkflowApp(tk.Tk):
         return next(reversed(workflow.state["crop_calibrations"]))
 
     def start_crop_placement(self) -> None:
+        settings = load_last("plate_crop", {}) or {}
+        settings["auto_preview"] = self.crop_auto_preview.get()
+        save_last("plate_crop", settings)
+
         def action() -> None:
             workflow, uid = self._selected()
             self._current_calibration_id()
@@ -1330,6 +1745,8 @@ class WorkflowApp(tk.Tk):
             self.status.set(
                 "Crop overlay proposed. Preview the cropped image before accepting."
             )
+            if self.crop_auto_preview.get():
+                self.preview_crop()
 
     def preview_crop(self) -> None:
         if self.crop_proposal is None:
@@ -1364,8 +1781,7 @@ class WorkflowApp(tk.Tk):
             _accepted, output = result
             self.status.set(f"Accepted plate crop: {output}")
             self.crop_proposal = None
-            self.load_selected_source()
-            self._advance_manual_batch(uid)
+            self._advance_after_stage(uid, "crop")
 
     def skip_crop(self) -> None:
         workflow, uid = self._selected()
@@ -1375,8 +1791,7 @@ class WorkflowApp(tk.Tk):
             self.status.set(
                 "Plate crop skipped; the existing four-point route remains available."
             )
-            self.load_selected_source()
-            self._advance_manual_batch(uid)
+            self._advance_after_stage(uid, "crop")
 
     def attach_grid(self) -> None:
         path = filedialog.askopenfilename(
@@ -1392,6 +1807,17 @@ class WorkflowApp(tk.Tk):
             self.status.set(
                 f"Attached {asset['asset_id']} with {len(asset['spots'])} reusable spot coordinates."
             )
+            self._advance_after_stage(uid, "grid")
+
+    def skip_current_grid(self) -> None:
+        selected = self._run(self._selected)
+        if not selected:
+            return
+        workflow, uid = selected
+        result = self._run(lambda: workflow.skip_grid(uid))
+        if result:
+            self.status.set("Grid attachment skipped for this image.")
+            self._advance_after_stage(uid, "grid")
 
     @staticmethod
     def _parse_crop_columns(text: str) -> tuple[int, ...] | None:
@@ -1570,6 +1996,17 @@ class WorkflowApp(tk.Tk):
                 f"Accepted {len(result['crops'])} {result['tier']} crops: "
                 f"{result['output_directory']}"
             )
+            self._advance_after_stage(signature[0], "culture")
+
+    def skip_culture_crop_export(self) -> None:
+        selected = self._run(self._selected)
+        if not selected:
+            return
+        _workflow, uid = selected
+        self.crop_export_plan = None
+        self.crop_export_signature = None
+        self.status.set("Culture-crop export skipped for this pass.")
+        self._advance_after_stage(uid, "culture")
 
     def preview_visibility(self) -> None:
         workflow, uid = self._selected()
@@ -1601,7 +2038,7 @@ class WorkflowApp(tk.Tk):
             self.status.set(
                 f"Accepted visibility derivative: {output}\nRecord: {sidecar}"
             )
-            self.load_selected_source()
+            self._advance_after_stage(uid, "visibility")
 
     def flag_visibility(self) -> None:
         if self.visibility_proposal is None:
@@ -1623,7 +2060,18 @@ class WorkflowApp(tk.Tk):
         if result:
             self.visibility_proposal = None
             self.status.set("Visibility flagged in project state for manual review.")
-            self.load_selected_source()
+            self._advance_after_stage(uid, "visibility")
+
+    def skip_visibility(self) -> None:
+        selected = self._run(self._selected)
+        if not selected:
+            return
+        workflow, uid = selected
+        result = self._run(lambda: workflow.skip_derivative(uid, "visibility"))
+        if result:
+            self.visibility_proposal = None
+            self.status.set("Visibility skipped for this image.")
+            self._advance_after_stage(uid, "visibility")
 
     def _annotation_request(self) -> dict[str, Any]:
         workflow, uid = self._selected()
@@ -1721,6 +2169,18 @@ class WorkflowApp(tk.Tk):
             self.status.set(
                 f"Accepted annotated derivative: {output}\nRecord: {sidecar}"
             )
+            self._advance_after_stage(uid, "annotation")
+
+    def skip_annotation(self) -> None:
+        selected = self._run(self._selected)
+        if not selected:
+            return
+        workflow, uid = selected
+        result = self._run(lambda: workflow.skip_derivative(uid, "annotation"))
+        if result:
+            self.annotation_proposal = None
+            self.status.set("Annotation skipped for this image.")
+            self._advance_after_stage(uid, "annotation")
 
     def refresh_batch_images(self) -> None:
         if not hasattr(self, "batch_tree"):
@@ -1765,7 +2225,11 @@ class WorkflowApp(tk.Tk):
         self.status.set(f"{self.batch_queue_stage.title()} batch {self.batch_queue_index + 1}/{len(self.batch_queue)}: {uid}.")
 
     def _advance_manual_batch(self, completed_uid: str) -> None:
-        if not self.batch_queue_stage or self.batch_queue[self.batch_queue_index] != completed_uid:
+        if (
+            not self.batch_queue_stage
+            or self.batch_queue_index >= len(self.batch_queue)
+            or self.batch_queue[self.batch_queue_index] != completed_uid
+        ):
             return
         self.batch_queue_index += 1
         if self.batch_queue_index >= len(self.batch_queue):
@@ -1775,6 +2239,44 @@ class WorkflowApp(tk.Tk):
             self.status.set(f"{stage.title()} batch complete.")
             return
         self._load_manual_batch_current()
+
+    def _advance_after_stage(self, completed_uid: str, stage: str) -> None:
+        if (
+            self.batch_queue_stage
+            and self.batch_queue_index < len(self.batch_queue)
+            and self.batch_queue[self.batch_queue_index] == completed_uid
+        ):
+            self._advance_manual_batch(completed_uid)
+            return
+        self.refresh_batch_images()
+        if not self.auto_advance_images.get():
+            self.load_selected_source()
+            return
+        if self.workflow is None:
+            return
+        following = next_pending_image_uid(
+            self.workflow.state["images"], completed_uid, stage
+        )
+        if following is None:
+            self.load_selected_source()
+            self.status.set(f"{stage.replace('_', ' ').title()} sequence complete.")
+            return
+        self.image_uid.set(following)
+        self.load_selected_source()
+        starters: dict[str, Callable[[], Any]] = {
+            "orientation": self.start_orientation,
+            "crop": self.start_crop_placement,
+            "culture": self.preview_culture_crop_export,
+            "visibility": self.preview_visibility,
+            "annotation": self.preview_annotation,
+        }
+        starter = starters.get(stage)
+        if starter is None:
+            self.status.set(
+                f"Advanced to {following}; continue {stage.replace('_', ' ')}."
+            )
+        else:
+            starter()
 
     def plan_selected_batch(self, stage: str) -> None:
         workflow, _uid = self._selected()
@@ -1986,6 +2488,17 @@ class WorkflowApp(tk.Tk):
         if calibrations:
             calibration_id = next(reversed(calibrations))
             calibration = calibrations[calibration_id]
+            self.crop_rounding_enabled.set(
+                bool(calibration.get("rounding_enabled", True))
+            )
+            self.crop_rounding_increment.set(
+                str(calibration.get("rounding_increment", 50))
+            )
+            self.crop_rounding_direction.set(
+                str(calibration.get("rounding_direction", "down"))
+            )
+            self.crop_margin_value.set(str(calibration.get("margin_value", 0)))
+            self.crop_margin_unit.set(str(calibration.get("margin_unit", "pixels")))
             self.calibration_label.configure(
                 text=f"Accepted {calibration_id}: {calibration['side_pixels']} × {calibration['side_pixels']} px"
             )
