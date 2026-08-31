@@ -12,6 +12,7 @@ from tools.project_layout import (
     initialize_project,
     planned_layout,
     rebase_moved_path,
+    render_prefix,
     validate_prefix,
 )
 
@@ -22,6 +23,8 @@ class ProjectLayoutTests(unittest.TestCase):
         self.assertEqual(validate_prefix("ATTEMPT1"), "ATTEMPT1")
         with self.assertRaises(SystemExit):
             validate_prefix("BAD;NAME")
+        self.assertEqual(render_prefix("14.08.26 EXP2", "yyyy.mm.dd"), "2026.08.14 EXP2")
+        self.assertEqual(render_prefix("2026-08-14 EXP2", "yyyy.mm.dd"), "2026.08.14 EXP2")
 
     def test_initialization_moves_source_folder_intact_and_creates_outputs(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

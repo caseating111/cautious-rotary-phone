@@ -255,6 +255,8 @@ Legacy CSV-shaped handoffs may be generated from the canonical V10 model where e
 
 The user should not maintain them manually when running through V10.
 
+The active implementation snapshots `v10_master_registry.csv` and lossless `v10_plate_layout.csv` on setup, together with compatible `images.csv` and `condition_order.csv`. It emits the five-column legacy `grid.csv` only when all row bands share the same column labels; otherwise emitting it would silently discard V10 label meaning. Snapshots are immutable and may be pinned, compared, or explicitly regenerated from the linked workbook.
+
 ## Provenance
 
 Keep local provenance keyed by Image UID, including accepted source/working/processed/annotated paths and stage states. Once a derived file is registered, provenance outranks future filename guessing.

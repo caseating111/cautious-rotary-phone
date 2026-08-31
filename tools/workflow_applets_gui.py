@@ -361,6 +361,7 @@ class WorkflowApp(tk.Tk):
         csv_row = ttk.Frame(setup)
         csv_row.pack(fill="x", padx=8, pady=3)
         ttk.Combobox(csv_row, textvariable=self.csv_mode, state="readonly", values=("refreshable", "pinned"), width=12).pack(side="left")
+        ttk.Button(csv_row, text="Keep current", command=self.keep_current_csvs).pack(side="left", padx=(4, 0))
         ttk.Button(csv_row, text="Refresh V10", command=self.refresh_v10_csvs).pack(side="left", padx=(4, 0))
         ttk.Button(csv_row, text="Compare", command=self.compare_v10_csvs).pack(side="left", padx=(4, 0))
         ttk.Button(setup, text="Save setup choices as defaults", command=self.save_setup_defaults).pack(fill="x", padx=8, pady=3)
@@ -1119,6 +1120,22 @@ class WorkflowApp(tk.Tk):
             save_last("project_setup", settings)
             self._activate(workflow)
             self.status.set(f"Refreshed V10 and active CSV snapshot: {result['status']} {result.get('snapshot_id', '')}")
+
+    def keep_current_csvs(self) -> None:
+        workflow, _uid = self._selected()
+        self.csv_mode.set("pinned")
+        settings = self._setup_settings_value()
+        result = self._run(
+            lambda: workflow.refresh_csv_snapshot(
+                filename_date_style=self.filename_date_style.get(), pinned=True
+            )
+        )
+        if result:
+            workflow.save_project_settings(settings)
+            save_last("project_setup", settings)
+            self.status.set(
+                f"Keeping CSV snapshot {result.get('snapshot_id', '')}; use Refresh V10 to regenerate."
+            )
 
     def compare_v10_csvs(self) -> None:
         workflow, _uid = self._selected()

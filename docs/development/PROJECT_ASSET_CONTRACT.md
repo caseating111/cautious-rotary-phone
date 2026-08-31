@@ -93,7 +93,7 @@ The accepted four-click result should expose enough information to reconstruct e
 
 Do not bind this asset only to immediate crop export.
 
-The integrated implementation is `tools/grid_coordinates.py` with schema `contracts/grid_coordinate_asset.schema.json`. Version 1 uses continuous pixel centres in `source_image_pixels`, with top-left origin, x increasing right, and y increasing down. The four accepted references are R1C1, R1C-last, R5C1, and R5C-last; the persisted asset contains deterministic row/column coordinates and every named `rNcM` spot. Assets are stored under `GridCoordinates/` beside `images.csv` by default, with an identity index and atomic replacement.
+The integrated implementation is `tools/grid_coordinates.py` with schema `contracts/grid_coordinate_asset.schema.json`. Version 1 uses continuous pixel centres in `source_image_pixels`, with top-left origin, x increasing right, and y increasing down. The four accepted references are R1C1, R1C-last, R5C1, and R5C-last; the persisted asset contains deterministic row/column coordinates and every named `rNcM` spot. Numbered V10 projects store assets under `z. Metadata/State/GridCoordinates`; the runtime also discovers the older beside-CSV and project-level `GridCoordinates` locations. Assets retain an identity index and atomic replacement.
 
 ## Grid reuse requirements
 

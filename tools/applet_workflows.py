@@ -727,8 +727,12 @@ class ProjectWorkflow:
         selected = (source_kind or ("processed" if tier == "Processed" else "auto")).casefold()
         if selected in {"working", "cropped", "raw", "auto"}:
             if tier != "Unprocessed":
-                raise ValueError("Working/Cropped sources publish under Unprocessed.")
-            source = self.source_for(image_uid, source_kind=selected)
+                raise ValueError("Working/Cropped/Raw sources publish under Unprocessed.")
+            source = (
+                self.source_for(image_uid)
+                if selected == "auto"
+                else self.source_for(image_uid, source_kind=selected)
+            )
         elif selected == "processed":
             if tier != "Processed":
                 raise ValueError("Processed sources publish under Processed.")
