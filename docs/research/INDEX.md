@@ -8,7 +8,7 @@ Read this index before starting online research or substantially changing an end
 | --- | --- | --- | --- | --- | --- |
 | Python-controlled interactive Fiji / four-point runtime | active / repeated-failure | 5 materially distinct routes | 2026-08-23 | Core four-click/export works, but existing-instance launch/control remains unresolved; re-open architecture before another RMI/socket/launcher repair. | [fiji-four-point-runtime.md](fiji-four-point-runtime.md) |
 | SDL-MCP usable from Codex | deferred / repeated-failure / shell usable | 3+ setup/integration routes | 2026-08-22 | Shell retrieval works; native MCP remains unreliable and is outside current product work unless explicitly revisited. | [sdl-codex.md](sdl-codex.md) |
-| Windows image-canvas coordinates at high DPI | active / manual confirmation | 2 failed routes | 2026-09-01 | Direct Win32 device-unit client coordinates replace Tk-event inference; synthetic proof passes, real click confirmation remains. | [windows-high-dpi-image-coordinates.md](windows-high-dpi-image-coordinates.md) |
+| Windows image-canvas coordinates at high DPI | active / replacement proof | 3 failed routes | 2026-09-01 | Use live client fractions with Windows-managed Tk scaling; Per-Monitor-v2 and cross-domain device arithmetic are ruled out. | [windows-high-dpi-image-coordinates.md](windows-high-dpi-image-coordinates.md) |
 
 Index discipline:
 - one row per stable user-visible endpoint/durable functional problem;

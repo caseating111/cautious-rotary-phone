@@ -9,80 +9,68 @@ from typing import Any
 class _Point(ctypes.Structure):
     _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
 
-DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = -4
-ERROR_ACCESS_DENIED = 5
+
+class _Rect(ctypes.Structure):
+    _fields_ = [
+        ("left", ctypes.c_long),
+        ("top", ctypes.c_long),
+        ("right", ctypes.c_long),
+        ("bottom", ctypes.c_long),
+    ]
 
 
-def coordinate_scale_from_dpi(window_dpi: float, tk_pixels_per_inch: float) -> float:
-    """Convert Tk pointer coordinates into the window's rendered-pixel space."""
-    values = (float(window_dpi), float(tk_pixels_per_inch))
-    if not all(math.isfinite(value) and value > 0 for value in values):
-        return 1.0
-    ratio = values[0] / values[1]
-    return ratio if 0.5 <= ratio <= 4.0 else 1.0
+def normalized_client_point(
+    x: float, y: float, width: float, height: float
+) -> tuple[float, float]:
+    """Map any internally consistent client-coordinate domain to fractions."""
+    values = tuple(float(value) for value in (x, y, width, height))
+    if not all(math.isfinite(value) for value in values):
+        raise ValueError("Client coordinates and dimensions must be finite.")
+    x_value, y_value, width_value, height_value = values
+    if width_value <= 0 or height_value <= 0:
+        raise ValueError("Client dimensions must be positive.")
+    return x_value / width_value, y_value / height_value
 
 
-def tk_coordinate_scale(widget: Any) -> float:
-    """Return the live Windows-DPI/Tk-DPI ratio for a Tk widget."""
-    if sys.platform != "win32":
-        return 1.0
-    try:
-        user32 = ctypes.WinDLL("user32", use_last_error=True)
-        getter = user32.GetDpiForWindow
-        getter.argtypes = [ctypes.c_void_p]
-        getter.restype = ctypes.c_uint
-        window_dpi = float(getter(ctypes.c_void_p(widget.winfo_id())))
-        tk_pixels_per_inch = float(widget.winfo_fpixels("1i"))
-    except (AttributeError, OSError, TypeError, ValueError):
-        return 1.0
-    return coordinate_scale_from_dpi(window_dpi, tk_pixels_per_inch)
-
-
-def pointer_client_coordinates(
+def pointer_client_fraction(
     widget: Any, fallback_x: float, fallback_y: float
-) -> tuple[float, float, str]:
-    """Read pointer coordinates in the widget's rendered device-pixel space."""
+) -> tuple[float, float, str, tuple[int, int]]:
+    """Read the pointer as fractions of the live canvas client rectangle.
+
+    Fractions bridge Windows device pixels and Tk logical pixels without assuming
+    either DPI domain or a monitor-specific scale factor.
+    """
     if sys.platform == "win32":
         try:
             user32 = ctypes.WinDLL("user32", use_last_error=True)
-            point = _Point()
-            if user32.GetCursorPos(ctypes.byref(point)) and user32.ScreenToClient(
-                ctypes.c_void_p(widget.winfo_id()), ctypes.byref(point)
+            point, bounds = _Point(), _Rect()
+            handle = ctypes.c_void_p(widget.winfo_id())
+            if (
+                user32.GetCursorPos(ctypes.byref(point))
+                and user32.ScreenToClient(handle, ctypes.byref(point))
+                and user32.GetClientRect(handle, ctypes.byref(bounds))
             ):
-                width = int(widget.winfo_width())
-                height = int(widget.winfo_height())
-                if 0 <= point.x < width and 0 <= point.y < height:
-                    return float(point.x), float(point.y), "win32_device_pixels"
+                width = int(bounds.right - bounds.left)
+                height = int(bounds.bottom - bounds.top)
+                if width > 0 and height > 0:
+                    x_fraction, y_fraction = normalized_client_point(
+                        point.x, point.y, width, height
+                    )
+                    if 0 <= x_fraction < 1 and 0 <= y_fraction < 1:
+                        return (
+                            x_fraction,
+                            y_fraction,
+                            "normalized_win32_client",
+                            (width, height),
+                        )
         except (AttributeError, OSError, TypeError, ValueError):
             pass
-    scale = tk_coordinate_scale(widget)
-    return (
-        float(widget.canvasx(fallback_x)) * scale,
-        float(widget.canvasy(fallback_y)) * scale,
-        "tk_event_dpi_reconciled",
+    width = max(int(widget.winfo_width()), 1)
+    height = max(int(widget.winfo_height()), 1)
+    x_fraction, y_fraction = normalized_client_point(
+        float(widget.canvasx(fallback_x)),
+        float(widget.canvasy(fallback_y)),
+        width,
+        height,
     )
-
-
-def enable_per_monitor_v2() -> str:
-    """Set Windows DPI awareness before the first Tk window is created."""
-    if sys.platform != "win32":
-        return "NOT_WINDOWS"
-    try:
-        user32 = ctypes.WinDLL("user32", use_last_error=True)
-        setter = user32.SetProcessDpiAwarenessContext
-        setter.argtypes = [ctypes.c_void_p]
-        setter.restype = ctypes.c_bool
-        ctypes.set_last_error(0)
-        if setter(ctypes.c_void_p(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)):
-            return "PER_MONITOR_V2"
-        error = ctypes.get_last_error()
-        if error == ERROR_ACCESS_DENIED:
-            return "ALREADY_CONFIGURED"
-        return f"FAILED_{error}"
-    except (AttributeError, OSError):
-        try:
-            if ctypes.windll.user32.SetProcessDPIAware():
-                return "SYSTEM_AWARE_FALLBACK"
-        except (AttributeError, OSError):
-            pass
-        return "UNAVAILABLE"
+    return x_fraction, y_fraction, "normalized_tk_client", (width, height)

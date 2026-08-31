@@ -40,11 +40,7 @@ from tools.project_lifecycle import (
 )
 from tools.project_paths import preferred_project_path
 from tools.quick_figure_gui import QuickFigurePanel
-from tools.windows_dpi import (
-    enable_per_monitor_v2,
-    pointer_client_coordinates,
-    tk_coordinate_scale,
-)
+from tools.windows_dpi import pointer_client_fraction
 
 
 def next_image_uid(image_uids: list[str], current_uid: str) -> str | None:
@@ -116,8 +112,9 @@ class ImageCanvas(ttk.Frame):
         self.scale_x = 1.0
         self.scale_y = 1.0
         self.offset = (0.0, 0.0)
-        self.coordinate_scale = 1.0
+        self.render_canvas_size = (0, 0)
         self.coordinate_source = "not_sampled"
+        self.coordinate_client_dimensions = (0, 0)
         self.click_handler: Callable[[tuple[float, float]], None] | None = None
         self.drag_handler: (
             Callable[[tuple[float, float], tuple[float, float]], None] | None
@@ -147,10 +144,18 @@ class ImageCanvas(ttk.Frame):
     def canvas_to_image(self, x: float, y: float) -> tuple[float, float] | None:
         if self.image is None:
             return None
-        self.coordinate_scale = tk_coordinate_scale(self.canvas)
-        canvas_x, canvas_y, self.coordinate_source = pointer_client_coordinates(
-            self.canvas, x, y
+        current_size = (
+            max(self.canvas.winfo_width(), 1),
+            max(self.canvas.winfo_height(), 1),
         )
+        if current_size != self.render_canvas_size:
+            self._render()
+        x_fraction, y_fraction, self.coordinate_source, dimensions = (
+            pointer_client_fraction(self.canvas, x, y)
+        )
+        self.coordinate_client_dimensions = dimensions
+        canvas_x = x_fraction * self.render_canvas_size[0]
+        canvas_y = y_fraction * self.render_canvas_size[1]
         px = (canvas_x - self.offset[0]) / self.scale_x
         py = (canvas_y - self.offset[1]) / self.scale_y
         if 0 <= px < self.image.width and 0 <= py < self.image.height:
@@ -215,6 +220,7 @@ class ImageCanvas(ttk.Frame):
             return
         width = max(self.canvas.winfo_width(), 100)
         height = max(self.canvas.winfo_height(), 100)
+        self.render_canvas_size = (width, height)
         shown_size, scales, self.offset = fitted_image_geometry(
             self.image.size, (width, height)
         )
@@ -246,7 +252,6 @@ class ImageCanvas(ttk.Frame):
 
 class WorkflowApp(tk.Tk):
     def __init__(self) -> None:
-        self.dpi_awareness_status = enable_per_monitor_v2()
         super().__init__()
         self.title("Workflow-integrated project applets")
         self.minsize(1080, 720)
@@ -1687,13 +1692,13 @@ class WorkflowApp(tk.Tk):
             side = self.calibration_proposal["side_pixels"]
             measured = self.calibration_proposal["measured_extents"]
             source = self.calibration_source_dimensions or ("?", "?")
-            dpi_scale = self.viewer.coordinate_scale
+            client = self.viewer.coordinate_client_dimensions
             self.calibration_label.configure(
                 text=(
                     f"Source {source[0]}×{source[1]} px; measured "
                     f"{measured['measured_width']:.0f}×{measured['measured_height']:.0f}; "
-                    f"proposed {side}×{side} px; {self.viewer.coordinate_source}, "
-                    f"DPI ratio {dpi_scale:.2f}×"
+                    f"proposed {side}×{side} px; {self.viewer.coordinate_source} "
+                    f"{client[0]}×{client[1]}"
                 )
             )
             self.status.set(

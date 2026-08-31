@@ -27,6 +27,7 @@ from tools.applets.quick_figure import (
     save_quick_grid,
     set_grid_qc,
 )
+from tools.windows_dpi import pointer_client_fraction
 
 
 class QuickImageCanvas(ttk.Frame):
@@ -42,6 +43,7 @@ class QuickImageCanvas(ttk.Frame):
         self.photo: ImageTk.PhotoImage | None = None
         self.scale = 1.0
         self.offset = (0.0, 0.0)
+        self.render_canvas_size = (0, 0)
         self.click_handler: Callable[[tuple[float, float]], None] | None = None
         self.drag_handler: (
             Callable[[tuple[float, float], tuple[float, float]], None] | None
@@ -98,6 +100,7 @@ class QuickImageCanvas(ttk.Frame):
             max(self.canvas.winfo_width(), 100),
             max(self.canvas.winfo_height(), 100),
         )
+        self.render_canvas_size = (width, height)
         self.scale = min(width / self.image.width, height / self.image.height)
         shown = self.image.resize(
             (
@@ -113,9 +116,20 @@ class QuickImageCanvas(ttk.Frame):
     def _point(self, event: tk.Event) -> tuple[float, float] | None:
         if self.image is None:
             return None
+        current_size = (
+            max(self.canvas.winfo_width(), 1),
+            max(self.canvas.winfo_height(), 1),
+        )
+        if current_size != self.render_canvas_size:
+            self._render()
+        x_fraction, y_fraction, _source, _dimensions = pointer_client_fraction(
+            self.canvas, event.x, event.y
+        )
+        canvas_x = x_fraction * self.render_canvas_size[0]
+        canvas_y = y_fraction * self.render_canvas_size[1]
         point = (
-            (event.x - self.offset[0]) / self.scale,
-            (event.y - self.offset[1]) / self.scale,
+            (canvas_x - self.offset[0]) / self.scale,
+            (canvas_y - self.offset[1]) / self.scale,
         )
         return (
             point

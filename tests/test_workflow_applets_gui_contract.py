@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
+from tools.quick_figure_gui import QuickImageCanvas
 from tools.workflow_applets_gui import (
     ImageCanvas,
     fitted_image_geometry,
@@ -10,30 +12,80 @@ from tools.workflow_applets_gui import (
 )
 
 
-def test_image_canvas_uses_rendered_device_pointer_coordinates(monkeypatch) -> None:
+def test_image_canvas_uses_normalized_client_coordinates(monkeypatch) -> None:
     class Image:
         width = 2047
         height = 2047
 
     class Viewer:
         image = Image()
-        canvas = object()
         offset = (100.0, 50.0)
         scale_x = 0.5
         scale_y = 0.5
-        coordinate_scale = 1.0
         coordinate_source = "not_sampled"
+        coordinate_client_dimensions = (0, 0)
+        render_canvas_size = (820, 560)
+
+        class Canvas:
+            @staticmethod
+            def winfo_width():
+                return 820
+
+            @staticmethod
+            def winfo_height():
+                return 560
+
+        canvas = Canvas()
 
     monkeypatch.setattr(
-        "tools.workflow_applets_gui.tk_coordinate_scale", lambda _canvas: 2.0
-    )
-    monkeypatch.setattr(
-        "tools.workflow_applets_gui.pointer_client_coordinates",
-        lambda _canvas, _x, _y: (537.0, 552.0, "win32_device_pixels"),
+        "tools.workflow_applets_gui.pointer_client_fraction",
+        lambda _canvas, _x, _y: (
+            537 / 820,
+            1104 / 1120,
+            "normalized_win32_client",
+            (1640, 1120),
+        ),
     )
     viewer = Viewer()
     assert ImageCanvas.canvas_to_image(viewer, 218.5, 251.0) == (874.0, 1004.0)
-    assert viewer.coordinate_source == "win32_device_pixels"
+    assert viewer.coordinate_source == "normalized_win32_client"
+    assert viewer.coordinate_client_dimensions == (1640, 1120)
+
+
+def test_quick_canvas_uses_the_same_normalized_mapping(monkeypatch) -> None:
+    class Image:
+        width = 2047
+        height = 2047
+
+    class Canvas:
+        @staticmethod
+        def winfo_width():
+            return 820
+
+        @staticmethod
+        def winfo_height():
+            return 560
+
+    viewer = SimpleNamespace(
+        image=Image(),
+        canvas=Canvas(),
+        offset=(100.0, 50.0),
+        scale=0.5,
+        render_canvas_size=(820, 560),
+    )
+    monkeypatch.setattr(
+        "tools.quick_figure_gui.pointer_client_fraction",
+        lambda _canvas, _x, _y: (
+            537 / 820,
+            1104 / 1120,
+            "normalized_win32_client",
+            (1640, 1120),
+        ),
+    )
+    assert QuickImageCanvas._point(viewer, SimpleNamespace(x=1, y=1)) == (
+        874.0,
+        1004.0,
+    )
 
 
 def test_next_image_progression_is_ordered_and_stops_at_end() -> None:

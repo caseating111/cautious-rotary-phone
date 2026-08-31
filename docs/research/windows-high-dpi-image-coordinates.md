@@ -1,21 +1,51 @@
 # Windows image-canvas coordinates at high DPI
 
-**Endpoint:** pointer marks on a fitted image must resolve to original-image pixels so accepted orientation/crop work can be resumed and reused accurately.
+**Endpoint:** pointer marks on a fitted image must resolve to original-image pixels on single- and mixed-DPI Windows displays, without distorting the app UI.
 
-## Evidence and decision
+## Current decision
 
-- Failure: a 2047×2047 source reported an 874×1004 boundary measurement and proposed 850×850 despite an expected crop near 1750 pixels.
-- Local non-image telemetry showed Windows `AppliedDPI=192` (200%) while Tk 8.6.13 reported 96 pixels/inch. This exact 2× disagreement explains the endpoint failure; Pillow did not resize the source.
-- Microsoft documents Per-Monitor-v2 as the current programmatic DPI-awareness context and requires setting it before creating UI/HWNDs. Tk documents `canvasx`/`canvasy` as the supported window-to-canvas coordinate conversion.
-- An isolated proof called `SetProcessDpiAwarenessContext(-4)` before `Tk()`: Tk then reported 192 pixels/inch, matching Windows.
+Tk 8.6.13 is not treated as a Per-Monitor-v2 UI. Windows is allowed to scale the complete legacy Tk window uniformly. Pointer positions are converted to fractions of the live native canvas client rectangle, then those fractions are applied to the current Tk canvas geometry and rendered-image transform. This bridges device and logical coordinate domains without guessing a DPI multiplier.
 
-## Adopted route
+The same normalized mapping is used by the project and Quick Figures canvases. Exact numeric crop sizes remain available, and accepted orientation/crop state remains resumable.
 
-1. Enable Windows Per-Monitor-v2 before the V10 applet creates its Tk root.
-2. On Windows, read the pointer in the canvas client area's device-pixel coordinates with the documented `GetCursorPos` + `ScreenToClient` route, then apply the recorded rendered-image scales. Microsoft documents `ScreenToClient` coordinates as device units. If that route is unavailable, reconcile `GetDpiForWindow` against Tk pixels-per-inch before using `canvasx`/`canvasy`.
-3. Retain a direct exact-final-side calibration so a user can enter a known crop size without pointer measurement.
-4. Resume from accepted project state and existing `2. Cropped/Orientation` outputs; never require orientation replay merely to repair crop calibration.
+## Official and mature evidence
 
-The first Per-Monitor-v2-only release still produced an exact approximately 2× underestimate in the user's real controller runtime. That showed process awareness alone was not a sufficient guarantee. Direct device-unit client coordinates are now the primary route, and the GUI reports both the coordinate source and DPI ratio with every calibration proposal.
+- Tk's own Windows tracker states Tk 8.6 is manifested system-DPI-aware rather than per-monitor-aware and records mixed-scale monitor pointer problems: <https://core.tcl-lang.org/tk/tktview/bee96b4e80c5c26763a0a09be4e57f41a1473386>.
+- Tk documents that changing `tk scaling` does not guarantee existing widgets will resize dynamically: <https://www.tcl-lang.org/man/tcl8.6/TkCmd/tk.htm>.
+- A current Tk Per-Monitor-v2 ticket records DPI-dependent double-scaling/native-theme defects: <https://core.tcl-lang.org/tk/tktview/a05a17866d4610341ca453c68883eccec310ce0d>.
+- Microsoft documents system scaling for DPI-unaware/system-aware windows and device-unit client coordinates: <https://learn.microsoft.com/en-us/windows/win32/hidpi/dpi-awareness-context> and <https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-screentoclient>.
+- Fiji/ImageJ ROI bounds are a mature source-pixel alternative, but the user explicitly prefers to avoid switching applications for whole-plate cropping. It is not the production route.
 
-Revisit only if direct `win32_device_pixels` calibration remains incorrect or a mixed-monitor move produces a new mismatch. Prefer a manifest if the application is later packaged as a native executable.
+Meaningful searches on 2026-09-01 included:
+
+- `scientific image viewer select crop rectangle original pixel coordinates regardless of zoom desktop software`
+- `Tk 8.6 Windows per monitor DPI scaling mixed monitors official`
+- `current recommended high DPI pointer coordinates Win32 per monitor v2 client coordinates`
+- `DPI_AWARENESS_CONTEXT_UNAWARE_GDISCALED recommended mixed monitor legacy desktop app`
+
+## Endpoint debugging / failure history
+
+1. **Raw Tk event coordinates plus fitted-image scale — ruled out.**
+   - A 2047×2047 source produced approximately 874×1004 measured bounds and an 850×850 proposal where the real plate was near 1750 pixels.
+   - The resulting 850-pixel crop covered only about one quarter of the intended image area.
+   - Lesson: arithmetic using only Tk event/render values was not proven to share one coordinate domain on the real 200% display.
+
+2. **Force Per-Monitor-v2 before Tk — ruled out.**
+   - A clean synthetic process made Tk and Windows both report 192 DPI, but the real calibration remained half-scale.
+   - Moving the app between a 4K and roughly 1920-pixel monitor caused oversized text and broken UI scaling.
+   - Lesson: process awareness telemetry did not prove Tk 8.6 rendered/event geometry was per-monitor-correct; forcing this unsupported posture created a visible regression.
+
+3. **Direct Win32 pointer device coordinates combined with Tk offsets/scales — ruled out.**
+   - Single-monitor synthetic API round trips passed, but the real four-click calibration still returned the same wrong size with either one monitor or both monitors connected.
+   - The proof derived its target from Tk geometry and inverted the same Win32 APIs, so it did not prove a human-visible target shared that geometry.
+   - Lesson: device coordinates cannot be mixed directly with Tk-derived geometry, and a self-consistent API round trip is insufficient endpoint evidence.
+
+4. **Normalized live-client fractions with Windows-managed Tk scaling — active.**
+   - `GetCursorPos`/`ScreenToClient` and `GetClientRect` remain within one native client domain; only their ratio crosses into Tk.
+   - A factor-2 synthetic proof shows identical fractions for 820×560 logical and 1640×1120 physical client spaces.
+   - A clean-process 2047×2047 pointer round trip passes within two source pixels without Per-Monitor-v2.
+   - Production confirmation must cover the 4K monitor, a move to the second monitor, and a single-monitor launch.
+
+## Smallest next proof
+
+On the new build, use a synthetic/public 2047×2047 target or one private real image locally: record the calibration line on the 4K monitor, move the same window to the second monitor and repeat, then repeat once with only the 4K monitor. Expected measured source-pixel bounds must remain stable and the UI must remain proportionate. No image pixels need to leave the machine.
