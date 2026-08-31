@@ -56,6 +56,7 @@ PORTABLE_PYTHON_ENTRYPOINTS = {
     "tools/run_one_plate_validation.py",
     "tools/validate_project_csvs.py",
     "tools/workflow_applets_gui.py",
+    "tools/windows_dpi.py",
     "tools/workflow_controller.py",
     "tools/workflow_controller_extended.py",
 }

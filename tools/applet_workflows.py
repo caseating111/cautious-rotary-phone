@@ -27,6 +27,7 @@ from tools.applets.mixed_tier_matrix import (
 from tools.applets.plate_crop import (
     apply_plate_crop,
     calibrate_crop_size,
+    calibrate_exact_crop_size,
     place_plate_crop,
 )
 from tools.applets.plate_orientation import (
@@ -556,6 +557,22 @@ class ProjectWorkflow:
             rounding_direction=rounding_direction,
             margin_value=margin_value,
             margin_unit=margin_unit,
+            source_dimensions=source_dimensions,
+        )
+        record_crop_calibration(self.state, calibration)
+        self.save()
+        return calibration
+
+    def accept_exact_crop_calibration(
+        self,
+        side_pixels: int,
+        *,
+        calibration_id: str = "plate-exact",
+        source_dimensions: tuple[int, int] | None = None,
+    ) -> dict[str, Any]:
+        calibration = calibrate_exact_crop_size(
+            side_pixels,
+            calibration_id=calibration_id,
             source_dimensions=source_dimensions,
         )
         record_crop_calibration(self.state, calibration)

@@ -208,6 +208,50 @@ def test_orientation_retry_and_skip_use_pre_orientation_source(tmp_path: Path) -
     assert skipped_output.read_bytes() == source.read_bytes()
 
 
+def test_resume_accepted_orientation_then_continue_through_crop(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "1. b. Working" / "source.jpg"
+    source.parent.mkdir(parents=True)
+    Image.new("L", (2047, 2047), 80).save(source)
+    workflow = ProjectWorkflow(new_project_state(tmp_path, _model()))
+    workflow.record_setup(
+        {
+            "images": [
+                {
+                    "image_uid": "Image 1",
+                    "raw_path": str(source.relative_to(tmp_path)),
+                    "working_path": str(source.relative_to(tmp_path)),
+                    "disposition": "READY",
+                }
+            ]
+        }
+    )
+    proposed, _ = workflow.propose_orientation("Image 1", (100, 100, 1900, 120))
+    _accepted, oriented_path = workflow.accept_orientation("Image 1", proposed)
+    assert oriented_path.parent == tmp_path / "2. Cropped" / "Orientation"
+
+    resumed = ProjectWorkflow.open(tmp_path)
+    assert resumed.image_record("Image 1")["orientation"]["status"] == "ACCEPTED"
+    assert resumed.source_for("Image 1", include_crop=False) == oriented_path
+    calibration = resumed.accept_exact_crop_calibration(
+        1750,
+        calibration_id="plate-1750",
+        source_dimensions=(2047, 2047),
+    )
+    assert calibration["side_pixels"] == 1750
+    proposed_crop, preview = resumed.propose_crop(
+        "Image 1", "plate-1750", (100, 0), (0, 100)
+    )
+    assert preview.size == (1750, 1750)
+    _crop, crop_path = resumed.accept_crop("Image 1", proposed_crop)
+
+    reopened = ProjectWorkflow.open(tmp_path)
+    assert reopened.image_record("Image 1")["orientation"]["status"] == "ACCEPTED"
+    assert reopened.image_record("Image 1")["crop"]["status"] == "ACCEPTED"
+    assert reopened.source_for("Image 1") == crop_path
+
+
 def test_optional_derivative_skips_are_recorded_and_resumable(tmp_path: Path) -> None:
     workflow = ProjectWorkflow(new_project_state(tmp_path, _model()))
     visibility = workflow.skip_derivative("Image 1", "visibility")

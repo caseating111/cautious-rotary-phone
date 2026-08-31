@@ -8,6 +8,7 @@ Read this index before starting online research or substantially changing an end
 | --- | --- | --- | --- | --- | --- |
 | Python-controlled interactive Fiji / four-point runtime | active / repeated-failure | 5 materially distinct routes | 2026-08-23 | Core four-click/export works, but existing-instance launch/control remains unresolved; re-open architecture before another RMI/socket/launcher repair. | [fiji-four-point-runtime.md](fiji-four-point-runtime.md) |
 | SDL-MCP usable from Codex | deferred / repeated-failure / shell usable | 3+ setup/integration routes | 2026-08-22 | Shell retrieval works; native MCP remains unreliable and is outside current product work unless explicitly revisited. | [sdl-codex.md](sdl-codex.md) |
+| Windows image-canvas coordinates at high DPI | resolved | 1 failed route | 2026-08-31 | Enable Per-Monitor-v2 before Tk; official canvas conversion plus exact numeric crop size protects the endpoint. | [windows-high-dpi-image-coordinates.md](windows-high-dpi-image-coordinates.md) |
 
 Index discipline:
 - one row per stable user-visible endpoint/durable functional problem;

@@ -40,6 +40,7 @@ from tools.project_lifecycle import (
 )
 from tools.project_paths import preferred_project_path
 from tools.quick_figure_gui import QuickFigurePanel
+from tools.windows_dpi import enable_per_monitor_v2
 
 
 def next_image_uid(image_uids: list[str], current_uid: str) -> str | None:
@@ -140,8 +141,10 @@ class ImageCanvas(ttk.Frame):
     def canvas_to_image(self, x: float, y: float) -> tuple[float, float] | None:
         if self.image is None:
             return None
-        px = (x - self.offset[0]) / self.scale_x
-        py = (y - self.offset[1]) / self.scale_y
+        canvas_x = float(self.canvas.canvasx(x))
+        canvas_y = float(self.canvas.canvasy(y))
+        px = (canvas_x - self.offset[0]) / self.scale_x
+        py = (canvas_y - self.offset[1]) / self.scale_y
         if 0 <= px < self.image.width and 0 <= py < self.image.height:
             return px, py
         return None
@@ -235,6 +238,7 @@ class ImageCanvas(ttk.Frame):
 
 class WorkflowApp(tk.Tk):
     def __init__(self) -> None:
+        self.dpi_awareness_status = enable_per_monitor_v2()
         super().__init__()
         self.title("Workflow-integrated project applets")
         self.minsize(1080, 720)
@@ -285,6 +289,9 @@ class WorkflowApp(tk.Tk):
         )
         self.crop_auto_preview = tk.BooleanVar(
             value=bool(plate_crop_settings.get("auto_preview", True))
+        )
+        self.crop_exact_side = tk.StringVar(
+            value=str(plate_crop_settings.get("exact_side_pixels", ""))
         )
         self.setup_preview: dict[str, Any] | None = None
         self.setup_signature: tuple[str, bool, str] | None = None
@@ -367,7 +374,7 @@ class WorkflowApp(tk.Tk):
             self.hotkey_help_frame,
             text=(
                 "Common stage keys: X start/retry · V preview · Z accept/export · C skip/next. "
-                "Orientation: A line/two-point. Plate crop: A recalibrate · S accept size. "
+                "Orientation: A line/two-point. Plate crop: A recalibrate · S accept measured size · D accept exact size. "
                 "Grid: X find+attach · V preview matches · Z attach one. Culture: X/V preview · Z export. "
                 "Visibility: A flag. Annotation: A styles. Matrix: X refresh.\n"
                 "Quick Figures: X align · V preview annotation · Z save annotation · C export wells · "
@@ -573,6 +580,15 @@ class WorkflowApp(tk.Tk):
             values=("pixels", "percent"),
             width=10,
         ).grid(row=2, column=2, sticky="ew", padx=4, pady=2)
+        ttk.Label(crop_size_options, text="Exact final side").grid(
+            row=3, column=0, sticky="w", padx=4, pady=2
+        )
+        ttk.Entry(
+            crop_size_options, textvariable=self.crop_exact_side, width=8
+        ).grid(row=3, column=1, sticky="ew", padx=4, pady=2)
+        ttk.Label(crop_size_options, text="px (optional)").grid(
+            row=3, column=2, sticky="w", padx=4, pady=2
+        )
         crop_size_options.columnconfigure(1, weight=1)
         ttk.Checkbutton(
             crop,
@@ -583,6 +599,11 @@ class WorkflowApp(tk.Tk):
         self.calibration_label.pack(anchor="w", padx=8, pady=3)
         ttk.Button(
             crop, text="Accept size calibration (S)", command=self.accept_calibration
+        ).pack(fill="x", padx=8, pady=3)
+        ttk.Button(
+            crop,
+            text="Accept exact final side — no clicks (D)",
+            command=self.accept_exact_calibration,
         ).pack(fill="x", padx=8, pady=3)
         ttk.Separator(crop).pack(fill="x", padx=8, pady=8)
         ttk.Button(
@@ -923,7 +944,7 @@ class WorkflowApp(tk.Tk):
         if int(getattr(event, "state", 0)) & 0x000C:
             return None
         key = str(getattr(event, "keysym", "")).casefold()
-        if key not in {"a", "c", "e", "f", "g", "q", "r", "s", "v", "w", "x", "z"}:
+        if key not in {"a", "c", "d", "e", "f", "g", "q", "r", "s", "v", "w", "x", "z"}:
             return None
         focus = self.focus_get()
         if focus is not None and focus.winfo_class() in {
@@ -961,6 +982,7 @@ class WorkflowApp(tk.Tk):
                 "c": self.skip_crop,
                 "a": self.start_calibration,
                 "s": self.accept_calibration,
+                "d": self.accept_exact_calibration,
             },
             "Grid asset": {
                 "x": self.auto_attach_grids,
@@ -1493,7 +1515,7 @@ class WorkflowApp(tk.Tk):
     def start_orientation(self) -> None:
         def action() -> None:
             workflow, uid = self._selected()
-            source = workflow.source_for(uid, include_crop=False)
+            source = workflow.orientation_source_for(uid)
             with Image.open(source) as image:
                 self.viewer.show(image)
             self.orientation_proposal = None
@@ -1674,6 +1696,49 @@ class WorkflowApp(tk.Tk):
             )
             self.status.set(
                 "Crop size accepted and reusable; placement remains per image."
+            )
+
+    def accept_exact_calibration(self) -> None:
+        selected = self._run(self._selected)
+        if not selected:
+            return
+        workflow, uid = selected
+        try:
+            side = int(self.crop_exact_side.get().strip())
+        except ValueError:
+            messagebox.showerror(
+                "Crop calibration", "Enter a positive whole-pixel exact final side."
+            )
+            return
+        source = self._run(lambda: workflow.source_for(uid, include_crop=False))
+        if source is None:
+            return
+        with Image.open(source) as image:
+            dimensions = image.size
+        calibration_id = simpledialog.askstring(
+            "Crop calibration",
+            "Exact-size calibration name",
+            initialvalue="plate-exact",
+        )
+        if not calibration_id:
+            return
+        result = self._run(
+            lambda: workflow.accept_exact_crop_calibration(
+                side,
+                calibration_id=calibration_id,
+                source_dimensions=dimensions,
+            )
+        )
+        if result:
+            settings = load_last("plate_crop", {}) or {}
+            settings["exact_side_pixels"] = side
+            settings["auto_preview"] = self.crop_auto_preview.get()
+            save_last("plate_crop", settings)
+            self.calibration_label.configure(
+                text=f"Accepted exact {calibration_id}: {side} × {side} px"
+            )
+            self.status.set(
+                "Exact reusable crop size accepted; no calibration clicks were used."
             )
 
     def _crop_calibration_options(self) -> dict[str, Any]:
@@ -2499,6 +2564,8 @@ class WorkflowApp(tk.Tk):
             )
             self.crop_margin_value.set(str(calibration.get("margin_value", 0)))
             self.crop_margin_unit.set(str(calibration.get("margin_unit", "pixels")))
+            if calibration.get("method") == "manual_exact_final_side_pixels":
+                self.crop_exact_side.set(str(calibration["side_pixels"]))
             self.calibration_label.configure(
                 text=f"Accepted {calibration_id}: {calibration['side_pixels']} × {calibration['side_pixels']} px"
             )

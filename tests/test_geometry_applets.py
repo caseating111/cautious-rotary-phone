@@ -10,6 +10,7 @@ from PIL import Image
 from tools.applets.plate_crop import (
     apply_plate_crop,
     calibrate_crop_size,
+    calibrate_exact_crop_size,
     place_plate_crop,
     transform_point_from_crop_to_source,
     transform_point_to_crop,
@@ -167,6 +168,18 @@ class CropAppletTests(unittest.TestCase):
         self.assertEqual(nearest_percent["side_pixels"], 2160)
         with self.assertRaisesRegex(ValueError, "rounding_direction"):
             calibrate_crop_size(*points, rounding_direction="sideways")
+
+    def test_exact_numeric_calibration_bypasses_pointer_measurement(self) -> None:
+        calibration = calibrate_exact_crop_size(
+            1750,
+            calibration_id="plate-1750",
+            source_dimensions=(2047, 2047),
+        )
+        self.assertEqual(calibration["status"], "ACCEPTED")
+        self.assertEqual(calibration["side_pixels"], 1750)
+        self.assertEqual(calibration["method"], "manual_exact_final_side_pixels")
+        with self.assertRaisesRegex(ValueError, "exceeds source dimensions"):
+            calibrate_exact_crop_size(2050, source_dimensions=(2047, 2047))
 
     def test_proposed_is_preview_only_and_orientation_output_feeds_crop(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

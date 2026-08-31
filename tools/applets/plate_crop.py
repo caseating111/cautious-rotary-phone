@@ -93,6 +93,34 @@ def calibrate_crop_size(
     }
 
 
+def calibrate_exact_crop_size(
+    side_pixels: int,
+    *,
+    calibration_id: str = "plate-exact",
+    source_dimensions: tuple[int, int] | None = None,
+) -> dict[str, Any]:
+    """Create an accepted exact-size calibration without pointer measurement."""
+    if not isinstance(side_pixels, int) or side_pixels < 1:
+        raise ValueError("Exact crop side must be a positive integer.")
+    if source_dimensions and side_pixels > min(source_dimensions):
+        raise ValueError(
+            f"Exact crop side {side_pixels} exceeds source dimensions {source_dimensions}."
+        )
+    result = calibrate_crop_size(
+        (0.0, 0.0),
+        (float(side_pixels), 0.0),
+        (0.0, 0.0),
+        (0.0, float(side_pixels)),
+        increment=1,
+        calibration_id=calibration_id,
+        accepted=True,
+        rounding_enabled=False,
+        source_dimensions=source_dimensions,
+    )
+    result["method"] = "manual_exact_final_side_pixels"
+    return result
+
+
 def _dimensions(image_geometry: dict[str, Any]) -> tuple[int, int] | None:
     width, height = image_geometry.get("width"), image_geometry.get("height")
     if width is None and height is None:

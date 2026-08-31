@@ -17,6 +17,7 @@ Choose **Prepare parent** and select the folder containing dated experiment subf
 ## Resume or update
 
 - Choose **Open project** for any partially processed project. Canonical and legacy Raw/Working/Cropped/Crops/Metadata/State/GridCoordinates names are recognized.
+- Accepted orientation and crop records resume directly from their existing files, including `2. Cropped/Orientation`; reopening never requires replaying an accepted earlier stage. If pointer size calibration is unsuitable, enter the known **Exact final side** and accept it with `D`, then continue crop placement.
 - Choose **Upgrade old folders** only when ready; the preview refuses conflicting merges.
 - Use **Mark Working complete** after cropping in this program or elsewhere. It moves/renames Working to `2. Cropped/1. b. Working`. The saved automatic option does this after every project crop is accepted or skipped.
 - **Keep current** pins the active CSV snapshot. **Compare** checks it against the linked V10 workbook. **Refresh V10** deliberately imports the current workbook and creates a new immutable snapshot.
