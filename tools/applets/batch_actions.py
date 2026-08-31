@@ -49,9 +49,18 @@ def plan_automatic_batch(
         else:
             request = workflow.default_annotation_request(uid)
             request["labels"].update(settings.get("label_overrides", {}))
-            proposal, _preview = workflow.propose_annotation(
-                uid, request, settings.get("preset")
-            )
+            source_kind = settings.get("source_kind")
+            if source_kind is None:
+                proposal, _preview = workflow.propose_annotation(
+                    uid, request, settings.get("preset")
+                )
+            else:
+                proposal, _preview = workflow.propose_annotation(
+                    uid,
+                    request,
+                    settings.get("preset"),
+                    source_kind=source_kind,
+                )
             proposal.pop("preview_image", None)
             count = 1
         items.append({"image_uid": uid, "proposal": proposal, "output_count": count})

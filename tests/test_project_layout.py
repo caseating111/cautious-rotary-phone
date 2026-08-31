@@ -70,6 +70,20 @@ class ProjectLayoutTests(unittest.TestCase):
             self.assertTrue((project / "Matrices").is_dir())
             self.assertTrue((project / "Metadata").is_dir())
 
+    def test_numbered_raw_layout_is_recognized_without_restructuring(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            project = Path(temp) / "2026.08.14 EXP2"
+            image_root = project / "1. a. Raw"
+            image_root.mkdir(parents=True)
+
+            layout = initialize_project(image_root, "IGNORED")
+
+            self.assertEqual(layout.project_root, project.resolve())
+            self.assertEqual(layout.image_root, image_root.resolve())
+            self.assertTrue((project / "2. Cropped").is_dir())
+            self.assertTrue((project / "6. Matrices").is_dir())
+            self.assertTrue((project / "z. Metadata").is_dir())
+
     def test_renamed_project_root_is_still_recognized_by_structure(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             project = Path(temp) / "renamed-project"

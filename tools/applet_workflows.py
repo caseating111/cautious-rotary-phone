@@ -35,12 +35,33 @@ from tools.applets.plate_orientation import (
 )
 from tools.applets.project_setup import prepare_working_copy
 from tools.applets.v10_adapter import load_v10
+from tools.applets.v10_csv_snapshots import (
+    compare_csv_snapshot,
+    write_csv_snapshot,
+)
 from tools.applets.visibility import (
     adjust_plate_visibility,
     apply_visibility_adjustment,
     write_visibility_result,
 )
 from tools.grid_coordinates import validate_grid_coordinate_asset
+from tools.project_lifecycle import (
+    apply_layout_migration,
+    apply_loose_image_import,
+    discover_grid_assets,
+    plan_layout_migration,
+    plan_loose_image_import,
+    rename_project_folder_date,
+    subset_project_model,
+)
+from tools.project_lifecycle import (
+    mark_working_complete as mark_working_complete_state,
+)
+from tools.project_paths import (
+    locate_state,
+    preferred_project_path,
+    resolve_recorded_path,
+)
 from tools.project_state import (
     load_project_state,
     new_project_state,
@@ -90,14 +111,44 @@ class ProjectWorkflow:
         if not workbook_path.is_file():
             raise FileNotFoundError(f"V10 workbook not found: {workbook_path}")
         destination = Path(project_root).resolve()
-        state_file = destination / "State" / "workflow_project.json"
-        if state_file.exists():
+        try:
+            state_file = locate_state(destination)
+        except ValueError as exc:
+            if not str(exc).startswith("Project state not found under:"):
+                raise
+            state_file = None
+        if state_file is not None:
             raise FileExistsError(
                 f"Project state already exists; open it instead of replacing it: {state_file}"
             )
         model = load_v10(str(workbook_path))
         workflow = cls(
             new_project_state(destination, model, v10_workbook=workbook_path)
+        )
+        workflow.save()
+        return workflow
+
+    @classmethod
+    def create_from_model(
+        cls,
+        project_model: dict[str, Any],
+        project_root: str | Path,
+        *,
+        v10_workbook: str | Path | None = None,
+    ) -> ProjectWorkflow:
+        destination = Path(project_root).resolve()
+        try:
+            state_file = locate_state(destination)
+        except ValueError as exc:
+            if not str(exc).startswith("Project state not found under:"):
+                raise
+            state_file = None
+        if state_file is not None:
+            raise FileExistsError(
+                f"Project state already exists; open it instead: {state_file}"
+            )
+        workflow = cls(
+            new_project_state(destination, project_model, v10_workbook=v10_workbook)
         )
         workflow.save()
         return workflow
@@ -132,12 +183,17 @@ class ProjectWorkflow:
         *,
         raw_root: str | Path | None = None,
         enable_rename: bool = True,
+        filename_date_style: str = "v10",
     ) -> dict[str, Any]:
         return prepare_working_copy(
             self.project_model,
             self.project_root,
             raw_root=raw_root,
-            options={"preview_only": True, "enable_rename": enable_rename},
+            options={
+                "preview_only": True,
+                "enable_rename": enable_rename,
+                "filename_date_style": filename_date_style,
+            },
         )
 
     def apply_setup(
@@ -145,35 +201,158 @@ class ProjectWorkflow:
         *,
         raw_root: str | Path | None = None,
         enable_rename: bool = True,
+        filename_date_style: str = "v10",
     ) -> dict[str, Any]:
         result = prepare_working_copy(
             self.project_model,
             self.project_root,
             raw_root=raw_root,
-            options={"preview_only": False, "enable_rename": enable_rename},
+            options={
+                "preview_only": False,
+                "enable_rename": enable_rename,
+                "filename_date_style": filename_date_style,
+            },
         )
         record_setup_result(self.state, result)
+        try:
+            snapshot = write_csv_snapshot(
+                self.project_model,
+                self.project_root,
+                filename_date_style=filename_date_style,
+                pinned=str(self.state.get("settings", {}).get("csv_mode", "refreshable")).casefold()
+                == "pinned",
+            )
+        except ValueError as exc:
+            snapshot = {"status": "UNAVAILABLE", "error": str(exc)}
+        self.state["csv_snapshot"] = snapshot
+        result["csv_snapshot"] = copy.deepcopy(snapshot)
         self.save()
         return result
 
-    def source_for(self, image_uid: str, *, include_crop: bool = True) -> Path:
+    def refresh_csv_snapshot(
+        self,
+        *,
+        filename_date_style: str = "v10",
+        pinned: bool | None = None,
+    ) -> dict[str, Any]:
+        if pinned is None:
+            pinned = str(self.state.get("settings", {}).get("csv_mode", "refreshable")).casefold() == "pinned"
+        result = write_csv_snapshot(
+            self.project_model,
+            self.project_root,
+            filename_date_style=filename_date_style,
+            pinned=bool(pinned),
+        )
+        self.state["csv_snapshot"] = copy.deepcopy(result)
+        self.save()
+        return result
+
+    def compare_csv_snapshot(self, *, filename_date_style: str = "v10") -> dict[str, Any]:
+        return compare_csv_snapshot(
+            self.project_model,
+            self.project_root,
+            filename_date_style=filename_date_style,
+        )
+
+    def _current_v10_model(self) -> dict[str, Any]:
+        workbook = self.state.get("v10_workbook")
+        if not workbook:
+            raise ValueError("This project has no linked V10 workbook.")
+        full = load_v10(str(workbook))
+        session_uids = {
+            str(item.get("session_uid") or "")
+            for item in self.project_model.get("sessions", [])
+        }
+        if len(session_uids) == 1:
+            return subset_project_model(full, next(iter(session_uids)))
+        return full
+
+    def compare_current_v10(self, *, filename_date_style: str = "v10") -> dict[str, Any]:
+        current_model = self._current_v10_model()
+        return compare_csv_snapshot(
+            current_model,
+            self.project_root,
+            filename_date_style=filename_date_style,
+        )
+
+    def refresh_from_v10(self, *, filename_date_style: str = "v10") -> dict[str, Any]:
+        updated_model = self._current_v10_model()
+        old_records = self.state["images"]
+        new_records: dict[str, dict[str, Any]] = {}
+        for image in updated_model.get("images", []):
+            uid = str(image.get("image_uid") or "")
+            if uid in old_records:
+                record = copy.deepcopy(old_records[uid])
+                record["session_uid"] = image.get("session_uid")
+                record["layout_id"] = image.get("annotation_set")
+            else:
+                record = {
+                    "image_uid": uid,
+                    "session_uid": image.get("session_uid"),
+                    "layout_id": image.get("annotation_set"),
+                    "raw_path": None,
+                    "working_path": None,
+                }
+            new_records[uid] = record
+        retired = {
+            uid: copy.deepcopy(record)
+            for uid, record in old_records.items()
+            if uid not in new_records
+        }
+        if retired:
+            self.state.setdefault("retired_images", {}).update(retired)
+        self.state["project_model"] = updated_model
+        self.state["images"] = new_records
+        result = write_csv_snapshot(
+            updated_model,
+            self.project_root,
+            filename_date_style=filename_date_style,
+            pinned=False,
+        )
+        self.state["csv_snapshot"] = copy.deepcopy(result)
+        self.save()
+        return result
+
+    def source_for(
+        self,
+        image_uid: str,
+        *,
+        include_crop: bool = True,
+        source_kind: str = "auto",
+    ) -> Path:
         record = self.image_record(image_uid)
+        kind = source_kind.strip().casefold()
+        if kind not in {"auto", "processed", "cropped", "working", "raw"}:
+            raise ValueError(f"Unsupported source kind: {source_kind}")
         candidates: list[str | None] = []
-        if include_crop:
+        if kind == "processed":
+            visibility = record.get("visibility")
+            if isinstance(visibility, dict) and visibility.get("status") == "ACCEPTED":
+                candidates.append(visibility.get("output_path"))
+            if not candidates:
+                raise FileNotFoundError(
+                    f"No accepted Processed source is recorded for Image UID {image_uid}."
+                )
+        if include_crop and kind in {"auto", "cropped"}:
             crop = record.get("crop")
             if isinstance(crop, dict) and crop.get("status") == "ACCEPTED":
                 candidates.append(crop.get("output_path"))
-        orientation = record.get("orientation")
-        if isinstance(orientation, dict) and orientation.get("status") == "ACCEPTED":
-            candidates.append(orientation.get("output_path"))
-        candidates.extend((record.get("working_path"), record.get("raw_path")))
+            if kind == "cropped" and not candidates:
+                raise FileNotFoundError(
+                    f"No accepted Cropped source is recorded for Image UID {image_uid}."
+                )
+        if kind == "auto":
+            orientation = record.get("orientation")
+            if isinstance(orientation, dict) and orientation.get("status") == "ACCEPTED":
+                candidates.append(orientation.get("output_path"))
+        if kind in {"auto", "working"}:
+            candidates.append(record.get("working_path"))
+        if kind in {"auto", "raw"}:
+            candidates.append(record.get("raw_path"))
         for value in candidates:
             if not value:
                 continue
-            path = Path(value)
-            if not path.is_absolute():
-                path = self.project_root / path
-            path = path.resolve()
+            path = resolve_recorded_path(value, self.project_root)
             if path.is_file():
                 return path
         raise FileNotFoundError(
@@ -182,9 +361,78 @@ class ProjectWorkflow:
 
     def _derivative_path(self, image_uid: str, stage: str, source: Path) -> Path:
         suffix = source.suffix if source.suffix else ".png"
-        return (
-            self.project_root / "Processed" / stage / f"{_safe_stem(image_uid)}{suffix}"
-        )
+        key = {"Oriented": "orientation", "Cropped": "cropped", "Visibility": "processed"}.get(stage)
+        if key is None:
+            raise ValueError(f"Unknown derivative stage: {stage}")
+        return preferred_project_path(self.project_root, key) / f"{_safe_stem(image_uid)}{suffix}"
+
+    def preview_loose_import(self) -> dict[str, Any]:
+        return plan_loose_image_import(self.project_root)
+
+    def apply_loose_import(self, plan: dict[str, Any]) -> dict[str, Any]:
+        result = apply_loose_image_import(plan)
+        self.state.setdefault("setup", {})["loose_import"] = copy.deepcopy(result)
+        self.save()
+        return result
+
+    def mark_working_complete(self) -> dict[str, Any]:
+        result = mark_working_complete_state(self.state)
+        self.save()
+        return result
+
+    def maybe_complete_working(self) -> dict[str, Any] | None:
+        if not bool(self.state.get("settings", {}).get("auto_move_working", True)):
+            return None
+        records = list(self.state.get("images", {}).values())
+        if not records or any(
+            not isinstance(record.get("crop"), dict)
+            or record["crop"].get("status") not in {"ACCEPTED", "SKIPPED"}
+            for record in records
+        ):
+            return None
+        try:
+            return self.mark_working_complete()
+        except FileNotFoundError:
+            return None
+
+    def preview_layout_migration(self) -> dict[str, Any]:
+        return plan_layout_migration(self.project_root)
+
+    def apply_layout_migration(self, plan: dict[str, Any]) -> dict[str, Any]:
+        result = apply_layout_migration(plan, self.state)
+        self.save()
+        return result
+
+    def rename_project_date(self, style: str = "yyyy.mm.dd") -> Path:
+        self.state, new_root = rename_project_folder_date(self.state, style=style)
+        self.save()
+        return new_root
+
+    def save_project_settings(self, settings: dict[str, Any]) -> Path:
+        self.state["settings"] = copy.deepcopy(settings)
+        return self.save()
+
+    def auto_attach_grids(self) -> dict[str, Any]:
+        matches = discover_grid_assets(self.project_root, self.state["images"])
+        attached: dict[str, str] = {}
+        ambiguous: dict[str, list[str]] = {}
+        missing: list[str] = []
+        for uid, paths in matches.items():
+            if len(paths) == 1:
+                self.attach_grid_asset(uid, paths[0])
+                attached[uid] = str(paths[0])
+            elif len(paths) > 1:
+                ambiguous[uid] = [str(path) for path in paths]
+            else:
+                missing.append(uid)
+        result = {
+            "attached": attached,
+            "ambiguous": ambiguous,
+            "missing": sorted(missing),
+        }
+        self.state.setdefault("setup", {})["grid_discovery"] = copy.deepcopy(result)
+        self.save()
+        return result
 
     def propose_orientation(
         self,
@@ -316,6 +564,7 @@ class ProjectWorkflow:
         apply_plate_crop(source, accepted, output)
         record_crop(self.state, image_uid, accepted)
         self.save()
+        self.maybe_complete_working()
         return accepted, output
 
     def skip_crop(self, image_uid: str) -> dict[str, Any]:
@@ -337,6 +586,7 @@ class ProjectWorkflow:
         }
         record_crop(self.state, image_uid, result)
         self.save()
+        self.maybe_complete_working()
         return result
 
     def attach_grid_asset(
@@ -362,7 +612,7 @@ class ProjectWorkflow:
             raise ValueError(
                 f"Image UID {image_uid} has no current accepted grid asset."
             )
-        path = Path(record["path"])
+        path = resolve_recorded_path(record["path"], self.project_root)
         asset = json.loads(path.read_text(encoding="utf-8"))
         validate_grid_coordinate_asset(asset)
         if asset.get("asset_id") != record.get("asset_id"):
@@ -471,12 +721,17 @@ class ProjectWorkflow:
             ) from exc
 
     def _culture_crop_source(
-        self, image_uid: str, tier: str
+        self, image_uid: str, tier: str, source_kind: str | None = None
     ) -> tuple[Path, dict[str, Any]]:
         asset = self.grid_asset(image_uid)
-        if tier == "Unprocessed":
-            source = self.source_for(image_uid)
-        elif tier == "Processed":
+        selected = (source_kind or ("processed" if tier == "Processed" else "auto")).casefold()
+        if selected in {"working", "cropped", "raw", "auto"}:
+            if tier != "Unprocessed":
+                raise ValueError("Working/Cropped sources publish under Unprocessed.")
+            source = self.source_for(image_uid, source_kind=selected)
+        elif selected == "processed":
+            if tier != "Processed":
+                raise ValueError("Processed sources publish under Processed.")
             visibility = self.image_record(image_uid).get("visibility")
             if (
                 not isinstance(visibility, dict)
@@ -498,7 +753,7 @@ class ProjectWorkflow:
                     f"Processed visibility output not found: {source}"
                 )
         else:
-            raise ValueError("tier must be Unprocessed or Processed.")
+            raise ValueError("source_kind must be Working, Cropped, Processed, Raw, or Auto.")
         self._assert_grid_matches_source(image_uid, asset, source)
         return source, asset
 
@@ -521,7 +776,10 @@ class ProjectWorkflow:
             image.get("condition"),
             session.get("date"),
         )
-        root = self.project_root / "Crops" / tier
+        root = preferred_project_path(
+            self.project_root,
+            "crops_processed" if tier == "Processed" else "crops_unprocessed",
+        )
         for value in context:
             root /= _safe_stem(str(value or "Unknown"))
         return root / _safe_stem(image_uid)
@@ -535,8 +793,9 @@ class ProjectWorkflow:
         columns: tuple[int, ...] | None = None,
         crop_width: int = 130,
         crop_height: int = 546,
+        source_kind: str | None = None,
     ) -> dict[str, Any]:
-        source, asset = self._culture_crop_source(image_uid, tier)
+        source, asset = self._culture_crop_source(image_uid, tier, source_kind)
         image = self._model_image(image_uid)
         metadata = {
             "exp": image.get("exp"),
@@ -544,7 +803,7 @@ class ProjectWorkflow:
             "type": image.get("condition"),
             "image_uid": image_uid,
         }
-        return plan_culture_crop_export(
+        plan = plan_culture_crop_export(
             source,
             asset,
             self._plate_layout(image_uid),
@@ -556,6 +815,8 @@ class ProjectWorkflow:
             crop_width=crop_width,
             crop_height=crop_height,
         )
+        plan["source_kind"] = (source_kind or ("processed" if tier == "Processed" else "auto")).casefold()
+        return plan
 
     def accept_culture_crop_export(
         self, image_uid: str, plan: dict[str, Any]
@@ -565,7 +826,7 @@ class ProjectWorkflow:
         if plan.get("image_uid") != image_uid:
             raise ValueError("Culture crop plan belongs to a different Image UID.")
         tier = str(plan.get("tier") or "")
-        source, asset = self._culture_crop_source(image_uid, tier)
+        source, asset = self._culture_crop_source(image_uid, tier, plan.get("source_kind"))
         if plan.get("grid_asset_id") != asset.get("asset_id"):
             raise ValueError(
                 "Culture crop plan uses stale or different grid coordinates."
@@ -602,7 +863,7 @@ class ProjectWorkflow:
             selections,
             rows=rows,
             columns=columns,
-            output_root=self.project_root / "Matrices" / "Mixed Tier",
+            output_root=preferred_project_path(self.project_root, "matrices") / "Mixed Tier",
             tile_size=tile_size,
             padding=padding,
         )
@@ -610,7 +871,7 @@ class ProjectWorkflow:
         return plan, preview["preview_image"]
 
     def accept_mixed_tier_matrix(self, plan: dict[str, Any]) -> dict[str, Any]:
-        expected_root = (self.project_root / "Matrices" / "Mixed Tier").resolve()
+        expected_root = (preferred_project_path(self.project_root, "matrices") / "Mixed Tier").resolve()
         if Path(plan.get("output_root", "")).resolve() != expected_root:
             raise ValueError("Mixed-tier matrix plan output is outside this project.")
         current = enumerate_crop_candidates(self.state)
@@ -656,13 +917,20 @@ class ProjectWorkflow:
         image_uid: str,
         request: dict[str, Any] | None = None,
         preset: dict[str, Any] | None = None,
+        source_kind: str = "automatic",
     ) -> tuple[dict[str, Any], Any]:
         record = self.image_record(image_uid)
-        visibility = record.get("visibility")
-        if isinstance(visibility, dict) and visibility.get("status") == "ACCEPTED":
-            source = Path(visibility["output_path"]).resolve()
+        selected = source_kind.strip().casefold()
+        if selected == "automatic":
+            visibility = record.get("visibility")
+            if isinstance(visibility, dict) and visibility.get("status") == "ACCEPTED":
+                source = resolve_recorded_path(visibility["output_path"], self.project_root)
+            else:
+                source = self.source_for(image_uid)
+        elif selected in {"processed", "cropped", "working", "raw"}:
+            source = self.source_for(image_uid, source_kind=selected)
         else:
-            source = self.source_for(image_uid)
+            raise ValueError("Annotation source must be Automatic, Processed, Cropped, Working, or Raw.")
         if not source.is_file():
             raise FileNotFoundError(f"Annotation source not found: {source}")
         asset = self.grid_asset(image_uid)
@@ -677,6 +945,7 @@ class ProjectWorkflow:
         )
         result["annotation_request"] = annotation_request
         result["preset"] = copy.deepcopy(preset)
+        result["source_kind"] = selected
         return result, result["preview_image"]
 
     def accept_annotation(
@@ -697,7 +966,7 @@ class ProjectWorkflow:
         if not source.is_file():
             raise FileNotFoundError(f"Annotation source not found: {source}")
         self._assert_grid_matches_source(image_uid, asset, source)
-        output = self.project_root / "Annotated" / f"{_safe_stem(image_uid)}.png"
+        output = preferred_project_path(self.project_root, "annotated") / f"{_safe_stem(image_uid)}.png"
         accepted = render_plate_annotation(
             str(source),
             self._plate_layout(image_uid),

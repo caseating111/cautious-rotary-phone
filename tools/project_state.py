@@ -3,9 +3,17 @@ from __future__ import annotations
 import copy
 import json
 import os
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+from tools.project_paths import (
+    canonical_path,
+    locate_state,
+    project_root_from_state_file,
+    rebase_state_paths,
+)
 
 CONTRACT_VERSION = 1
 STATE_NAME = "workflow_project.json"
@@ -18,7 +26,7 @@ DOWNSTREAM = {
 
 
 def state_path(project_root: str | Path) -> Path:
-    return Path(project_root).resolve() / "State" / STATE_NAME
+    return canonical_path(project_root, "state") / STATE_NAME
 
 
 def _timestamp() -> str:
@@ -51,7 +59,9 @@ def new_project_state(
     state = {
         "contract_version": CONTRACT_VERSION,
         "asset_type": "WorkflowProjectState",
+        "project_id": str(uuid.uuid4()),
         "project_root": str(root),
+        "state_location": state_path(root).relative_to(root).as_posix(),
         "v10_workbook": str(Path(v10_workbook).resolve()) if v10_workbook else None,
         "project_model": copy.deepcopy(project_model),
         "crop_calibrations": {},
@@ -72,6 +82,16 @@ def validate_project_state(state: dict[str, Any]) -> None:
     root = state.get("project_root")
     if not isinstance(root, str) or not root.strip():
         raise ValueError("Project state requires project_root.")
+    project_id = state.get("project_id")
+    if project_id is not None and (not isinstance(project_id, str) or not project_id):
+        raise ValueError("project_id must be a non-empty string when present.")
+    state_location = state.get("state_location")
+    if state_location is not None and (
+        not isinstance(state_location, str)
+        or not state_location
+        or Path(state_location).is_absolute()
+    ):
+        raise ValueError("state_location must be a project-relative path.")
     model = state.get("project_model")
     if not isinstance(model, dict) or model.get("contract_version") != 1:
         raise ValueError("Project state requires ProjectModel v1.")
@@ -117,7 +137,15 @@ def validate_project_state(state: dict[str, Any]) -> None:
 def save_project_state(state: dict[str, Any], path: str | Path | None = None) -> Path:
     validate_project_state(state)
     state["updated_at"] = _timestamp()
-    destination = Path(path) if path else state_path(state["project_root"])
+    if path is not None:
+        destination = Path(path)
+    else:
+        relative = state.get("state_location")
+        destination = (
+            Path(state["project_root"]) / relative
+            if relative
+            else state_path(state["project_root"])
+        )
     destination = destination.resolve()
     destination.parent.mkdir(parents=True, exist_ok=True)
     temporary = destination.with_name(destination.name + ".tmp")
@@ -132,13 +160,23 @@ def save_project_state(state: dict[str, Any], path: str | Path | None = None) ->
 def load_project_state(path_or_root: str | Path) -> dict[str, Any]:
     path = Path(path_or_root).resolve()
     if path.is_dir() or path.suffix.casefold() != ".json":
-        path = state_path(path)
+        path = locate_state(path)
     try:
         state = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError as exc:
         raise ValueError(f"Project state not found: {path}") from exc
     except (OSError, json.JSONDecodeError) as exc:
         raise ValueError(f"Could not read project state {path}: {exc}") from exc
+    validate_project_state(state)
+    actual_root = project_root_from_state_file(path)
+    stored_root = Path(state["project_root"]).resolve()
+    if stored_root != actual_root:
+        state = rebase_state_paths(state, stored_root, actual_root)
+        state["project_root"] = str(actual_root)
+        state["relocated_from"] = str(stored_root)
+        state["relocated_at"] = _timestamp()
+    state.setdefault("project_id", str(uuid.uuid4()))
+    state["state_location"] = path.relative_to(actual_root).as_posix()
     validate_project_state(state)
     return state
 

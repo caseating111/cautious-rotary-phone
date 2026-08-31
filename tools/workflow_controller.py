@@ -24,6 +24,7 @@ DEFAULTS = {
     "grid_csv": "",
     "images_csv": "",
     "condition_order_csv": "",
+    "grid_coordinate_asset_directory": "",
     "crop_width": "130",
     "crop_height": "546",
     "replace_existing_crops": "0",
@@ -31,6 +32,8 @@ DEFAULTS = {
     "clear_fiji_on_cancel": "1",
     "batch_grid_qc": "1",
     "hide_source_during_alignment": "1",
+    "project_prefix": "",
+    "project_prefix_date_style": "preserve",
 }
 
 PROJECT_CSV_FILES = {
@@ -192,6 +195,11 @@ class Controller(tk.Tk):
 
         self.vars[key].set(chosen)
         if key in PROJECT_CSV_FILES:
+            selected_folder = Path(chosen).parent
+            if selected_folder.name.casefold() == "z. metadata":
+                self.vars["grid_coordinate_asset_directory"].set(
+                    str(selected_folder / "State" / "GridCoordinates")
+                )
             filled = 0
             for sibling_key, sibling_path in sibling_project_csvs(Path(chosen)).items():
                 if sibling_key == key or self.vars[sibling_key].get().strip():

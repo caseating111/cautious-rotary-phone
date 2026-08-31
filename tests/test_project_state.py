@@ -100,7 +100,7 @@ def test_state_persists_uid_paths_and_assets_atomically(tmp_path: Path) -> None:
 
     path = save_project_state(state)
     loaded = load_project_state(tmp_path)
-    assert path == tmp_path / "State" / "workflow_project.json"
+    assert path == tmp_path / "z. Metadata" / "State" / "workflow_project.json"
     assert loaded["images"]["I1"]["working_path"] == "Working/working1.jpg"
     assert loaded["images"]["I1"]["grid"]["asset_id"] == "grid-I1"
     assert loaded["crop_calibrations"]["C1"]["side_pixels"] == 100

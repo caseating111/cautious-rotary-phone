@@ -140,6 +140,17 @@ def load_v10(excel_path: str) -> Dict[str, Any]:
         ann_val = row.get("annotationSet")
         ann_str = str(ann_val).strip() if pd.notnull(ann_val) else None
 
+        id_val = row.get("ID")
+        id_str = str(id_val).strip() if pd.notnull(id_val) else None
+        sample_val = row.get("Sample description")
+        sample_str = str(sample_val).strip() if pd.notnull(sample_val) else None
+        date_val = row.get("Date*") if pd.notnull(row.get("Date*")) else row.get("Date")
+        image_date = str(date_val).split(" ")[0].strip() if pd.notnull(date_val) else None
+        figure_val = row.get("figureDescriptionLabel")
+        figure_str = str(figure_val).strip() if pd.notnull(figure_val) else None
+        status_val = row.get("Filename status")
+        filename_status = str(status_val).strip() if pd.notnull(status_val) else None
+
         img_entry = {
             "image_uid": image_uid,
             "session_uid": session_uid,
@@ -153,6 +164,11 @@ def load_v10(excel_path: str) -> Dict[str, Any]:
             "rep": rep,
             "arrangement": arr_str,
             "annotation_set": ann_str
+            ,"id": id_str
+            ,"sample_description": sample_str
+            ,"date": image_date
+            ,"figure_description_label": figure_str
+            ,"filename_status": filename_status
         }
         images.append(img_entry)
 

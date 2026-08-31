@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import tempfile
+import shutil
 from pathlib import Path
 
 import pytest
@@ -62,7 +63,7 @@ def test_create_from_sanitized_v10_persists_openable_state(tmp_path: Path) -> No
     workflow = ProjectWorkflow.create_from_v10(workbook, tmp_path)
     assert workflow.project_model["images"]
     assert workflow.project_model["layouts"]
-    assert (tmp_path / "State" / "workflow_project.json").is_file()
+    assert (tmp_path / "z. Metadata" / "State" / "workflow_project.json").is_file()
     assert ProjectWorkflow.open(tmp_path).project_model == workflow.project_model
     with pytest.raises(FileExistsError):
         ProjectWorkflow.create_from_v10(workbook, tmp_path)
@@ -190,3 +191,48 @@ def test_proposals_cannot_cross_image_or_unknown_calibration_boundaries(
         workflow.accept_orientation("Image 1", proposed)
     with pytest.raises(ValueError, match="Unknown crop calibration"):
         workflow.propose_crop("Image 1", "missing", (0, 0), (0, 0))
+
+
+def test_source_selection_and_grid_auto_discovery_are_explicit(tmp_path: Path) -> None:
+    workflow = ProjectWorkflow(new_project_state(tmp_path, _model()))
+    working = tmp_path / "1. b. Working" / "plate.png"
+    cropped = tmp_path / "2. Cropped" / "plate.png"
+    processed = tmp_path / "3. Processed" / "plate.png"
+    for path, shade in ((working, 10), (cropped, 20), (processed, 30)):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        Image.new("L", (100, 100), shade).save(path)
+    record = workflow.image_record("Image 1")
+    record["working_path"] = str(working.relative_to(tmp_path))
+    record["crop"] = {"status": "ACCEPTED", "output_path": str(cropped)}
+    record["visibility"] = {"status": "ACCEPTED", "output_path": str(processed)}
+    workflow.save()
+
+    assert workflow.source_for("Image 1") == cropped
+    assert workflow.source_for("Image 1", source_kind="processed") == processed
+    assert workflow.source_for("Image 1", source_kind="working") == working
+
+    asset = build_grid_coordinate_asset(
+        image_ref=str(cropped),
+        image_width=100,
+        image_height=100,
+        grid_rows=5,
+        grid_cols=3,
+        image_uid="Image 1",
+        reference_points={
+            "r1c1": {"x": 10, "y": 10},
+            "r1clast": {"x": 90, "y": 10},
+            "r5c1": {"x": 10, "y": 90},
+            "r5clast": {"x": 90, "y": 90},
+        },
+    )
+    canonical = tmp_path / "z. Metadata" / "State" / "GridCoordinates"
+    asset_path = save_grid_coordinate_asset(asset, canonical)
+    found = workflow.auto_attach_grids()
+    assert found["attached"]["Image 1"] == str(asset_path)
+    assert not found["ambiguous"]
+
+    legacy = tmp_path / "GridCoordinates"
+    legacy.mkdir()
+    shutil.copy2(asset_path, legacy / asset_path.name)
+    ambiguous = workflow.auto_attach_grids()
+    assert "Image 1" in ambiguous["ambiguous"]

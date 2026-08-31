@@ -1,1 +1,50 @@
-{"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"workflow_project_state.schema.json","title":"WorkflowProjectState","type":"object","required":["contract_version","asset_type","project_root","v10_workbook","project_model","crop_calibrations","images","updated_at"],"properties":{"contract_version":{"const":1},"asset_type":{"const":"WorkflowProjectState"},"project_root":{"type":"string","minLength":1},"v10_workbook":{"type":["string","null"]},"project_model":{"$ref":"project_model.schema.json"},"crop_calibrations":{"type":"object","additionalProperties":{"$ref":"crop_size_calibration.schema.json"}},"matrix_exports":{"type":"object","additionalProperties":{"type":"object","additionalProperties":true}},"images":{"type":"object","minProperties":1,"additionalProperties":{"$ref":"#/$defs/image_record"}},"updated_at":{"type":"string","minLength":1},"setup":{"type":"object","additionalProperties":true}},"$defs":{"image_record":{"type":"object","required":["image_uid"],"properties":{"image_uid":{"type":"string","minLength":1},"session_uid":{"type":["string","null"]},"layout_id":{"type":["string","null"]},"raw_path":{"type":["string","null"]},"working_path":{"type":["string","null"]},"setup_disposition":{"type":["string","null"]},"orientation":{"type":"object","additionalProperties":true},"crop":{"type":"object","additionalProperties":true},"grid":{"type":"object","additionalProperties":true},"visibility":{"type":"object","additionalProperties":true},"annotation":{"type":"object","additionalProperties":true},"crop_exports":{"type":"object","additionalProperties":{"type":"object","additionalProperties":true}}},"additionalProperties":true}},"additionalProperties":false}
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "workflow_project_state.schema.json",
+  "title": "WorkflowProjectState",
+  "type": "object",
+  "required": ["contract_version", "asset_type", "project_root", "v10_workbook", "project_model", "crop_calibrations", "images", "updated_at"],
+  "properties": {
+    "contract_version": {"const": 1},
+    "asset_type": {"const": "WorkflowProjectState"},
+    "project_id": {"type": "string", "minLength": 1},
+    "project_root": {"type": "string", "minLength": 1},
+    "state_location": {"type": "string", "minLength": 1},
+    "relocated_from": {"type": "string", "minLength": 1},
+    "relocated_at": {"type": "string", "minLength": 1},
+    "v10_workbook": {"type": ["string", "null"]},
+    "project_model": {"$ref": "project_model.schema.json"},
+    "crop_calibrations": {"type": "object", "additionalProperties": {"$ref": "crop_size_calibration.schema.json"}},
+    "matrix_exports": {"type": "object", "additionalProperties": {"type": "object", "additionalProperties": true}},
+    "images": {"type": "object", "minProperties": 1, "additionalProperties": {"$ref": "#/$defs/image_record"}},
+    "updated_at": {"type": "string", "minLength": 1},
+    "setup": {"type": "object", "additionalProperties": true},
+    "working_completion": {"type": "object", "additionalProperties": true},
+    "folder_history": {"type": "array", "items": {"type": "object", "additionalProperties": true}},
+    "settings": {"type": "object", "additionalProperties": true},
+    "csv_snapshot": {"type": "object", "additionalProperties": true}
+    ,"retired_images": {"type": "object", "additionalProperties": {"type": "object", "additionalProperties": true}}
+  },
+  "$defs": {
+    "image_record": {
+      "type": "object",
+      "required": ["image_uid"],
+      "properties": {
+        "image_uid": {"type": "string", "minLength": 1},
+        "session_uid": {"type": ["string", "null"]},
+        "layout_id": {"type": ["string", "null"]},
+        "raw_path": {"type": ["string", "null"]},
+        "working_path": {"type": ["string", "null"]},
+        "setup_disposition": {"type": ["string", "null"]},
+        "orientation": {"type": "object", "additionalProperties": true},
+        "crop": {"type": "object", "additionalProperties": true},
+        "grid": {"type": "object", "additionalProperties": true},
+        "visibility": {"type": "object", "additionalProperties": true},
+        "annotation": {"type": "object", "additionalProperties": true},
+        "crop_exports": {"type": "object", "additionalProperties": {"type": "object", "additionalProperties": true}}
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false
+}

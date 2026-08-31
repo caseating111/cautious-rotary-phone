@@ -12,9 +12,15 @@ from PIL import Image, ImageTk
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from tools.applet_presets import (list_presets, load_last, load_preset, save_last, save_preset)
-from tools.applet_workflows import ProjectWorkflow
 from tools.annotation_settings_gui import AnnotationSettingsDialog
+from tools.applet_presets import (
+    list_presets,
+    load_last,
+    load_preset,
+    save_last,
+    save_preset,
+)
+from tools.applet_workflows import ProjectWorkflow
 from tools.applets.batch_actions import (
     execute_automatic_batch,
     execute_grid_batch,
@@ -23,6 +29,16 @@ from tools.applets.batch_actions import (
 )
 from tools.applets.plate_crop import calibrate_crop_size
 from tools.applets.quick_figure import calculate_box_from_roi
+from tools.applets.v10_adapter import load_v10
+from tools.project_lifecycle import (
+    discover_experiment_folders,
+    loose_image_files,
+    match_experiment_folder,
+    plan_layout_migration,
+    plan_loose_image_import,
+    subset_project_model,
+)
+from tools.project_paths import preferred_project_path
 from tools.quick_figure_gui import QuickFigurePanel
 
 
@@ -181,11 +197,18 @@ class WorkflowApp(tk.Tk):
         self.crop_proposal: dict[str, Any] | None = None
         self.crop_previewed = False
         self.raw_root_var = tk.StringVar()
-        self.enable_rename = tk.BooleanVar(value=True)
+        setup_settings = load_last("project_setup", {}) or {}
+        self.enable_rename = tk.BooleanVar(value=bool(setup_settings.get("enable_rename", True)))
+        self.setup_review = tk.BooleanVar(value=bool(setup_settings.get("review_before_apply", True)))
+        self.filename_date_style = tk.StringVar(value=str(setup_settings.get("filename_date_style", "yyyy.mm.dd")))
+        self.rename_folder_date = tk.BooleanVar(value=bool(setup_settings.get("rename_folder_date", False)))
+        self.auto_move_working = tk.BooleanVar(value=bool(setup_settings.get("auto_move_working", True)))
+        self.csv_mode = tk.StringVar(value=str(setup_settings.get("csv_mode", "refreshable")))
         self.setup_preview: dict[str, Any] | None = None
-        self.setup_signature: tuple[str, bool] | None = None
+        self.setup_signature: tuple[str, bool, str] | None = None
         culture_settings = load_last("culture_crop", {}) or {}
         self.crop_export_tier = tk.StringVar(value=str(culture_settings.get("tier", "Unprocessed")))
+        self.crop_export_source = tk.StringVar(value=str(culture_settings.get("source_kind", "Cropped")))
         self.crop_export_top = tk.BooleanVar(value=bool(culture_settings.get("top", True)))
         self.crop_export_low = tk.BooleanVar(value=bool(culture_settings.get("low", True)))
         self.crop_export_columns = tk.StringVar(value=str(culture_settings.get("columns", "")))
@@ -216,6 +239,7 @@ class WorkflowApp(tk.Tk):
         self.annotation_in_image_enabled = tk.BooleanVar(value=False)
         self.annotation_in_image_grouped = tk.BooleanVar(value=True)
         self.annotation_preset_settings = load_last("annotation", {}) or {}
+        self.annotation_source = tk.StringVar(value=str(self.annotation_preset_settings.get("source_kind", "Automatic")))
         self.annotation_strain_size = tk.StringVar(value="18")
         self.annotation_vertical_size = tk.StringVar(value="18")
         self.annotation_rotation = tk.StringVar(value="90")
@@ -234,6 +258,12 @@ class WorkflowApp(tk.Tk):
         top.pack(fill="x", padx=8, pady=8)
         ttk.Button(top, text="Create from V10…", command=self.create_project).pack(
             side="left"
+        )
+        ttk.Button(top, text="Prepare one folder…", command=self.prepare_one_folder).pack(
+            side="left", padx=(6, 0)
+        )
+        ttk.Button(top, text="Prepare parent…", command=self.prepare_parent_folder).pack(
+            side="left", padx=(6, 0)
         )
         ttk.Button(top, text="Open project…", command=self.open_project).pack(
             side="left", padx=(6, 0)
@@ -296,6 +326,25 @@ class WorkflowApp(tk.Tk):
         ttk.Checkbutton(
             setup, text="Use V10 working filenames", variable=self.enable_rename
         ).pack(anchor="w", padx=8, pady=3)
+        ttk.Checkbutton(
+            setup, text="Review planned changes before applying", variable=self.setup_review
+        ).pack(anchor="w", padx=8, pady=3)
+        date_row = ttk.Frame(setup)
+        date_row.pack(fill="x", padx=8, pady=3)
+        ttk.Label(date_row, text="Filename dates").pack(side="left")
+        ttk.Combobox(
+            date_row,
+            textvariable=self.filename_date_style,
+            state="readonly",
+            values=("v10", "yyyy.mm.dd"),
+            width=14,
+        ).pack(side="left", padx=(6, 0))
+        ttk.Checkbutton(
+            setup, text="Rename experiment-folder date", variable=self.rename_folder_date
+        ).pack(anchor="w", padx=8, pady=3)
+        ttk.Checkbutton(
+            setup, text="Move Working beneath Cropped when complete", variable=self.auto_move_working
+        ).pack(anchor="w", padx=8, pady=3)
         setup_actions = ttk.Frame(setup)
         setup_actions.pack(fill="x", padx=8, pady=3)
         ttk.Button(
@@ -304,11 +353,22 @@ class WorkflowApp(tk.Tk):
         ttk.Button(setup_actions, text="Apply", command=self.apply_project_setup).pack(
             side="left", fill="x", expand=True, padx=(5, 0)
         )
+        lifecycle_actions = ttk.Frame(setup)
+        lifecycle_actions.pack(fill="x", padx=8, pady=3)
+        ttk.Button(lifecycle_actions, text="Upgrade old folders…", command=self.migrate_project_layout).pack(side="left", fill="x", expand=True)
+        ttk.Button(lifecycle_actions, text="Mark Working complete", command=self.mark_working_complete).pack(side="left", fill="x", expand=True, padx=(5, 0))
+        ttk.Button(setup, text="Rename project-folder date now", command=self.rename_project_date_now).pack(fill="x", padx=8, pady=3)
+        csv_row = ttk.Frame(setup)
+        csv_row.pack(fill="x", padx=8, pady=3)
+        ttk.Combobox(csv_row, textvariable=self.csv_mode, state="readonly", values=("refreshable", "pinned"), width=12).pack(side="left")
+        ttk.Button(csv_row, text="Refresh V10", command=self.refresh_v10_csvs).pack(side="left", padx=(4, 0))
+        ttk.Button(csv_row, text="Compare", command=self.compare_v10_csvs).pack(side="left", padx=(4, 0))
+        ttk.Button(setup, text="Save setup choices as defaults", command=self.save_setup_defaults).pack(fill="x", padx=8, pady=3)
         self.setup_tree = ttk.Treeview(
             setup,
             columns=("raw", "uid", "working", "status"),
             show="headings",
-            height=18,
+            height=8,
         )
         for key, label, width in (
             ("raw", "Raw", 105),
@@ -381,6 +441,9 @@ class WorkflowApp(tk.Tk):
         ttk.Button(grid, text="Attach grid asset…", command=self.attach_grid).pack(
             fill="x", padx=8, pady=3
         )
+        ttk.Button(grid, text="Find and attach project grids", command=self.auto_attach_grids).pack(
+            fill="x", padx=8, pady=3
+        )
         self.grid_label = ttk.Label(grid, text="No current grid asset", wraplength=245)
         self.grid_label.pack(anchor="w", padx=8, pady=6)
         ttk.Label(
@@ -391,11 +454,12 @@ class WorkflowApp(tk.Tk):
             ),
             wraplength=360,
         ).pack(anchor="w", padx=8, pady=8)
+        ttk.Label(culture_crops, text="Source stage").pack(anchor="w", padx=8)
         ttk.Combobox(
             culture_crops,
-            textvariable=self.crop_export_tier,
+            textvariable=self.crop_export_source,
             state="readonly",
-            values=("Unprocessed", "Processed"),
+            values=("Working", "Cropped", "Processed"),
         ).pack(fill="x", padx=8, pady=3)
         states_row = ttk.Frame(culture_crops)
         states_row.pack(fill="x", padx=8, pady=3)
@@ -529,6 +593,10 @@ class WorkflowApp(tk.Tk):
             row.pack(fill="x", padx=8, pady=2)
             ttk.Label(row, text=label, width=14).pack(side="left")
             ttk.Entry(row, textvariable=variable, width=8).pack(side="left")
+        source_group = ttk.LabelFrame(annotation, text="Image source")
+        source_group.pack(fill="x", padx=8, pady=(6, 3))
+        for label in ("Automatic", "Processed", "Cropped", "Working"):
+            ttk.Radiobutton(source_group, text=label, value=label, variable=self.annotation_source).pack(side="left")
         ttk.Button(annotation, text="Advanced styles / presets…", command=self.open_annotation_settings).pack(fill="x", padx=8, pady=(8, 3))
         ttk.Button(
             annotation, text="Preview annotation", command=self.preview_annotation
@@ -665,6 +733,197 @@ class WorkflowApp(tk.Tk):
         if workflow:
             self._activate(workflow)
 
+    def _setup_settings_value(self) -> dict[str, Any]:
+        return {
+            "enable_rename": self.enable_rename.get(),
+            "review_before_apply": self.setup_review.get(),
+            "filename_date_style": self.filename_date_style.get(),
+            "rename_folder_date": self.rename_folder_date.get(),
+            "auto_move_working": self.auto_move_working.get(),
+            "csv_mode": self.csv_mode.get(),
+        }
+
+    def save_setup_defaults(self) -> None:
+        settings = self._setup_settings_value()
+        result = self._run(lambda: save_last("project_setup", settings))
+        if result:
+            if self.workflow is not None:
+                self._run(lambda: self.workflow.save_project_settings(settings))
+            self.status.set("Saved project-setup choices as the automatic defaults.")
+
+    def _session_for_folder(self, folder: Path, model: dict[str, Any]) -> str:
+        names = [item.name for item in loose_image_files(folder)]
+        match = match_experiment_folder(folder, model, image_names=names)
+        if match.status == "MATCHED" and match.session_uid:
+            return match.session_uid
+        if match.status == "AMBIGUOUS":
+            value = simpledialog.askstring(
+                "Choose V10 session",
+                f"Folder: {folder.name}\n\nCandidates:\n" + "\n".join(match.candidates) + "\n\nEnter the correct sessionUID:",
+                parent=self,
+            )
+            if value in match.candidates:
+                return str(value)
+            raise ValueError(f"No valid V10 session was selected for {folder.name}.")
+        raise ValueError(
+            f"Could not match {folder.name!r} to V10 ({match.status}). Add a supported date to the folder name or use Create from V10 and connect it manually."
+        )
+
+    def _open_or_create_folder(
+        self, folder: Path, workbook: Path, model: dict[str, Any]
+    ) -> ProjectWorkflow:
+        try:
+            return ProjectWorkflow.open(folder)
+        except ValueError as exc:
+            if "Project state not found" not in str(exc):
+                raise
+        session_uid = self._session_for_folder(folder, model)
+        return ProjectWorkflow.create_from_model(
+            subset_project_model(model, session_uid),
+            folder,
+            v10_workbook=workbook,
+        )
+
+    def _prepare_workflow(self, workflow: ProjectWorkflow, *, confirmed: bool = False) -> dict[str, Any]:
+        settings = self._setup_settings_value()
+        migration = workflow.preview_layout_migration()
+        loose = workflow.preview_loose_import()
+        if loose.get("blockers") or migration.get("blockers"):
+            raise ValueError("Setup has folder/file collisions; review the Setup details before applying.")
+        needs_confirmation = not confirmed and (self.setup_review.get() or bool(migration.get("moves")))
+        if needs_confirmation and not messagebox.askyesno(
+            "Prepare experiment project",
+            f"Project: {workflow.project_root.name}\n\n"
+            f"Legacy folder moves: {len(migration.get('moves', []))}\n"
+            f"Loose images to move into Raw: {sum(item['status'] == 'WOULD_MOVE' for item in loose.get('items', []))}\n"
+            f"Expected V10 images: {len(workflow.state['images'])}\n\n"
+            "Apply these safe, non-overwriting changes?",
+            parent=self,
+        ):
+            raise RuntimeError("Project preparation was cancelled.")
+        if migration.get("moves"):
+            workflow.apply_layout_migration(migration)
+            loose = workflow.preview_loose_import()
+        if any(item["status"] == "WOULD_MOVE" for item in loose.get("items", [])):
+            workflow.apply_loose_import(loose)
+        workflow.save_project_settings(settings)
+        result = workflow.apply_setup(
+            enable_rename=self.enable_rename.get(),
+            filename_date_style=self.filename_date_style.get(),
+        )
+        if self.rename_folder_date.get():
+            workflow.rename_project_date("yyyy.mm.dd")
+        workflow.auto_attach_grids()
+        save_last("project_setup", settings)
+        return result
+
+    def prepare_one_folder(self) -> None:
+        workbook = filedialog.askopenfilename(
+            title="Select V10 workbook",
+            filetypes=[("Excel workbook", "*.xlsx *.xlsm"), ("All files", "*.*")],
+        )
+        if not workbook:
+            return
+        folder = filedialog.askdirectory(title="Select one experiment folder")
+        if not folder:
+            return
+        def action() -> tuple[ProjectWorkflow, dict[str, Any]]:
+            model = load_v10(workbook)
+            selected = Path(folder)
+            try:
+                workflow = ProjectWorkflow.open(selected)
+            except ValueError as exc:
+                if "Project state not found" not in str(exc):
+                    raise
+                session_uid = self._session_for_folder(selected, model)
+                migration = plan_layout_migration(selected)
+                loose = plan_loose_image_import(selected)
+                if (self.setup_review.get() or migration.get("moves")) and not messagebox.askyesno(
+                    "Prepare experiment project",
+                    f"Project: {selected.name}\n\n"
+                    f"Legacy folder moves: {len(migration.get('moves', []))}\n"
+                    f"Loose images to move into Raw: {sum(item['status'] == 'WOULD_MOVE' for item in loose.get('items', []))}\n"
+                    f"Expected V10 images: {len(subset_project_model(model, session_uid)['images'])}\n\n"
+                    "Apply these safe, non-overwriting changes?",
+                    parent=self,
+                ):
+                    raise RuntimeError("Project preparation was cancelled.")
+                workflow = ProjectWorkflow.create_from_model(
+                    subset_project_model(model, session_uid),
+                    selected,
+                    v10_workbook=workbook,
+                )
+                return workflow, self._prepare_workflow(workflow, confirmed=True)
+            return workflow, self._prepare_workflow(workflow)
+        prepared = self._run(action)
+        if prepared:
+            workflow, result = prepared
+            self._activate(workflow)
+            self._show_setup_result(result)
+            self.status.set(f"Prepared/resumed {workflow.project_root.name}; CSV snapshot: {result.get('csv_snapshot', {}).get('status', 'unknown')}.")
+
+    def prepare_parent_folder(self) -> None:
+        workbook = filedialog.askopenfilename(
+            title="Select V10 workbook",
+            filetypes=[("Excel workbook", "*.xlsx *.xlsm"), ("All files", "*.*")],
+        )
+        if not workbook:
+            return
+        parent = filedialog.askdirectory(title="Select parent of experiment folders")
+        if not parent:
+            return
+        def action() -> tuple[list[ProjectWorkflow], list[str]]:
+            model = load_v10(workbook)
+            folders = discover_experiment_folders(parent)
+            if not folders:
+                raise ValueError("No experiment subfolders with loose images or project state were found.")
+            pending: list[tuple[Path, ProjectWorkflow | None, str | None]] = []
+            summaries: list[str] = []
+            for folder in folders:
+                try:
+                    pending.append((folder, ProjectWorkflow.open(folder), None))
+                except ValueError as exc:
+                    if "Project state not found" not in str(exc):
+                        raise
+                    pending.append((folder, None, self._session_for_folder(folder, model)))
+            migrations = sum(
+                len(plan_layout_migration(folder).get("moves", []))
+                for folder, _workflow, _session_uid in pending
+            )
+            loose_count = sum(
+                sum(
+                    entry["status"] == "WOULD_MOVE"
+                    for entry in plan_loose_image_import(folder).get("items", [])
+                )
+                for folder, _workflow, _session_uid in pending
+            )
+            if (self.setup_review.get() or migrations) and not messagebox.askyesno(
+                "Prepare parent projects",
+                f"Experiment projects: {len(pending)}\nLegacy folder moves: {migrations}\nLoose images to move into Raw: {loose_count}\n\nApply the complete parent-folder plan?",
+                parent=self,
+            ):
+                raise RuntimeError("Parent project preparation was cancelled.")
+            workflows: list[ProjectWorkflow] = []
+            for folder, workflow, session_uid in pending:
+                if workflow is None:
+                    if session_uid is None:
+                        raise RuntimeError("Missing planned V10 session assignment.")
+                    workflow = ProjectWorkflow.create_from_model(
+                        subset_project_model(model, session_uid),
+                        folder,
+                        v10_workbook=workbook,
+                    )
+                workflows.append(workflow)
+                result = self._prepare_workflow(workflow, confirmed=True)
+                summaries.append(f"{workflow.project_root.name}: {result['summary']['copied_count']} Working copies")
+            return workflows, summaries
+        prepared = self._run(action)
+        if prepared:
+            workflows, summaries = prepared
+            self._activate(workflows[-1])
+            messagebox.showinfo("Parent preparation complete", "\n".join(summaries), parent=self)
+            self.status.set(f"Prepared/resumed {len(workflows)} independent experiment projects.")
+
     def open_project(self) -> None:
         root = filedialog.askdirectory(title="Select the project root folder")
         if not root:
@@ -675,7 +934,16 @@ class WorkflowApp(tk.Tk):
 
     def _activate(self, workflow: ProjectWorkflow) -> None:
         self.workflow = workflow
-        self.raw_root_var.set(str(workflow.project_root / "Raw"))
+        project_settings = workflow.state.get("settings", {})
+        if isinstance(project_settings, dict) and project_settings:
+            self.enable_rename.set(bool(project_settings.get("enable_rename", self.enable_rename.get())))
+            self.setup_review.set(bool(project_settings.get("review_before_apply", self.setup_review.get())))
+            self.filename_date_style.set(str(project_settings.get("filename_date_style", self.filename_date_style.get())))
+            self.rename_folder_date.set(bool(project_settings.get("rename_folder_date", self.rename_folder_date.get())))
+            self.auto_move_working.set(bool(project_settings.get("auto_move_working", self.auto_move_working.get())))
+            self.csv_mode.set(str(project_settings.get("csv_mode", self.csv_mode.get())))
+        self.raw_root_var.set(str(preferred_project_path(workflow.project_root, "raw")))
+        self._run(workflow.auto_attach_grids)
         values = list(workflow.state["images"])
         self.image_picker.configure(values=values)
         if values:
@@ -724,13 +992,13 @@ class WorkflowApp(tk.Tk):
             self.setup_preview = None
             self.setup_signature = None
 
-    def _setup_signature_value(self) -> tuple[str, bool]:
+    def _setup_signature_value(self) -> tuple[str, bool, str]:
         raw = self.raw_root_var.get().strip()
         if not raw:
             workflow, _uid = self._selected()
-            raw = str(workflow.project_root / "Raw")
+            raw = str(preferred_project_path(workflow.project_root, "raw"))
             self.raw_root_var.set(raw)
-        return str(Path(raw).resolve()), self.enable_rename.get()
+        return str(Path(raw).resolve()), self.enable_rename.get(), self.filename_date_style.get()
 
     def _show_setup_result(self, result: dict[str, Any]) -> None:
         for item in self.setup_tree.get_children():
@@ -761,7 +1029,7 @@ class WorkflowApp(tk.Tk):
         signature = self._setup_signature_value()
         result = self._run(
             lambda: workflow.preview_setup(
-                raw_root=signature[0], enable_rename=signature[1]
+                raw_root=signature[0], enable_rename=signature[1], filename_date_style=signature[2]
             )
         )
         if result:
@@ -778,7 +1046,7 @@ class WorkflowApp(tk.Tk):
             )
             return
         summary = self.setup_preview["summary"]
-        if not messagebox.askyesno(
+        if self.setup_review.get() and not messagebox.askyesno(
             "Apply project setup",
             "Create only the previewed non-conflicting Working copies?\n\n"
             f"Ready: {summary['ready_to_copy_count']}\n"
@@ -789,10 +1057,16 @@ class WorkflowApp(tk.Tk):
             return
         result = self._run(
             lambda: workflow.apply_setup(
-                raw_root=signature[0], enable_rename=signature[1]
+                raw_root=signature[0], enable_rename=signature[1], filename_date_style=signature[2]
             )
         )
         if result:
+            settings = self._setup_settings_value()
+            workflow.save_project_settings(settings)
+            save_last("project_setup", settings)
+            if self.rename_folder_date.get():
+                workflow.rename_project_date("yyyy.mm.dd")
+                self._activate(workflow)
             self.setup_preview = None
             self.setup_signature = None
             self._show_setup_result(result)
@@ -801,6 +1075,66 @@ class WorkflowApp(tk.Tk):
                 "project state and conversion audit map saved."
             )
             self.load_selected_source()
+
+    def migrate_project_layout(self) -> None:
+        workflow, _uid = self._selected()
+        plan = self._run(workflow.preview_layout_migration)
+        if not plan:
+            return
+        if not plan.get("moves"):
+            self.status.set("Project already uses the numbered folder layout.")
+            return
+        if plan.get("blockers"):
+            messagebox.showerror("Folder migration", "Folder migration has conflicting destinations.", parent=self)
+            return
+        if not messagebox.askyesno("Upgrade project folders", f"Move/merge {len(plan['moves'])} legacy folder location(s) into the numbered layout?", parent=self):
+            return
+        result = self._run(lambda: workflow.apply_layout_migration(plan))
+        if result:
+            self._activate(workflow)
+            self.status.set("Project folders upgraded to the numbered layout.")
+
+    def mark_working_complete(self) -> None:
+        workflow, _uid = self._selected()
+        if not messagebox.askyesno("Mark Working complete", "Move and canonicalise Working beneath 2. Cropped without inventing crop results?", parent=self):
+            return
+        result = self._run(workflow.mark_working_complete)
+        if result:
+            self.status.set(f"Working completion: {result['status']} — {result['path']}")
+
+    def rename_project_date_now(self) -> None:
+        workflow, _uid = self._selected()
+        result = self._run(lambda: workflow.rename_project_date("yyyy.mm.dd"))
+        if result:
+            self._activate(workflow)
+            self.status.set(f"Project folder date is sortable: {workflow.project_root.name}")
+
+    def refresh_v10_csvs(self) -> None:
+        workflow, _uid = self._selected()
+        result = self._run(lambda: workflow.refresh_from_v10(filename_date_style=self.filename_date_style.get()))
+        if result:
+            self.csv_mode.set("refreshable")
+            settings = self._setup_settings_value()
+            workflow.save_project_settings(settings)
+            save_last("project_setup", settings)
+            self._activate(workflow)
+            self.status.set(f"Refreshed V10 and active CSV snapshot: {result['status']} {result.get('snapshot_id', '')}")
+
+    def compare_v10_csvs(self) -> None:
+        workflow, _uid = self._selected()
+        result = self._run(lambda: workflow.compare_current_v10(filename_date_style=self.filename_date_style.get()))
+        if result:
+            messagebox.showinfo("V10 comparison", f"Current exported CSVs versus V10: {result['status']}", parent=self)
+
+    def auto_attach_grids(self) -> None:
+        workflow, _uid = self._selected()
+        result = self._run(workflow.auto_attach_grids)
+        if result is not None:
+            self._refresh_asset_labels()
+            self.status.set(
+                f"Grid search: {len(result['attached'])} attached, "
+                f"{len(result['ambiguous'])} ambiguous, {len(result['missing'])} not found."
+            )
 
     def start_orientation(self) -> None:
         def action() -> None:
@@ -1067,14 +1401,18 @@ class WorkflowApp(tk.Tk):
                     columns.append(column)
         return tuple(columns)
 
-    def _culture_crop_settings(self) -> dict[str, int]:
+    def _culture_crop_settings(self) -> dict[str, Any]:
         width, height = int(self.crop_export_width.get()), int(self.crop_export_height.get())
         if width < 1 or height < 1:
             raise ValueError("Crop width and height must be positive integers.")
+        source_kind = self.crop_export_source.get()
+        tier = "Processed" if source_kind.casefold() == "processed" else "Unprocessed"
+        self.crop_export_tier.set(tier)
         return {
             "width": width,
             "height": height,
-            "tier": self.crop_export_tier.get(),
+            "tier": tier,
+            "source_kind": source_kind,
             "top": self.crop_export_top.get(),
             "low": self.crop_export_low.get(),
             "columns": self.crop_export_columns.get().strip(),
@@ -1107,6 +1445,7 @@ class WorkflowApp(tk.Tk):
             self.crop_export_width.set(str(settings["width"]))
             self.crop_export_height.set(str(settings["height"]))
             self.crop_export_tier.set(str(settings.get("tier", self.crop_export_tier.get())))
+            self.crop_export_source.set(str(settings.get("source_kind", self.crop_export_source.get())))
             self.crop_export_top.set(bool(settings.get("top", self.crop_export_top.get())))
             self.crop_export_low.set(bool(settings.get("low", self.crop_export_low.get())))
             self.crop_export_columns.set(str(settings.get("columns", self.crop_export_columns.get())))
@@ -1130,9 +1469,13 @@ class WorkflowApp(tk.Tk):
         if width < 1 or height < 1:
             raise ValueError("Crop width and height must be positive integers.")
         save_last("culture_crop", self._culture_crop_settings())
+        source_kind = self.crop_export_source.get()
+        tier = "Processed" if source_kind.casefold() == "processed" else "Unprocessed"
+        self.crop_export_tier.set(tier)
         return (
             uid,
-            self.crop_export_tier.get(),
+            tier,
+            source_kind,
             states,
             columns,
             width,
@@ -1144,7 +1487,7 @@ class WorkflowApp(tk.Tk):
         signature = self._run(self._crop_export_signature_value)
         if signature is None:
             return
-        uid, tier, states, columns, width, height = signature
+        uid, tier, source_kind, states, columns, width, height = signature
         plan = self._run(
             lambda: workflow.preview_culture_crop_export(
                 uid,
@@ -1153,6 +1496,7 @@ class WorkflowApp(tk.Tk):
                 columns=columns,
                 crop_width=width,
                 crop_height=height,
+                source_kind=source_kind,
             )
         )
         if not plan:
@@ -1286,6 +1630,7 @@ class WorkflowApp(tk.Tk):
             "strain_font_size": strain_size,
             "vertical_font_size": vertical_size,
             "strain_rotation_degrees": rotation,
+            "source_kind": self.annotation_source.get(),
             "header_enabled": self.annotation_header_enabled.get(),
             "header_grouped": self.annotation_header_grouped.get(),
             "in_image_enabled": self.annotation_in_image_enabled.get(),
@@ -1311,6 +1656,7 @@ class WorkflowApp(tk.Tk):
         self.annotation_strain_size.set(str(settings.get("strain_font_size", 18)))
         self.annotation_vertical_size.set(str(settings.get("vertical_font_size", 18)))
         self.annotation_rotation.set(str(settings.get("strain_rotation_degrees", 90)))
+        self.annotation_source.set(str(settings.get("source_kind", self.annotation_source.get())))
 
     def _figure_description_toggled(self) -> None:
         if self.annotation_label_enabled["figure_description"].get():
@@ -1329,7 +1675,10 @@ class WorkflowApp(tk.Tk):
         workflow, uid = self._selected()
         result = self._run(
             lambda: workflow.propose_annotation(
-                uid, self._annotation_request(), self._annotation_preset()
+                uid,
+                self._annotation_request(),
+                self._annotation_preset(),
+                source_kind=self.annotation_source.get(),
             )
         )
         if result:
@@ -1364,8 +1713,8 @@ class WorkflowApp(tk.Tk):
         if self.workflow is None:
             return
         for uid, record in self.workflow.state["images"].items():
-            def status(key: str) -> str:
-                value = record.get(key)
+            def status(key: str, current: dict[str, Any] = record) -> str:
+                value = current.get(key)
                 return str(value.get("status", "—")) if isinstance(value, dict) else "—"
             grid = record.get("grid")
             self.batch_tree.insert("", "end", iid=uid, values=(uid, status("orientation"), status("crop"), status("grid") if not isinstance(grid, dict) else grid.get("status", "—"), status("visibility"), status("annotation")))
@@ -1419,8 +1768,8 @@ class WorkflowApp(tk.Tk):
             signature = self._run(self._crop_export_signature_value)
             if signature is None:
                 return
-            _uid, tier, states, columns, width, height = signature
-            options = {"tier": tier, "states": states, "columns": columns, "crop_width": width, "crop_height": height}
+            _uid, tier, source_kind, states, columns, width, height = signature
+            options = {"tier": tier, "source_kind": source_kind, "states": states, "columns": columns, "crop_width": width, "crop_height": height}
         elif stage == "visibility":
             options = {"preset": self.visibility_preset.get()}
         elif stage == "annotation":
@@ -1428,7 +1777,7 @@ class WorkflowApp(tk.Tk):
             preset = self._run(self._annotation_preset)
             if preset is None:
                 return
-            options = {"label_overrides": overrides, "preset": preset}
+            options = {"label_overrides": overrides, "preset": preset, "source_kind": self.annotation_source.get()}
         else:
             raise ValueError("Unknown batch stage.")
         plan = self._run(lambda: plan_automatic_batch(workflow, stage, uids, options=options))

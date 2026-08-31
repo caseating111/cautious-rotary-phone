@@ -62,7 +62,7 @@ def test_recursive_preview_apply_idempotence_and_versioned_map(tmp_path: Path) -
     mapping = tmp_path / "Metadata" / "image_name_conversions.txt"
     text = mapping.read_text(encoding="utf-8")
     assert str(tmp_path) not in text
-    assert "Raw/camera/2026/S1/one.dat" in text
+    assert "Raw > camera > 2026 > S1 > one.dat" in text
 
     rerun = prepare_working_copy(_model(), tmp_path)
     assert rerun["summary"]["unchanged_current_count"] == 2
@@ -77,7 +77,7 @@ def test_recursive_preview_apply_idempotence_and_versioned_map(tmp_path: Path) -
     history = list((tmp_path / "Metadata" / "History").glob("*.txt"))
     assert len(history) == 2
     assert any(
-        "Working/renamed/one.dat" in item.read_text(encoding="utf-8")
+        "Working > renamed > one.dat" in item.read_text(encoding="utf-8")
         for item in history
     )
 

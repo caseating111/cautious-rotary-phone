@@ -8,6 +8,9 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
+from tools.project_dates import working_filename_for
+from tools.project_paths import preferred_project_path
+
 from .v10_adapter import reconcile_image_files
 
 _INVALID_NAME_CHARS = set('<>:"/\\|?*;')
@@ -19,17 +22,19 @@ _RESERVED_WINDOWS_NAMES = {
     *(f"COM{index}" for index in range(1, 10)),
     *(f"LPT{index}" for index in range(1, 10)),
 }
-_PROJECT_DIRECTORIES = {
-    "raw": ("Raw",),
-    "working": ("Working",),
-    "processed": ("Processed",),
-    "annotated": ("Annotated",),
-    "crops_unprocessed": ("Crops", "Unprocessed"),
-    "crops_processed": ("Crops", "Processed"),
-    "matrices": ("Matrices",),
-    "metadata": ("Metadata",),
-    "state": ("State",),
-}
+_PROJECT_DIRECTORY_KEYS = (
+    "raw",
+    "working",
+    "cropped",
+    "processed",
+    "annotated",
+    "crops_unprocessed",
+    "crops_processed",
+    "matrices",
+    "metadata",
+    "state",
+    "grid_coordinates",
+)
 
 
 def _safe_relative_path(value: str, *, field: str) -> str:
@@ -107,7 +112,7 @@ def initialize_project_tree(
     """Return or create additive directories compatible with ProjectLayout."""
     root = Path(project_root).resolve()
     directories = {
-        key: str(root.joinpath(*parts)) for key, parts in _PROJECT_DIRECTORIES.items()
+        key: str(preferred_project_path(root, key)) for key in _PROJECT_DIRECTORY_KEYS
     }
     if create_subdirs:
         for directory in directories.values():
@@ -161,9 +166,14 @@ def generate_conversion_map_text(
         grouped.setdefault(str(image.get("exp") or "Unknown"), {}).setdefault(
             str(image.get("set") or "Default"), []
         ).append(image)
+    root = Path(project_root).resolve() if project_root is not None else None
+    display_root = root.name if root is not None else "Project"
+    if root is not None and root.parent.name:
+        display_root = f"{root.parent.name} > {display_root}"
     lines = [
         "V10 IMAGE NAME CONVERSION & AUDIT MAP",
-        "Canonical identity is Image UID; paths are relative to the project root.",
+        f"Project: {display_root}",
+        "Canonical identity is Image UID; no machine-specific absolute paths are shown.",
         "",
     ]
     for experiment in sorted(grouped):
@@ -175,7 +185,10 @@ def generate_conversion_map_text(
                 result = results.get(uid, {})
                 raw_path = result.get("raw_path") or "EXPECTED_NOT_PRESENT"
                 working_path = result.get("working_path") or "NOT_PLANNED"
-                lines.append(f"{raw_path} -> {working_path}")
+                shown_raw = str(raw_path).replace("/", " > ")
+                shown_working = str(working_path).replace("/", " > ")
+                lines.append(f"{display_root} > {shown_raw}")
+                lines.append(f"  copied and renamed to: {display_root} > {shown_working}")
                 lines.append(
                     f"  UID={uid} Session={image.get('session_uid')} "
                     f"Status={result.get('disposition', 'UNKNOWN')}"
@@ -209,12 +222,19 @@ def prepare_working_copy(
     preview_only = bool(options.get("preview_only", False))
     write_conversion_map = bool(options.get("write_conversion_map", True))
     collision_policy = options.get("collision_policy", "error")
+    filename_date_style = str(options.get("filename_date_style", "v10"))
+    if filename_date_style not in {"v10", "yyyy.mm.dd"}:
+        raise ValueError("filename_date_style must be v10 or yyyy.mm.dd.")
     if collision_policy not in {"error", "disambiguate_with_uid"}:
         raise ValueError(f"Unsupported collision_policy: {collision_policy}")
 
     root = Path(project_root).resolve()
-    raw = Path(raw_root).resolve() if raw_root else root / "Raw"
-    working = Path(working_root).resolve() if working_root else root / "Working"
+    raw = Path(raw_root).resolve() if raw_root else preferred_project_path(root, "raw")
+    working = (
+        Path(working_root).resolve()
+        if working_root
+        else preferred_project_path(root, "working")
+    )
     for path, label in ((raw, "raw_root"), (working, "working_root")):
         try:
             path.relative_to(root)
@@ -247,6 +267,10 @@ def prepare_working_copy(
         provenance_map=provenance_map,
     )
     reconciled = {item["image_uid"]: item for item in reconciliation.get("images", [])}
+    sessions = {
+        str(session.get("session_uid") or ""): session
+        for session in project_model.get("sessions", [])
+    }
     claimed = Counter(
         str(Path(item["matched_file"]).resolve()).casefold()
         for item in reconciled.values()
@@ -262,8 +286,13 @@ def prepare_working_copy(
         source_value = match.get("matched_file")
         source = Path(source_value).resolve() if source_value else None
         if enable_rename:
+            session = sessions.get(session_uid, {})
             target_name = _safe_relative_path(
-                image.get("working_filename") or image.get("original") or f"{uid}.jpg",
+                working_filename_for(
+                    image,
+                    session,
+                    date_style=filename_date_style,
+                ),
                 field="working_filename",
             )
         else:
@@ -339,7 +368,7 @@ def prepare_working_copy(
         raw_path = (
             _relative_to_root(source, root)
             if source is not None
-            else f"Raw/{session_uid}/{image.get('original') or ''}".rstrip("/")
+            else f"{raw.relative_to(root).as_posix()}/{session_uid}/{image.get('original') or ''}".rstrip("/")
         )
         plans.append(
             {
@@ -383,7 +412,7 @@ def prepare_working_copy(
         for plan in plans
     ]
     conversion_text = generate_conversion_map_text(project_model, clean_plans, root)
-    conversion_path = root / "Metadata" / "image_name_conversions.txt"
+    conversion_path = preferred_project_path(root, "metadata") / "image_name_conversions.txt"
     if write_conversion_map and not preview_only:
         _write_conversion_map(conversion_path, conversion_text)
 

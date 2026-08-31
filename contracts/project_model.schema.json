@@ -19,6 +19,11 @@
           "name": {"type": ["string", "null"]},
           "arrangement": {"type": ["string", "null"]},
           "annotation_set": {"type": ["string", "null"]}
+          ,"id": {"type": ["string", "null"]}
+          ,"sample_description": {"type": ["string", "null"]}
+          ,"date": {"type": ["string", "null"]}
+          ,"figure_description_label": {"type": ["string", "null"]}
+          ,"filename_status": {"type": ["string", "null"]}
         },
         "additionalProperties": false
       }

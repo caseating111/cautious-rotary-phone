@@ -126,7 +126,10 @@ class ExtendedController(Controller):
         self.hide_source_during_alignment = tk.BooleanVar(value=self.config_bool("hide_source_during_alignment", True))
         self.register_only = tk.BooleanVar(value=False)
         self.batch_subfolder = tk.StringVar()
-        self.project_prefix = tk.StringVar(value=project_layout.default_prefix())
+        if not self.vars["project_prefix"].get().strip():
+            self.vars["project_prefix"].set(project_layout.default_prefix())
+        self.project_prefix = self.vars["project_prefix"]
+        self.project_prefix_date_style = self.vars["project_prefix_date_style"]
         self.fiji_processes: list[subprocess.Popen] = []
         for variable in (self.replace_existing_crops, self.skip_done, self.clear_fiji_on_cancel, self.batch_grid_qc, self.hide_source_during_alignment):
             variable.trace_add("write", self.save_toggle_settings)
@@ -211,6 +214,7 @@ class ExtendedController(Controller):
         project.grid(row=10, column=0, columnspan=3, sticky="w", **pad)
         ttk.Label(project, text="Project prefix").pack(side="left")
         ttk.Entry(project, textvariable=self.project_prefix, width=18).pack(side="left", padx=(6, 8))
+        ttk.Combobox(project, textvariable=self.project_prefix_date_style, state="readonly", values=("preserve", "yyyy.mm.dd"), width=12).pack(side="left", padx=(0, 8))
         button(project, text="Create project layout from Image root", command=self.initialize_project_layout).pack(side="left")
         button(self.setup_tab, text="Reconcile / validate CSV workflow", command=self.run_batch_preflight).grid(row=11, column=0, columnspan=3, sticky="ew", **pad)
         button(
@@ -461,6 +465,11 @@ class ExtendedController(Controller):
 
         for key, path in found.items():
             self.vars[key].set(str(path))
+        csv_folder = Path(chosen).resolve()
+        if csv_folder.name.casefold() == "z. metadata":
+            self.vars["grid_coordinate_asset_directory"].set(
+                str(csv_folder / "State" / "GridCoordinates")
+            )
 
         if self.save():
             names = ", ".join(path.name for path in found.values())
@@ -491,6 +500,10 @@ class ExtendedController(Controller):
         self.vars["image_root"].set(str(layout.image_root))
         self.vars["crop_output"].set(str(layout.crop_output))
         self.vars["matrix_output"].set(str(layout.matrix_output))
+        if layout.metadata_dir.name.casefold() == "z. metadata":
+            self.vars["grid_coordinate_asset_directory"].set(
+                str(layout.metadata_dir / "State" / "GridCoordinates")
+            )
 
         candidate_dirs = [layout.metadata_dir, layout.project_root]
         if original_parent is not None:
@@ -533,7 +546,7 @@ class ExtendedController(Controller):
         existing = project_layout.existing_layout_for_raw(source) if source.is_dir() else None
         if existing is None:
             try:
-                planned = project_layout.planned_layout(source, self.project_prefix.get())
+                planned = project_layout.planned_layout(source, self.project_prefix.get(), self.project_prefix_date_style.get())
             except SystemExit as exc:
                 messagebox.showerror("Project layout", str(exc))
                 return
@@ -553,7 +566,7 @@ class ExtendedController(Controller):
                 return
 
         try:
-            layout = project_layout.initialize_project(source, self.project_prefix.get())
+            layout = project_layout.initialize_project(source, self.project_prefix.get(), self.project_prefix_date_style.get())
         except SystemExit as exc:
             messagebox.showerror("Project layout", str(exc))
             return

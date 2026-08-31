@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
+from tools.project_dates import replace_date_token, unique_folder_date
+
 
 INVALID_PREFIX_CHARS = set('<>:"/\\|?*;')
 
@@ -38,8 +40,27 @@ def validate_prefix(value: str) -> str:
     return prefix
 
 
+def render_prefix(value: str, date_style: str = "preserve") -> str:
+    prefix = validate_prefix(value)
+    if date_style == "preserve":
+        return prefix
+    if date_style != "yyyy.mm.dd":
+        raise SystemExit("Project prefix date style must be preserve or yyyy.mm.dd.")
+    parsed = unique_folder_date(prefix)
+    return replace_date_token(prefix, parsed, "yyyy.mm.dd") if parsed else prefix
+
+
 def existing_layout_for_raw(image_root: Path) -> ProjectLayout | None:
     image_root = image_root.resolve()
+    if image_root.name.casefold() == "1. a. raw":
+        project_root = image_root.parent
+        return ProjectLayout(
+            project_root=project_root,
+            image_root=image_root,
+            crop_output=project_root / "2. Cropped",
+            matrix_output=project_root / "6. Matrices",
+            metadata_dir=project_root / "z. Metadata",
+        )
     raw_dir = image_root.parent
     if raw_dir.name.casefold() != "raw":
         return None
@@ -60,7 +81,7 @@ def existing_layout_for_raw(image_root: Path) -> ProjectLayout | None:
     )
 
 
-def planned_layout(image_root: Path, prefix: str) -> ProjectLayout:
+def planned_layout(image_root: Path, prefix: str, date_style: str = "preserve") -> ProjectLayout:
     image_root = image_root.resolve()
     if not image_root.is_dir():
         raise SystemExit(f"Image root not found: {image_root}")
@@ -69,7 +90,7 @@ def planned_layout(image_root: Path, prefix: str) -> ProjectLayout:
     if existing is not None:
         return existing
 
-    prefix = validate_prefix(prefix)
+    prefix = render_prefix(prefix, date_style)
     project_root = image_root.parent / f"{prefix}_{image_root.name}"
     return ProjectLayout(
         project_root=project_root,
@@ -102,7 +123,7 @@ def _cleanup_empty_project(layout: ProjectLayout) -> None:
         pass
 
 
-def initialize_project(image_root: Path, prefix: str) -> ProjectLayout:
+def initialize_project(image_root: Path, prefix: str, date_style: str = "preserve") -> ProjectLayout:
     source = image_root.resolve()
     if not source.is_dir():
         raise SystemExit(f"Image root not found: {source}")
@@ -113,7 +134,7 @@ def initialize_project(image_root: Path, prefix: str) -> ProjectLayout:
             folder.mkdir(parents=True, exist_ok=True)
         return existing
 
-    layout = planned_layout(source, prefix)
+    layout = planned_layout(source, prefix, date_style)
     if layout.project_root.exists():
         raise SystemExit(
             f"Project folder already exists; refusing to merge or overwrite it automatically: {layout.project_root}"
