@@ -12,8 +12,10 @@
 ## Adopted route
 
 1. Enable Windows Per-Monitor-v2 before the V10 applet creates its Tk root.
-2. Convert pointer positions through `canvasx`/`canvasy`, then through the recorded rendered-image scales.
+2. On Windows, read the pointer in the canvas client area's device-pixel coordinates with the documented `GetCursorPos` + `ScreenToClient` route, then apply the recorded rendered-image scales. Microsoft documents `ScreenToClient` coordinates as device units. If that route is unavailable, reconcile `GetDpiForWindow` against Tk pixels-per-inch before using `canvasx`/`canvasy`.
 3. Retain a direct exact-final-side calibration so a user can enter a known crop size without pointer measurement.
 4. Resume from accepted project state and existing `2. Cropped/Orientation` outputs; never require orientation replay merely to repair crop calibration.
 
-Revisit only if a mixed-monitor move produces a new mismatch after Per-Monitor-v2 is active. Prefer a manifest if the application is later packaged as a native executable.
+The first Per-Monitor-v2-only release still produced an exact approximately 2× underestimate in the user's real controller runtime. That showed process awareness alone was not a sufficient guarantee. Direct device-unit client coordinates are now the primary route, and the GUI reports both the coordinate source and DPI ratio with every calibration proposal.
+
+Revisit only if direct `win32_device_pixels` calibration remains incorrect or a mixed-monitor move produces a new mismatch. Prefer a manifest if the application is later packaged as a native executable.

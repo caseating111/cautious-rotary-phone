@@ -40,7 +40,11 @@ from tools.project_lifecycle import (
 )
 from tools.project_paths import preferred_project_path
 from tools.quick_figure_gui import QuickFigurePanel
-from tools.windows_dpi import enable_per_monitor_v2
+from tools.windows_dpi import (
+    enable_per_monitor_v2,
+    pointer_client_coordinates,
+    tk_coordinate_scale,
+)
 
 
 def next_image_uid(image_uids: list[str], current_uid: str) -> str | None:
@@ -112,6 +116,8 @@ class ImageCanvas(ttk.Frame):
         self.scale_x = 1.0
         self.scale_y = 1.0
         self.offset = (0.0, 0.0)
+        self.coordinate_scale = 1.0
+        self.coordinate_source = "not_sampled"
         self.click_handler: Callable[[tuple[float, float]], None] | None = None
         self.drag_handler: (
             Callable[[tuple[float, float], tuple[float, float]], None] | None
@@ -141,8 +147,10 @@ class ImageCanvas(ttk.Frame):
     def canvas_to_image(self, x: float, y: float) -> tuple[float, float] | None:
         if self.image is None:
             return None
-        canvas_x = float(self.canvas.canvasx(x))
-        canvas_y = float(self.canvas.canvasy(y))
+        self.coordinate_scale = tk_coordinate_scale(self.canvas)
+        canvas_x, canvas_y, self.coordinate_source = pointer_client_coordinates(
+            self.canvas, x, y
+        )
         px = (canvas_x - self.offset[0]) / self.scale_x
         py = (canvas_y - self.offset[1]) / self.scale_y
         if 0 <= px < self.image.width and 0 <= py < self.image.height:
@@ -292,6 +300,9 @@ class WorkflowApp(tk.Tk):
         )
         self.crop_exact_side = tk.StringVar(
             value=str(plate_crop_settings.get("exact_side_pixels", ""))
+        )
+        self.crop_calibration_id = tk.StringVar(
+            value=str(plate_crop_settings.get("calibration_id", ""))
         )
         self.setup_preview: dict[str, Any] | None = None
         self.setup_signature: tuple[str, bool, str] | None = None
@@ -547,6 +558,21 @@ class WorkflowApp(tk.Tk):
         ttk.Button(
             crop, text="Recalibrate size (4 clicks, A)", command=self.start_calibration
         ).pack(fill="x", padx=8, pady=3)
+        preset_row = ttk.Frame(crop)
+        preset_row.pack(fill="x", padx=8, pady=3)
+        ttk.Label(preset_row, text="Saved size preset").pack(side="left")
+        self.crop_calibration_box = ttk.Combobox(
+            preset_row,
+            textvariable=self.crop_calibration_id,
+            state="readonly",
+            width=18,
+        )
+        self.crop_calibration_box.pack(
+            side="left", fill="x", expand=True, padx=(5, 0)
+        )
+        self.crop_calibration_box.bind(
+            "<<ComboboxSelected>>", self._crop_calibration_selected
+        )
         crop_size_options = ttk.LabelFrame(crop, text="Reusable size rule")
         crop_size_options.pack(fill="x", padx=8, pady=3)
         ttk.Checkbutton(
@@ -954,6 +980,8 @@ class WorkflowApp(tk.Tk):
             "Spinbox",
             "TSpinbox",
             "TCombobox",
+            "Treeview",
+            "Listbox",
         }:
             return None
         tab = str(self.notebook.tab(self.notebook.select(), "text"))
@@ -1631,7 +1659,8 @@ class WorkflowApp(tk.Tk):
             self.calibration_proposal = None
             self.viewer.set_handlers(click=self._calibration_clicked)
             self.status.set(
-                "Click useful boundaries in order: left, right, top, bottom."
+                "Click useful boundaries in order: left, right, top, bottom. "
+                "Coordinates are converted to original-image pixels."
             )
 
         self._run(action)
@@ -1658,11 +1687,13 @@ class WorkflowApp(tk.Tk):
             side = self.calibration_proposal["side_pixels"]
             measured = self.calibration_proposal["measured_extents"]
             source = self.calibration_source_dimensions or ("?", "?")
+            dpi_scale = self.viewer.coordinate_scale
             self.calibration_label.configure(
                 text=(
                     f"Source {source[0]}×{source[1]} px; measured "
                     f"{measured['measured_width']:.0f}×{measured['measured_height']:.0f}; "
-                    f"proposed {side}×{side} px"
+                    f"proposed {side}×{side} px; {self.viewer.coordinate_source}, "
+                    f"DPI ratio {dpi_scale:.2f}×"
                 )
             )
             self.status.set(
@@ -1691,6 +1722,7 @@ class WorkflowApp(tk.Tk):
             )
         )
         if result:
+            self._refresh_crop_calibration_presets(calibration_id)
             self.calibration_label.configure(
                 text=f"Accepted {calibration_id}: {result['side_pixels']} × {result['side_pixels']} px"
             )
@@ -1733,7 +1765,9 @@ class WorkflowApp(tk.Tk):
             settings = load_last("plate_crop", {}) or {}
             settings["exact_side_pixels"] = side
             settings["auto_preview"] = self.crop_auto_preview.get()
+            settings["calibration_id"] = calibration_id
             save_last("plate_crop", settings)
+            self._refresh_crop_calibration_presets(calibration_id)
             self.calibration_label.configure(
                 text=f"Accepted exact {calibration_id}: {side} × {side} px"
             )
@@ -1767,9 +1801,66 @@ class WorkflowApp(tk.Tk):
 
     def _current_calibration_id(self) -> str:
         workflow, _uid = self._selected()
-        if not workflow.state["crop_calibrations"]:
+        calibrations = workflow.state["crop_calibrations"]
+        if not calibrations:
             raise ValueError("Accept a crop-size calibration first.")
-        return next(reversed(workflow.state["crop_calibrations"]))
+        calibration_id = self.crop_calibration_id.get().strip()
+        if calibration_id not in calibrations:
+            raise ValueError("Select a saved crop-size preset first.")
+        return calibration_id
+
+    def _crop_calibration_selected(self, _event: tk.Event | None = None) -> None:
+        self._apply_crop_calibration_selection(self.crop_calibration_id.get())
+
+    def _apply_crop_calibration_selection(self, calibration_id: str) -> None:
+        if self.workflow is None:
+            return
+        calibration = self.workflow.state.get("crop_calibrations", {}).get(
+            calibration_id
+        )
+        if not isinstance(calibration, dict):
+            return
+        self.crop_rounding_enabled.set(
+            bool(calibration.get("rounding_enabled", True))
+        )
+        self.crop_rounding_increment.set(
+            str(calibration.get("rounding_increment", 50))
+        )
+        self.crop_rounding_direction.set(
+            str(calibration.get("rounding_direction", "down"))
+        )
+        self.crop_margin_value.set(str(calibration.get("margin_value", 0)))
+        self.crop_margin_unit.set(str(calibration.get("margin_unit", "pixels")))
+        if calibration.get("method") == "manual_exact_final_side_pixels":
+            self.crop_exact_side.set(str(calibration["side_pixels"]))
+        self.calibration_label.configure(
+            text=(
+                f"Selected {calibration_id}: {calibration['side_pixels']} × "
+                f"{calibration['side_pixels']} px"
+            )
+        )
+        settings = load_last("plate_crop", {}) or {}
+        settings["calibration_id"] = calibration_id
+        save_last("plate_crop", settings)
+        self._run(lambda: self.workflow.select_crop_calibration(calibration_id))
+        self.status.set(f"Using saved crop-size preset: {calibration_id}.")
+
+    def _refresh_crop_calibration_presets(self, select: str | None = None) -> None:
+        if self.workflow is None:
+            return
+        calibrations = self.workflow.state.get("crop_calibrations", {})
+        values = list(calibrations)
+        self.crop_calibration_box.configure(values=values)
+        desired = (
+            select
+            or self.workflow.state.get("active_crop_calibration_id")
+            or self.crop_calibration_id.get()
+        )
+        if desired not in calibrations:
+            desired = values[-1] if values else ""
+        self.crop_calibration_id.set(desired)
+        if desired:
+            self._apply_crop_calibration_selection(desired)
 
     def start_crop_placement(self) -> None:
         settings = load_last("plate_crop", {}) or {}
@@ -2551,24 +2642,11 @@ class WorkflowApp(tk.Tk):
                 variable.set(str(request["labels"].get(key, "")))
         calibrations = self.workflow.state.get("crop_calibrations", {})
         if calibrations:
-            calibration_id = next(reversed(calibrations))
-            calibration = calibrations[calibration_id]
-            self.crop_rounding_enabled.set(
-                bool(calibration.get("rounding_enabled", True))
-            )
-            self.crop_rounding_increment.set(
-                str(calibration.get("rounding_increment", 50))
-            )
-            self.crop_rounding_direction.set(
-                str(calibration.get("rounding_direction", "down"))
-            )
-            self.crop_margin_value.set(str(calibration.get("margin_value", 0)))
-            self.crop_margin_unit.set(str(calibration.get("margin_unit", "pixels")))
-            if calibration.get("method") == "manual_exact_final_side_pixels":
-                self.crop_exact_side.set(str(calibration["side_pixels"]))
-            self.calibration_label.configure(
-                text=f"Accepted {calibration_id}: {calibration['side_pixels']} × {calibration['side_pixels']} px"
-            )
+            self._refresh_crop_calibration_presets()
+        else:
+            self.crop_calibration_box.configure(values=())
+            self.crop_calibration_id.set("")
+            self.calibration_label.configure(text="No accepted calibration")
 
 
 def main() -> int:

@@ -197,6 +197,10 @@ def test_orientation_retry_and_skip_use_pre_orientation_source(tmp_path: Path) -
     proposed, _ = workflow.propose_orientation("Image 1", (10, 20, 210, 30))
     _accepted, first_output = workflow.accept_orientation("Image 1", proposed)
     assert first_output.suffix == ".png"
+    stale_proposal = dict(proposed)
+    stale_proposal["source_path"] = str(first_output)
+    with pytest.raises(ValueError, match="source changed after preview"):
+        workflow.accept_orientation("Image 1", stale_proposal)
     retry, _ = workflow.propose_orientation("Image 1", (10, 20, 210, 30))
     assert Path(retry["source_path"]) == source
     skipped_proposal, _ = workflow.propose_orientation("Image 1", None, skip=True)
@@ -261,6 +265,35 @@ def test_optional_derivative_skips_are_recorded_and_resumable(tmp_path: Path) ->
     reopened = ProjectWorkflow.open(tmp_path)
     assert reopened.image_record("Image 1")["visibility"]["status"] == "SKIPPED"
     assert reopened.image_record("Image 1")["annotation"]["status"] == "SKIPPED"
+
+
+@pytest.mark.parametrize("transition", ["SKIPPED", "MANUAL_REVIEW"])
+def test_visibility_nonaccepted_transition_stales_processed_dependents(
+    tmp_path: Path, transition: str
+) -> None:
+    workflow = ProjectWorkflow(new_project_state(tmp_path / transition, _model()))
+    record = workflow.image_record("Image 1")
+    record["visibility"] = {"status": "ACCEPTED", "output_path": "processed.png"}
+    record["annotation"] = {"status": "ACCEPTED", "output_path": "annotated.png"}
+    record["crop_exports"] = {
+        "Unprocessed": {"status": "ACCEPTED", "source_kind": "working"},
+        "Processed": {"status": "ACCEPTED", "source_kind": "processed"},
+    }
+
+    if transition == "SKIPPED":
+        workflow.skip_derivative("Image 1", "visibility")
+    else:
+        workflow.flag_visibility_review(
+            "Image 1",
+            {"status": "PROPOSED", "image_uid": "Image 1"},
+            "Needs manual adjustment",
+        )
+
+    updated = workflow.image_record("Image 1")
+    assert updated["visibility"]["status"] == transition
+    assert updated["annotation"]["status"] == "STALE"
+    assert updated["crop_exports"]["Processed"]["status"] == "STALE"
+    assert updated["crop_exports"]["Unprocessed"]["status"] == "ACCEPTED"
 
 
 def test_proposals_cannot_cross_image_or_unknown_calibration_boundaries(

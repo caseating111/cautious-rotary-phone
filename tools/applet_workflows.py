@@ -77,6 +77,7 @@ from tools.project_state import (
     record_orientation,
     record_setup_result,
     save_project_state,
+    select_crop_calibration,
     validate_project_state,
 )
 
@@ -170,6 +171,10 @@ class ProjectWorkflow:
 
     def save(self) -> Path:
         return save_project_state(self.state)
+
+    def select_crop_calibration(self, calibration_id: str) -> None:
+        select_crop_calibration(self.state, calibration_id)
+        self.save()
 
     def image_record(self, image_uid: str) -> dict[str, Any]:
         try:
@@ -503,12 +508,20 @@ class ProjectWorkflow:
             )
         if proposed.get("image_uid") not in {None, image_uid}:
             raise ValueError("Orientation proposal belongs to a different Image UID.")
-        source = Path(
-            proposed.get("source_path")
-            or self.source_for(image_uid, include_crop=False)
-        )
-        if not source.is_file():
-            raise FileNotFoundError(f"Orientation source not found: {source}")
+        source = self.orientation_source_for(image_uid)
+        proposed_source = proposed.get("source_path")
+        if proposed_source:
+            previewed_source = resolve_recorded_path(
+                proposed_source, self.project_root
+            )
+            if not previewed_source.is_file():
+                raise FileNotFoundError(
+                    f"Orientation source not found: {previewed_source}"
+                )
+            if previewed_source != source:
+                raise ValueError(
+                    "Orientation source changed after preview; preview again."
+                )
         accepted = copy.deepcopy(proposed)
         if accepted["status"] == "PROPOSED":
             accepted["status"] = "ACCEPTED"

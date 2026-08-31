@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from tools.project_state import (
@@ -12,6 +13,7 @@ from tools.project_state import (
     record_orientation,
     record_setup_result,
     save_project_state,
+    select_crop_calibration,
 )
 
 
@@ -104,7 +106,40 @@ def test_state_persists_uid_paths_and_assets_atomically(tmp_path: Path) -> None:
     assert loaded["images"]["I1"]["working_path"] == "Working/working1.jpg"
     assert loaded["images"]["I1"]["grid"]["asset_id"] == "grid-I1"
     assert loaded["crop_calibrations"]["C1"]["side_pixels"] == 100
+    assert loaded["active_crop_calibration_id"] == "C1"
     assert not list(path.parent.glob("*.tmp"))
+
+
+def test_active_crop_calibration_survives_sorted_save_and_legacy_load(
+    tmp_path: Path,
+) -> None:
+    state = new_project_state(tmp_path, project_model())
+    assert state["active_crop_calibration_id"] is None
+    record_crop_calibration(
+        state, {"calibration_id": "Z-first", "side_pixels": 1700}
+    )
+    record_crop_calibration(
+        state, {"calibration_id": "A-second", "side_pixels": 1750}
+    )
+    assert state["active_crop_calibration_id"] == "A-second"
+    select_crop_calibration(state, "Z-first")
+    save_project_state(state)
+    assert load_project_state(tmp_path)["active_crop_calibration_id"] == "Z-first"
+    try:
+        select_crop_calibration(state, "missing")
+    except ValueError as exc:
+        assert "Unknown crop calibration" in str(exc)
+    else:
+        raise AssertionError("Unknown calibration selection should fail")
+
+    path = save_project_state(state)
+    legacy = json.loads(path.read_text(encoding="utf-8"))
+    legacy.pop("active_crop_calibration_id")
+    path.write_text(json.dumps(legacy), encoding="utf-8")
+    assert load_project_state(tmp_path)["active_crop_calibration_id"] in {
+        "A-second",
+        "Z-first",
+    }
 
 
 def test_geometry_changes_mark_only_true_downstream_assets_stale(

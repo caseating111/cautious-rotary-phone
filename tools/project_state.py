@@ -65,6 +65,7 @@ def new_project_state(
         "v10_workbook": str(Path(v10_workbook).resolve()) if v10_workbook else None,
         "project_model": copy.deepcopy(project_model),
         "crop_calibrations": {},
+        "active_crop_calibration_id": None,
         "matrix_exports": {},
         "images": _image_records(project_model),
         "updated_at": _timestamp(),
@@ -108,6 +109,15 @@ def validate_project_state(state: dict[str, Any]) -> None:
             raise ValueError(f"Invalid project-state image record: {uid}")
     if not isinstance(state.get("crop_calibrations"), dict):
         raise TypeError("crop_calibrations must be an object.")
+    active_calibration = state.get("active_crop_calibration_id")
+    if active_calibration is not None and (
+        not isinstance(active_calibration, str)
+        or not active_calibration
+        or active_calibration not in state["crop_calibrations"]
+    ):
+        raise ValueError(
+            "active_crop_calibration_id must name an existing crop calibration."
+        )
     matrix_exports = state.get("matrix_exports", {})
     if not isinstance(matrix_exports, dict):
         raise TypeError("matrix_exports must be an object.")
@@ -167,6 +177,11 @@ def load_project_state(path_or_root: str | Path) -> dict[str, Any]:
         raise ValueError(f"Project state not found: {path}") from exc
     except (OSError, json.JSONDecodeError) as exc:
         raise ValueError(f"Could not read project state {path}: {exc}") from exc
+    if "active_crop_calibration_id" not in state:
+        calibrations = state.get("crop_calibrations", {})
+        state["active_crop_calibration_id"] = (
+            next(reversed(calibrations)) if calibrations else None
+        )
     validate_project_state(state)
     actual_root = project_root_from_state_file(path)
     stored_root = Path(state["project_root"]).resolve()
@@ -243,6 +258,14 @@ def record_crop_calibration(state: dict[str, Any], calibration: dict[str, Any]) 
     if not calibration_id:
         raise ValueError("Crop calibration requires calibration_id.")
     state["crop_calibrations"][calibration_id] = copy.deepcopy(calibration)
+    state["active_crop_calibration_id"] = calibration_id
+
+
+def select_crop_calibration(state: dict[str, Any], calibration_id: str) -> None:
+    calibration_id = str(calibration_id).strip()
+    if calibration_id not in state.get("crop_calibrations", {}):
+        raise ValueError(f"Unknown crop calibration: {calibration_id}")
+    state["active_crop_calibration_id"] = calibration_id
 
 
 def record_orientation(
