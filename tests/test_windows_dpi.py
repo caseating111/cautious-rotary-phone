@@ -58,3 +58,54 @@ print(json.dumps({'status': status, 'tk_dpi': tk_dpi, 'system_dpi': system_dpi})
         "SYSTEM_AWARE_FALLBACK",
     }
     assert abs(data["tk_dpi"] - data["system_dpi"]) < 1.0
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows device-coordinate contract")
+def test_synthetic_canvas_pointer_round_trip_uses_original_image_pixels() -> None:
+    code = """
+import ctypes, json, tkinter as tk
+from ctypes import wintypes
+from PIL import Image
+from tools.windows_dpi import enable_per_monitor_v2
+from tools.workflow_applets_gui import ImageCanvas
+
+enable_per_monitor_v2()
+root = tk.Tk()
+root.geometry('900x650+20+20')
+root.attributes('-alpha', 0.0)
+viewer = ImageCanvas(root)
+viewer.pack(fill='both', expand=True)
+viewer.show(Image.new('L', (2047, 2047), 0))
+root.update()
+user32 = ctypes.windll.user32
+old = wintypes.POINT()
+user32.GetCursorPos(ctypes.byref(old))
+mapped = []
+try:
+    for target_x, target_y in ((150.0, 300.0), (1850.0, 1700.0)):
+        client = wintypes.POINT(
+            round(viewer.offset[0] + target_x * viewer.scale_x),
+            round(viewer.offset[1] + target_y * viewer.scale_y),
+        )
+        user32.ClientToScreen(viewer.canvas.winfo_id(), ctypes.byref(client))
+        user32.SetCursorPos(client.x, client.y)
+        root.update()
+        point = viewer.canvas_to_image(client.x / 2.0, client.y / 2.0)
+        mapped.append(point)
+finally:
+    user32.SetCursorPos(old.x, old.y)
+    root.destroy()
+print(json.dumps({'mapped': mapped, 'source': viewer.coordinate_source}))
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    data = json.loads(result.stdout.strip())
+    assert data["source"] == "win32_device_pixels"
+    for actual, expected in zip(
+        data["mapped"], ((150.0, 300.0), (1850.0, 1700.0)), strict=True
+    ):
+        assert actual == pytest.approx(expected, abs=2.0)
