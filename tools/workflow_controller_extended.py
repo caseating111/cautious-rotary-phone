@@ -9,6 +9,9 @@ import time
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 try:
     from tools import project_csv_discovery
     from tools import project_layout
@@ -411,7 +414,7 @@ class ExtendedController(Controller):
             messagebox.showerror("Run four-point batch", "Alignment hotkeys did not start; batch launch was cancelled.")
             return
         try:
-            batch_process = subprocess.Popen(args)
+            batch_process = subprocess.Popen(args, cwd=REPO_ROOT)
             self.fiji_processes = [process for process in self.fiji_processes if process.poll() is None]
             self.fiji_processes.append(batch_process)
         except OSError as exc:

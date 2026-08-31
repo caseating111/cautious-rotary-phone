@@ -39,6 +39,26 @@ NON_RUNTIME_TOOL_FILES = {
     "tools/custom_matrix_presentation_preview.py",
     "tools/run_custom_matrix_presentation.py",
 }
+PORTABLE_PYTHON_ENTRYPOINTS = {
+    "tools/custom_matrix_gui_recorded.py",
+    "tools/custom_matrix_gui.py",
+    "tools/custom_matrix_selection.py",
+    "tools/finalize_grid_handoff.py",
+    "tools/finalize_images_reconciliation.py",
+    "tools/metadata_review_gui.py",
+    "tools/preflight_batch.py",
+    "tools/reconcile_images_csv.py",
+    "tools/roi_preset_gui.py",
+    "tools/run_custom_matrix_job.py",
+    "tools/run_dedup_with_control.py",
+    "tools/run_existing_pillow_from_config.py",
+    "tools/run_four_point_batch_from_config.py",
+    "tools/run_one_plate_validation.py",
+    "tools/validate_project_csvs.py",
+    "tools/workflow_applets_gui.py",
+    "tools/workflow_controller.py",
+    "tools/workflow_controller_extended.py",
+}
 REQUIRED_ARCHIVE_FILES = {
     "runtime-environment.yml",
     "setup_environment.cmd",
@@ -147,6 +167,11 @@ def release_sources() -> dict[str, Path]:
     if missing:
         raise RuntimeError(
             "Release allowlist is missing required files: " + ", ".join(missing)
+        )
+    missing_entrypoints = sorted(PORTABLE_PYTHON_ENTRYPOINTS - set(selected))
+    if missing_entrypoints:
+        raise RuntimeError(
+            "Release is missing Python entry points: " + ", ".join(missing_entrypoints)
         )
     return selected
 

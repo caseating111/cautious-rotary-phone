@@ -262,7 +262,13 @@ class Controller(tk.Tk):
         if not self.save():
             return 2, self.config_load_error or "Config save blocked.", 0
         script = REPO_ROOT / "tools" / "preflight_batch.py"
-        result = subprocess.run([sys.executable, str(script)], capture_output=True, text=True, check=False)
+        result = subprocess.run(
+            [sys.executable, str(script)],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
         output = (result.stdout + result.stderr).strip() or "No preflight output."
         pending = 0
         if PENDING_IMAGES_CSV.is_file():
@@ -288,7 +294,7 @@ class Controller(tk.Tk):
         if not self.save():
             return
         try:
-            subprocess.Popen([sys.executable, str(script), *args])
+            subprocess.Popen([sys.executable, str(script), *args], cwd=REPO_ROOT)
         except OSError as exc:
             messagebox.showerror("Python helper", str(exc))
             return

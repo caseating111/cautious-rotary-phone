@@ -57,6 +57,19 @@ def test_release_zip_is_anonymous_complete_and_deterministic(tmp_path: Path) -> 
         [sys.executable, "-m", "compileall", "-q", str(product_root / "tools")],
         check=True,
     )
+    for relative in sorted(release.PORTABLE_PYTHON_ENTRYPOINTS):
+        subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "from pathlib import Path; import runpy,sys; "
+                "sys.path.insert(0, str(Path(sys.argv[1]).parent)); "
+                "runpy.run_path(sys.argv[1], run_name='release_import_probe')",
+                str(product_root / relative),
+            ],
+            cwd=tmp_path,
+            check=True,
+        )
     subprocess.run(
         [
             sys.executable,

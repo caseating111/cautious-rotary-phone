@@ -8,7 +8,7 @@ Start with start_controller.cmd. It validates exact Python 3.11 plus Pillow and 
 
 ## Portable pre-release
 
-`tools/build_portable_release.py` creates a requested pre-release ZIP (the default remains `dist/workflow-integrated-prerelease.zip`) from an explicit tracked runtime allowlist. The archive includes Windows launch/setup files, required Python/AHK/Fiji/legacy renderer assets, JSON contracts, and anonymous sample CSVs. It excludes Git metadata, repository docs/tests/fixtures/V10 data, caches, images, personal paths, AI/development material, and user state. The current artifact passes deterministic archive checks, anonymity/content scanning, extracted Python compilation, and packaged sample-CSV validation.
+`tools/build_portable_release.py` creates a requested pre-release ZIP (the default remains `dist/workflow-integrated-prerelease.zip`) from an explicit tracked runtime allowlist. The archive includes Windows launch/setup files, required Python/AHK/Fiji/legacy renderer assets, JSON contracts, and anonymous sample CSVs. It excludes Git metadata, repository docs/tests/fixtures/V10 data, caches, images, personal paths, AI/development material, and user state. The current artifact passes deterministic archive checks, anonymity/content scanning, extracted Python compilation, direct-script import probes for every packaged Python entry point from outside the application root, and packaged sample-CSV validation. Controller-launched Python helpers explicitly use the portable application root as their working directory.
 
 ## Active endpoints
 
