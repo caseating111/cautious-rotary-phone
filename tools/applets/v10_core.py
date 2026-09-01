@@ -13,6 +13,16 @@ def clean(value: Any) -> str | None:
     return text or None
 
 
+def label_text(value: Any) -> str | None:
+    """Preserve label text without pandas' synthetic decimal for integers."""
+    if value is None or pd.isna(value):
+        return None
+    if isinstance(value, (int, float)) and float(value).is_integer():
+        return str(int(value))
+    text = str(value).strip()
+    return text or None
+
+
 def positive_integer(value: Any, field: str) -> int:
     if value is None or pd.isna(value):
         raise ValueError(f"Missing required {field}.")
@@ -227,7 +237,7 @@ def profile_labels(
     positions: set[int] = set()
     for _, row in selected.iterrows():
         pos = positive_integer(row["pos"], f"Pos in profile {profile}")
-        label = clean(row["label"])
+        label = label_text(row["label"])
         if label is None:
             raise ValueError(f"Profile {profile!r} has a missing label at Pos {pos}.")
         if pos in positions:

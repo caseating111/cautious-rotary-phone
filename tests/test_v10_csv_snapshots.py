@@ -127,3 +127,7 @@ def test_sanitized_snapshot_keeps_safe_grid_groups_despite_unmapped_set() -> Non
     assert "Base count*" in master_header
     assert "Set filename*" in master_header
     assert "Set filename count*" in master_header
+    assert "1:0 | 2:-1 | 3:-2 | 4:-3 | 5:0 | 6:-1 | 7:-2 | 8:-3" in payload[
+        "v10_plate_layout.csv"
+    ]
+    assert "1:0.0" not in payload["v10_plate_layout.csv"]

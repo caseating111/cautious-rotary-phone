@@ -190,6 +190,10 @@ def test_sanitized_fixture_is_normalized_and_embeds_layouts() -> None:
     assert [
         row["label"] for row in project["annotation_profiles"]["vertical"]
     ] == ["0", "-1", "-2", "-3", "0", "-1", "-2", "-3"]
+    assert [
+        row["label"]
+        for row in project["layouts"]["annotationSet 1"]["vertical_labels"]
+    ] == ["0", "-1", "-2", "-3", "0", "-1", "-2", "-3"]
     arrangements = {
         (row["arrangement"], row["image_number"]): row
         for row in project["arrangements"]

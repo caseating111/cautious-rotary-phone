@@ -441,6 +441,7 @@ class WorkflowApp(tk.Tk):
         self.batch_queue_index = 0
         self._sync_annotation_controls()
         self._build()
+        self.protocol("WM_DELETE_WINDOW", self.shutdown_application)
         self.bind("<Alt-o>", lambda _event: self.start_orientation())
         self.bind("<Alt-c>", lambda _event: self.start_crop_placement())
         self.bind("<Alt-b>", lambda _event: self.refresh_batch_images())
@@ -465,6 +466,12 @@ class WorkflowApp(tk.Tk):
             top, text="Hotkeys ▸", command=self._toggle_hotkey_help
         )
         self.hotkey_help_button.pack(side="right")
+        ttk.Button(top, text="Exit", command=self.shutdown_application).pack(
+            side="right", padx=(6, 0)
+        )
+        ttk.Button(top, text="Restart", command=self.restart_application).pack(
+            side="right", padx=(6, 0)
+        )
         ttk.Label(top, text="Image UID").pack(side="left", padx=(18, 5))
         self.image_picker = ttk.Combobox(
             top, textvariable=self.image_uid, state="readonly", width=34
@@ -483,7 +490,7 @@ class WorkflowApp(tk.Tk):
                 "Visibility: A flag. Annotation: A styles. Matrix: X refresh.\n"
                 "Quick Figures: X align · V preview annotation · Z save annotation · C export wells · "
                 "A accept QC · F flag QC · Q whole crop · W grid · E/R rotate. "
-                "Batch: X refresh · A select all · Q/W orientation/crop queues · E/R/F plan "
+                "Batch: X refresh · A select all · Q/W/D orientation/crop/grid queues · E/R/F plan "
                 "culture/visibility/annotation · V preview setup · Z accept plan · S apply setup · G grids. "
                 "Shortcuts are ignored while typing in a field."
             ),
@@ -1060,6 +1067,11 @@ class WorkflowApp(tk.Tk):
         manual.pack(fill="x", padx=8, pady=3)
         ttk.Button(manual, text="Orientation queue (Alt+O current)", command=lambda: self.start_manual_batch("orientation")).pack(fill="x")
         ttk.Button(manual, text="Plate-crop queue (Alt+C current)", command=lambda: self.start_manual_batch("crop")).pack(fill="x")
+        ttk.Button(
+            manual,
+            text="Grid-registration queue (D)",
+            command=lambda: self.start_manual_batch("grid"),
+        ).pack(fill="x")
         automatic = ttk.LabelFrame(batch, text="Dry-run then accept")
         automatic.pack(fill="x", padx=8, pady=3)
         for label, stage in (("Plan culture crops", "culture"), ("Plan visibility", "visibility"), ("Plan annotation", "annotation")):
@@ -1089,6 +1101,36 @@ class WorkflowApp(tk.Tk):
             messagebox.showerror("Workflow applets", str(exc))
             self.status.set(str(exc))
             return None
+
+    def restart_application(self) -> None:
+        if not messagebox.askyesno(
+            "Restart V10 Independent",
+            "Save current project state and restart V10 Independent?",
+            parent=self,
+        ):
+            return
+        if self.workflow is not None:
+            self.workflow.save()
+        root = Path(__file__).resolve().parents[1]
+        entry = root / "tools" / "v10_independent" / "controller.py"
+        subprocess.Popen(
+            [sys.executable, str(entry)],
+            cwd=str(root),
+            env=os.environ.copy(),
+            creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),
+        )
+        self.destroy()
+
+    def shutdown_application(self) -> None:
+        if not messagebox.askyesno(
+            "Exit V10 Independent",
+            "Save current project state and close V10 Independent?",
+            parent=self,
+        ):
+            return
+        if self.workflow is not None:
+            self.workflow.save()
+        self.destroy()
 
     def _toggle_hotkey_help(self) -> None:
         if self.hotkey_help_frame.winfo_manager():
@@ -1196,6 +1238,7 @@ class WorkflowApp(tk.Tk):
                 "a": self.select_all_batch_images,
                 "q": lambda: self.start_manual_batch("orientation"),
                 "w": lambda: self.start_manual_batch("crop"),
+                "d": lambda: self.start_manual_batch("grid"),
                 "e": lambda: self.plan_selected_batch("culture"),
                 "r": lambda: self.plan_selected_batch("visibility"),
                 "f": lambda: self.plan_selected_batch("annotation"),
@@ -2705,8 +2748,10 @@ class WorkflowApp(tk.Tk):
         return selected
 
     def start_manual_batch(self, stage: str) -> None:
-        if stage not in {"orientation", "crop"}:
-            raise ValueError("Manual batch stage must be orientation or crop.")
+        if stage not in {"orientation", "crop", "grid"}:
+            raise ValueError(
+                "Manual batch stage must be orientation, crop, or grid."
+            )
         selected = self._run(self._batch_selected_uids)
         if not selected:
             return
@@ -2728,11 +2773,26 @@ class WorkflowApp(tk.Tk):
         uid = self.batch_queue[self.batch_queue_index]
         self.image_uid.set(uid)
         self.load_selected_source()
+        tab_by_stage = {
+            "orientation": "Orientation",
+            "crop": "Plate crop",
+            "grid": "Grid asset",
+        }
+        self._select_stage_tab(tab_by_stage[self.batch_queue_stage])
         if self.batch_queue_stage == "orientation":
             self.start_orientation()
-        else:
+        elif self.batch_queue_stage == "crop":
             self.start_crop_placement()
+        else:
+            self.start_grid_registration()
         self.status.set(f"{self.batch_queue_stage.title()} batch {self.batch_queue_index + 1}/{len(self.batch_queue)}: {uid}.")
+
+    def _select_stage_tab(self, label: str) -> None:
+        for tab_id in self.notebook.tabs():
+            if str(self.notebook.tab(tab_id, "text")) == label:
+                self.notebook.select(tab_id)
+                return
+        raise ValueError(f"Workflow stage tab is unavailable: {label}.")
 
     def _advance_manual_batch(self, completed_uid: str) -> None:
         if (

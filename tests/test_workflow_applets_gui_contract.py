@@ -213,6 +213,36 @@ def test_manual_queue_filters_terminal_state_and_preserves_selected_order() -> N
     assert pending_selected_uids(images, ["i1", "i3"], "orientation") == []
 
 
+def test_manual_grid_queue_selects_grid_tab_and_starts_registration() -> None:
+    class Variable:
+        def __init__(self):
+            self.value = ""
+
+        def get(self):
+            return self.value
+
+        def set(self, value):
+            self.value = value
+
+    actions = []
+    app = SimpleNamespace(
+        batch_queue=["i2"],
+        batch_queue_index=0,
+        batch_queue_stage="grid",
+        image_uid=Variable(),
+        status=Variable(),
+        load_selected_source=lambda: actions.append("load"),
+        start_orientation=lambda: actions.append("orientation"),
+        start_crop_placement=lambda: actions.append("crop"),
+        start_grid_registration=lambda: actions.append("grid"),
+        _select_stage_tab=lambda label: actions.append(f"tab:{label}"),
+    )
+    WorkflowApp._load_manual_batch_current(app)
+    assert app.image_uid.get() == "i2"
+    assert actions == ["load", "tab:Grid asset", "grid"]
+    assert app.status.get() == "Grid batch 1/1: i2."
+
+
 def test_culture_terminal_state_requires_matching_saved_settings() -> None:
     signature = culture_crop_signature(
         tier="Unprocessed",
@@ -272,6 +302,34 @@ def test_review_off_creates_internal_setup_preview(monkeypatch) -> None:
     assert not WorkflowApp._ensure_setup_preview(app, workflow, signature)
     assert workflow.calls == 1
     assert errors
+
+
+def test_restart_saves_state_relaunches_standalone_entry_and_closes(
+    monkeypatch,
+) -> None:
+    calls = []
+    workflow = SimpleNamespace(save=lambda: calls.append("save"))
+    app = SimpleNamespace(
+        workflow=workflow,
+        destroy=lambda: calls.append("destroy"),
+    )
+    monkeypatch.setattr(
+        "tools.workflow_applets_gui.messagebox.askyesno",
+        lambda *_args, **_kwargs: True,
+    )
+    monkeypatch.setattr(
+        "tools.workflow_applets_gui.subprocess.Popen",
+        lambda command, **options: calls.append((command, options)),
+    )
+    WorkflowApp.restart_application(app)
+    assert calls[0] == "save"
+    command, options = calls[1]
+    assert command[0]
+    assert Path(command[1]).as_posix().endswith(
+        "tools/v10_independent/controller.py"
+    )
+    assert Path(options["cwd"]).is_dir()
+    assert calls[2] == "destroy"
 
 
 def test_fitted_canvas_geometry_maps_exact_rendered_pixels() -> None:
@@ -374,6 +432,8 @@ def test_repeated_stage_hotkeys_and_help_are_wired() -> None:
     assert "Automatically advance to the next image" in text
     assert '"Treeview"' in text
     assert '"Listbox"' in text
+    assert 'start_manual_batch("grid")' in text
+    assert "Q/W/D orientation/crop/grid queues" in text
 
     quick_text = (
         Path(__file__).resolve().parents[1] / "tools" / "quick_figure_gui.py"
