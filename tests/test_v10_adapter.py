@@ -147,8 +147,131 @@ def test_sanitized_fixture_is_normalized_and_embeds_layouts() -> None:
         project["layouts"]["annotationSet 2"]["grid_rows"],
         project["layouts"]["annotationSet 2"]["grid_cols"],
     ) == (8, 10)
-    assert len(project["diagnostics"]) == 1
-    assert project["diagnostics"][0]["code"] == "LEGACY_SET_BLOCK_BANDS"
+    layout = project["layouts"]["annotationSet 2"]
+    assert [
+        (band["profile"], band["row_start"], band["row_end"])
+        for band in layout["strain_bands"]
+    ] == [("Strain 2", 1, 8)]
+    assert {
+        key: len(labels)
+        for key, labels in layout["strain_bands"][0]["label_sets"].items()
+    } == {"A": 10, "B": 10}
+    assert {item["code"] for item in project["diagnostics"]} == {
+        "SET_LABEL_VARIANTS",
+        "UNRESOLVED_IMAGE_LABEL_SET",
+    }
+    assert len(project["arrangements"]) == 49
+    assert len(project["annotation_assignments"]) == 7
+    assert {
+        key: len(value) for key, value in project["annotation_profiles"].items()
+    } == {"strain": 32, "vertical": 8, "other": 10}
+    arrangements = {
+        (row["arrangement"], row["image_number"]): row
+        for row in project["arrangements"]
+    }
+    for image in project["images"]:
+        arrangement = arrangements[(image["arrangement"], image["image_number"])]
+        for field in ("sample_description", "set", "media", "condition", "rep"):
+            assert image[field] == arrangement[field]
+    first = project["images"][0]
+    assert first["date_display"] == "14.08.26"
+    assert first["date"] == "2026-08-14"
+    assert first["time"] == "24h"
+    assert first["base_filename"]
+    assert first["set_filename"]
+    image_a = next(
+        image
+        for image in project["images"]
+        if image["annotation_set"] == "annotationSet 2" and image["set"] == "A"
+    )
+    image_b = next(
+        image
+        for image in project["images"]
+        if image["annotation_set"] == "annotationSet 2" and image["set"] == "B"
+    )
+    assert derive_plate_layout(project, image_a["image_uid"])["grid_cols"] == 10
+    assert (
+        derive_plate_layout(project, image_b["image_uid"])["strain_bands"][0][
+            "resolved_label_set"
+        ]
+        == "B"
+    )
+    image_c = next(image for image in project["images"] if image["set"] == "c")
+    with pytest.raises(ValueError, match="none match"):
+        derive_plate_layout(project, image_c["image_uid"])
+
+
+def test_ordered_profiles_are_bands_and_profile_sets_are_image_variants(
+    tmp_path: Path,
+) -> None:
+    frames = synthetic_frames()
+    rows: list[dict[str, object]] = []
+    strain_rows = [
+        ("Top", "A", "top-a1", 1),
+        ("Top", "A", "top-a2", 2),
+        ("Top", "B", "top-b1", 1),
+        ("Top", "B", "top-b2", 2),
+        ("Top", "B", "top-b3", 3),
+        ("Bottom", "A", "bottom-a1", 1),
+        ("Bottom", "B", "bottom-b1", 1),
+        ("Bottom", "B", "bottom-b2", 2),
+    ]
+    for index, (profile, set_name, label, pos) in enumerate(strain_rows):
+        row: dict[str, object] = {
+            "Profile*": profile,
+            "Set*": set_name,
+            "labels_strain": label,
+            "Pos": pos,
+            "Profile*.1": "Rows",
+            "labels_vertical": str(index % 4),
+            "Pos.1": index + 1,
+        }
+        if index == 0:
+            row.update(
+                {
+                    "annotationSet": "annotationSet X",
+                    "Type": "strain",
+                    "Profile": "Top",
+                    "Order": 1,
+                }
+            )
+        elif index == 1:
+            row.update(
+                {
+                    "annotationSet": "annotationSet X",
+                    "Type": "strain",
+                    "Profile": "Bottom",
+                    "Order": 2,
+                }
+            )
+        elif index == 2:
+            row.update(
+                {
+                    "annotationSet": "annotationSet X",
+                    "Type": "vertical",
+                    "Profile": "Rows",
+                    "Order": 1,
+                }
+            )
+        rows.append(row)
+    frames["Annotations"] = pd.DataFrame(rows)
+    project = load_v10(str(write_workbook(tmp_path / "variants.xlsx", frames)))
+    raw = project["layouts"]["annotationSet X"]
+    assert [
+        (band["profile"], band["row_start"], band["row_end"])
+        for band in raw["strain_bands"]
+    ] == [("Top", 1, 4), ("Bottom", 5, 8)]
+    assert len(raw["strain_bands"]) == 2
+    resolved_a = derive_plate_layout(project, "I1")
+    resolved_b = derive_plate_layout(project, "I2")
+    assert resolved_a["grid_cols"] == 2
+    assert resolved_b["grid_cols"] == 3
+    assert [
+        band["resolved_label_set"] for band in resolved_a["strain_bands"]
+    ] == ["A", "A"]
+    assert [
+        band["resolved_label_set"] for band in resolved_b["strain_bands"]
+    ] == ["B", "B"]
 
 
 def test_ordered_profiles_machine_set_types_and_embedded_derivation(
@@ -231,3 +354,18 @@ def test_project_schema_declares_embedded_layouts_and_diagnostics() -> None:
     )
     assert "layouts" in schema["properties"]
     assert "diagnostics" in schema["properties"]
+    assert "arrangements" in schema["properties"]
+    assert "annotation_assignments" in schema["properties"]
+    assert "annotation_profiles" in schema["properties"]
+    session_properties = schema["properties"]["sessions"]["items"]["properties"]
+    image_properties = schema["properties"]["images"]["items"]["properties"]
+    assert session_properties["date"]["type"] == "string"
+    assert "sample_description" not in session_properties
+    assert {
+        "id",
+        "sample_description",
+        "date_display",
+        "time",
+        "figure_description_label",
+        "filename_status",
+    }.issubset(image_properties)

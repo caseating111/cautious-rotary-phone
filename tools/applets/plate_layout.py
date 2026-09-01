@@ -66,13 +66,35 @@ def validate_plate_layout(layout: Dict[str, Any]) -> bool:
         if not isinstance(labels, list) or len(labels) == 0:
             raise ValueError(f"Band order {order} has no labels")
 
-        band_positions = [lbl["pos"] for lbl in labels]
-        if len(band_positions) != len(set(band_positions)):
-            raise ValueError(f"Duplicate positions found in band order {order}: {band_positions}")
+        label_groups = {"active": labels}
+        label_sets = b.get("label_sets") or {}
+        if not isinstance(label_sets, dict):
+            raise ValueError(f"Band order {order} label_sets must be a dictionary")
+        if not b.get("resolved_label_set"):
+            label_groups.update(label_sets)
+        group_maxima = []
+        for set_name, group_labels in label_groups.items():
+            if not isinstance(group_labels, list) or not group_labels:
+                raise ValueError(
+                    f"Band order {order} label set {set_name!r} has no labels"
+                )
+            band_positions = [lbl["pos"] for lbl in group_labels]
+            if len(band_positions) != len(set(band_positions)):
+                raise ValueError(
+                    f"Duplicate positions found in band order {order}, "
+                    f"label set {set_name!r}: {band_positions}"
+                )
+            if sorted(band_positions) != list(range(1, max(band_positions) + 1)):
+                raise ValueError(
+                    f"Band order {order}, label set {set_name!r} positions "
+                    "must be contiguous from 1"
+                )
+            group_maxima.append(max(band_positions))
 
-        max_band_col = max(max_band_col, max(band_positions))
+        active_max = max(group_maxima)
+        max_band_col = max(max_band_col, active_max)
         local_cols = b.get("local_grid_cols")
-        if local_cols is not None and local_cols != max(band_positions):
+        if local_cols is not None and local_cols != active_max:
             raise ValueError(f"Band order {order} local_grid_cols does not match its widest Pos")
 
     if sorted(band_orders) != list(range(1, len(bands) + 1)):

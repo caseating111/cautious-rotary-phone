@@ -3,7 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from tools.applets.culture_crop_export import culture_crop_signature
+from tools.applets.plate_crop import calibrate_crop_size, place_plate_crop
 from tools.quick_figure_gui import QuickImageCanvas
 from tools.workflow_applets_gui import (
     ImageCanvas,
@@ -16,10 +19,11 @@ from tools.workflow_applets_gui import (
 )
 
 
-def test_image_canvas_uses_normalized_client_coordinates(monkeypatch) -> None:
+def test_image_canvas_maps_actual_rendered_item_to_source_pixels() -> None:
     class Image:
         width = 2047
         height = 2047
+        size = (2047, 2047)
 
     class Viewer:
         image = Image()
@@ -28,7 +32,10 @@ def test_image_canvas_uses_normalized_client_coordinates(monkeypatch) -> None:
         scale_y = 0.5
         coordinate_source = "not_sampled"
         coordinate_client_dimensions = (0, 0)
+        coordinate_provenance = {}
         render_canvas_size = (820, 560)
+        image_item = 7
+        render_generation = 3
 
         class Canvas:
             @staticmethod
@@ -39,27 +46,36 @@ def test_image_canvas_uses_normalized_client_coordinates(monkeypatch) -> None:
             def winfo_height():
                 return 560
 
+            @staticmethod
+            def bbox(_item):
+                return (100, 24, 612, 536)
+
+            @staticmethod
+            def canvasx(value):
+                return value
+
+            @staticmethod
+            def canvasy(value):
+                return value
+
         canvas = Canvas()
 
-    monkeypatch.setattr(
-        "tools.workflow_applets_gui.pointer_client_fraction",
-        lambda _canvas, _x, _y: (
-            537 / 820,
-            1104 / 1120,
-            "normalized_win32_client",
-            (1640, 1120),
-        ),
-    )
     viewer = Viewer()
-    assert ImageCanvas.canvas_to_image(viewer, 218.5, 251.0) == (874.0, 1004.0)
-    assert viewer.coordinate_source == "normalized_win32_client"
-    assert viewer.coordinate_client_dimensions == (1640, 1120)
+    event_x = 100 + 874 / 2047 * 512
+    event_y = 24 + 1004 / 2047 * 512
+    assert ImageCanvas.canvas_to_image(viewer, event_x, event_y) == pytest.approx(
+        (874.0, 1004.0)
+    )
+    assert viewer.coordinate_source == "tk_canvas_image_item_to_source_pixels"
+    assert viewer.coordinate_client_dimensions == (512, 512)
+    assert viewer.coordinate_provenance["render_generation"] == 3
 
 
-def test_quick_canvas_uses_the_same_normalized_mapping(monkeypatch) -> None:
+def test_quick_canvas_uses_the_same_image_item_mapping() -> None:
     class Image:
         width = 2047
         height = 2047
+        size = (2047, 2047)
 
     class Canvas:
         @staticmethod
@@ -70,26 +86,97 @@ def test_quick_canvas_uses_the_same_normalized_mapping(monkeypatch) -> None:
         def winfo_height():
             return 560
 
+        @staticmethod
+        def bbox(_item):
+            return (100, 24, 612, 536)
+
+        @staticmethod
+        def canvasx(value):
+            return value
+
+        @staticmethod
+        def canvasy(value):
+            return value
+
     viewer = SimpleNamespace(
         image=Image(),
         canvas=Canvas(),
+        image_item=7,
+        render_generation=3,
         offset=(100.0, 50.0),
         scale=0.5,
         render_canvas_size=(820, 560),
     )
-    monkeypatch.setattr(
-        "tools.quick_figure_gui.pointer_client_fraction",
-        lambda _canvas, _x, _y: (
-            537 / 820,
-            1104 / 1120,
-            "normalized_win32_client",
-            (1640, 1120),
-        ),
+    event_x = 100 + 874 / 2047 * 512
+    event_y = 24 + 1004 / 2047 * 512
+    assert QuickImageCanvas._point(
+        viewer, SimpleNamespace(x=event_x, y=event_y)
+    ) == pytest.approx(
+        (874.0, 1004.0)
     )
-    assert QuickImageCanvas._point(viewer, SimpleNamespace(x=1, y=1)) == (
-        874.0,
-        1004.0,
+
+
+def test_2047_source_calibration_and_placement_remain_in_source_pixels() -> None:
+    class Canvas:
+        @staticmethod
+        def bbox(_item):
+            return (120, 24, 632, 536)
+
+        @staticmethod
+        def canvasx(value):
+            return value
+
+        @staticmethod
+        def canvasy(value):
+            return value
+
+    source_size = (2047, 2047)
+
+    def event_for(source_x: float, source_y: float) -> tuple[float, float]:
+        return (
+            120 + source_x / source_size[0] * 512,
+            24 + source_y / source_size[1] * 512,
+        )
+
+    from tools.v10_independent.image_canvas_coordinates import image_item_to_source
+
+    source_points = [
+        image_item_to_source(Canvas(), 7, source_size, *event_for(*point))[0]
+        for point in ((150, 500), (1900, 500), (500, 100), (500, 1850))
+    ]
+    assert all(point is not None for point in source_points)
+    calibration = calibrate_crop_size(
+        *source_points,
+        accepted=True,
+        rounding_enabled=True,
+        rounding_direction="down",
+        increment=50,
+        source_dimensions=source_size,
     )
+    assert calibration["measured_extents"]["measured_width"] == 1750
+    assert calibration["measured_extents"]["measured_height"] == 1750
+    assert calibration["side_pixels"] == 1750
+
+    anchors = [
+        image_item_to_source(Canvas(), 7, source_size, *event_for(*point))[0]
+        for point in ((120, 400), (400, 140))
+    ]
+    crop = place_plate_crop(
+        calibration,
+        anchors[0],
+        anchors[1],
+        {"width": 2047, "height": 2047, "image_uid": "I1"},
+    )
+    assert crop["crop_box"] == {
+        "x": 120,
+        "y": 140,
+        "width": 1750,
+        "height": 1750,
+        "left": 120,
+        "top": 140,
+        "right": 1870,
+        "bottom": 1890,
+    }
 
 
 def test_next_image_progression_is_ordered_and_stops_at_end() -> None:

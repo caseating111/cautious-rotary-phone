@@ -243,59 +243,70 @@ def extract_layouts(
         strain_assignments["resolved_order"] = orders
         strain_assignments = strain_assignments.sort_values("resolved_order")
 
+        # Ordered strain-profile assignments define physical top-to-bottom row
+        # bands.  Set values inside a profile are label variants selected by an
+        # image's Master Registry Set; they are not additional physical bands.
         band_specs: list[dict[str, Any]] = []
-        used_legacy_mapping = False
         for _, assignment in strain_assignments.iterrows():
             profile = assignment["profile"]
             profile_rows = strain_rows[strain_rows["profile"] == profile]
             set_values = list(
                 dict.fromkeys(value for value in profile_rows["set"].tolist() if value)
             )
-            duplicate_positions = profile_rows["pos"].duplicated().any()
-            if (
-                len(strain_assignments) == 1
-                and len(set_values) > 1
-                and duplicate_positions
-            ):
-                used_legacy_mapping = True
-                diagnostics.append(
+            if set_values:
+                label_sets = {
+                    set_value: profile_labels(
+                        strain_rows, profile, set_value=set_value
+                    )
+                    for set_value in set_values
+                }
+                labels = label_sets[set_values[0]]
+                if len(label_sets) > 1:
+                    diagnostics.append(
+                        {
+                            "code": "SET_LABEL_VARIANTS",
+                            "annotation_set": annotation_set,
+                            "message": (
+                                f"Strain profile {profile!r} has Set-specific label "
+                                "variants; each image resolves the variant matching its Set."
+                            ),
+                        }
+                    )
+                band_specs.append(
                     {
-                        "code": "LEGACY_SET_BLOCK_BANDS",
-                        "annotation_set": annotation_set,
-                        "message": "Mapped legacy machine Set* blocks to ordered bands; canonical workbooks should assign distinct profiles with Order.",
+                        "profile": profile,
+                        "labels": labels,
+                        "label_sets": label_sets,
                     }
                 )
-                for set_value in set_values:
-                    labels = profile_labels(strain_rows, profile, set_value=set_value)
-                    band_specs.append(
-                        {"profile": f"{profile} [Set {set_value}]", "labels": labels}
-                    )
             else:
-                band_specs.append(
-                    {"profile": profile, "labels": profile_labels(strain_rows, profile)}
-                )
+                labels = profile_labels(strain_rows, profile)
+                band_specs.append({"profile": profile, "labels": labels})
 
         ranges, mapping = row_ranges(
             annotation_set, grid_rows, len(band_specs), row_band_overrides
         )
-        if used_legacy_mapping and mapping == "even_split":
-            mapping = "legacy_set_blocks_even_split"
         bands = []
         for index, (spec, (row_start, row_end)) in enumerate(
             zip(band_specs, ranges), start=1
         ):
-            local_cols = spec["labels"][-1]["pos"]
-            bands.append(
-                {
-                    "order": index,
-                    "profile": spec["profile"],
-                    "row_start": row_start,
-                    "row_end": row_end,
-                    "local_grid_cols": local_cols,
-                    "row_mapping_provenance": mapping,
-                    "labels": spec["labels"],
-                }
+            label_sets = spec.get("label_sets", {})
+            local_cols = max(
+                labels[-1]["pos"]
+                for labels in ([spec["labels"]] + list(label_sets.values()))
             )
+            band = {
+                "order": index,
+                "profile": spec["profile"],
+                "row_start": row_start,
+                "row_end": row_end,
+                "local_grid_cols": local_cols,
+                "row_mapping_provenance": mapping,
+                "labels": spec["labels"],
+            }
+            if label_sets:
+                band["label_sets"] = label_sets
+            bands.append(band)
         layouts[annotation_set] = {
             "contract_version": 1,
             "layout_id": annotation_set,
@@ -321,6 +332,34 @@ def build_project_model(records: dict[str, Any], excel_path: str) -> dict[str, A
     if missing:
         raise ValueError(
             f"Image records reference missing annotationSet layout(s): {', '.join(missing)}."
+        )
+    unresolved: set[tuple[str, str, str]] = set()
+    for image in records["images"]:
+        annotation_set = clean(image.get("annotation_set"))
+        image_set = clean(image.get("set")) or ""
+        if not annotation_set or annotation_set not in layouts:
+            continue
+        for band in layouts[annotation_set].get("strain_bands", []):
+            label_sets = band.get("label_sets") or {}
+            if (
+                len(label_sets) > 1
+                and image_set.casefold()
+                not in {str(value).casefold() for value in label_sets}
+            ):
+                unresolved.add(
+                    (annotation_set, image_set, str(band.get("profile") or ""))
+                )
+    for annotation_set, image_set, profile in sorted(unresolved):
+        diagnostics.append(
+            {
+                "code": "UNRESOLVED_IMAGE_LABEL_SET",
+                "annotation_set": annotation_set,
+                "message": (
+                    f"Image Set {image_set!r} has no matching label variant in "
+                    f"strain profile {profile!r}; grid-dependent actions for those "
+                    "images require a workbook correction or explicit mapping."
+                ),
+            }
         )
     records["layouts"] = layouts
     records["diagnostics"] = diagnostics

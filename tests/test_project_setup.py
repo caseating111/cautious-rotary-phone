@@ -59,14 +59,14 @@ def test_recursive_preview_apply_idempotence_and_versioned_map(tmp_path: Path) -
         tmp_path / "Working" / "renamed" / "one.dat"
     ).read_bytes() == first.read_bytes()
     assert (tmp_path / "Working" / "two.dat").read_bytes() == second.read_bytes()
-    mapping = tmp_path / "Metadata" / "image_name_conversions.txt"
+    mapping = tmp_path / "z. Metadata" / "image_name_conversions.txt"
     text = mapping.read_text(encoding="utf-8")
     assert str(tmp_path) not in text
     assert "Raw > camera > 2026 > S1 > one.dat" in text
 
     rerun = prepare_working_copy(_model(), tmp_path)
     assert rerun["summary"]["unchanged_current_count"] == 2
-    first_history = list((tmp_path / "Metadata" / "History").glob("*.txt"))
+    first_history = list((tmp_path / "z. Metadata" / "History").glob("*.txt"))
     assert len(first_history) == 1
     assert "Status=COPIED_RENAMED" in first_history[0].read_text(encoding="utf-8")
 
@@ -74,7 +74,7 @@ def test_recursive_preview_apply_idempotence_and_versioned_map(tmp_path: Path) -
         _model(), tmp_path, options={"enable_rename": False}
     )
     assert changed_map["summary"]["copied_count"] == 1
-    history = list((tmp_path / "Metadata" / "History").glob("*.txt"))
+    history = list((tmp_path / "z. Metadata" / "History").glob("*.txt"))
     assert len(history) == 2
     assert any(
         "Working > renamed > one.dat" in item.read_text(encoding="utf-8")

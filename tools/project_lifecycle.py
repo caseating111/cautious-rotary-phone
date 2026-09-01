@@ -349,6 +349,20 @@ def discover_grid_assets(
             uid = str(asset.get("image_uid") or "")
             if uid in matches:
                 matches[uid].append(path.resolve())
+    canonical_resolved = canonical.resolve()
+    for uid, paths in matches.items():
+        by_content: dict[str, list[Path]] = {}
+        for path in paths:
+            by_content.setdefault(_sha256(path), []).append(path)
+        collapsed: list[Path] = []
+        for duplicates in by_content.values():
+            canonical_copies = [
+                path
+                for path in duplicates
+                if path.is_relative_to(canonical_resolved)
+            ]
+            collapsed.append(canonical_copies[0] if canonical_copies else duplicates[0])
+        matches[uid] = collapsed
     return matches
 
 

@@ -28,6 +28,7 @@ def calibrate_crop_size(
     margin_unit: str = "pixels",
     source_dimensions: tuple[int, int] | None = None,
     rounding_tolerance_pixels: float = 0.0,
+    coordinate_provenance: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Derive a proposed or accepted reusable square crop-size calibration."""
     if not isinstance(increment, int) or increment <= 0:
@@ -105,6 +106,7 @@ def calibrate_crop_size(
             "bottom_y": float(bottom_pt[1]),
         },
         "method": "four_boundary_points_configurable_rounding_margin",
+        "coordinate_provenance": coordinate_provenance,
     }
 
 
@@ -222,6 +224,7 @@ def place_plate_crop(
             "matrix": [[1.0, 0.0, -left], [0.0, 1.0, -top], [0.0, 0.0, 1.0]],
         },
         "output_path": options.get("output_path"),
+        "coordinate_provenance": options.get("coordinate_provenance"),
     }
 
 

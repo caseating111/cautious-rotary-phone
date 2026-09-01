@@ -62,6 +62,11 @@ def test_csv_snapshots_create_reuse_pin_and_compare(tmp_path: Path) -> None:
     assert "BandOrder" in (metadata / "v10_plate_layout.csv").read_text(
         encoding="utf-8"
     )
+    layout_header = (metadata / "v10_plate_layout.csv").read_text(
+        encoding="utf-8"
+    ).splitlines()[0]
+    assert "Set" in layout_header
+    assert "Profile" in layout_header
     assert first["legacy_grid_available"] is True
     unchanged = write_csv_snapshot(model(), tmp_path, filename_date_style="yyyy.mm.dd")
     assert unchanged["status"] == "UNCHANGED_CURRENT"

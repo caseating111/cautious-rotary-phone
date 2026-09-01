@@ -27,7 +27,10 @@ from tools.applets.quick_figure import (
     save_quick_grid,
     set_grid_qc,
 )
-from tools.windows_dpi import pointer_client_fraction
+from tools.v10_independent.image_canvas_coordinates import (
+    image_item_to_source,
+    source_to_image_item,
+)
 
 
 class QuickImageCanvas(ttk.Frame):
@@ -41,6 +44,8 @@ class QuickImageCanvas(ttk.Frame):
         self.canvas.pack(fill="both", expand=True)
         self.image: Image.Image | None = None
         self.photo: ImageTk.PhotoImage | None = None
+        self.image_item: int | None = None
+        self.render_generation = 0
         self.scale = 1.0
         self.offset = (0.0, 0.0)
         self.render_canvas_size = (0, 0)
@@ -65,7 +70,9 @@ class QuickImageCanvas(ttk.Frame):
     def draw_points(self, points: list[tuple[float, float]]) -> None:
         self.canvas.delete("overlay")
         for index, (x, y) in enumerate(points, 1):
-            cx, cy = self.offset[0] + x * self.scale, self.offset[1] + y * self.scale
+            cx, cy = source_to_image_item(
+                self.canvas, self.image_item, self.image.size, x, y
+            )
             self.canvas.create_oval(
                 cx - 5,
                 cy - 5,
@@ -81,11 +88,17 @@ class QuickImageCanvas(ttk.Frame):
 
     def draw_box(self, box: dict[str, Any]) -> None:
         self.canvas.delete("overlay")
+        left, top = source_to_image_item(
+            self.canvas, self.image_item, self.image.size, box["left"], box["top"]
+        )
+        right, bottom = source_to_image_item(
+            self.canvas, self.image_item, self.image.size, box["right"], box["bottom"]
+        )
         self.canvas.create_rectangle(
-            self.offset[0] + box["left"] * self.scale,
-            self.offset[1] + box["top"] * self.scale,
-            self.offset[0] + box["right"] * self.scale,
-            self.offset[1] + box["bottom"] * self.scale,
+            left,
+            top,
+            right,
+            bottom,
             outline="#00ffff",
             width=3,
             tags="overlay",
@@ -93,6 +106,8 @@ class QuickImageCanvas(ttk.Frame):
 
     def _render(self) -> None:
         self.canvas.delete("all")
+        self.image_item = None
+        self.render_generation += 1
         if self.image is None:
             self.canvas.create_text(300, 220, text="Choose an image", fill="#dddddd")
             return
@@ -111,7 +126,17 @@ class QuickImageCanvas(ttk.Frame):
         )
         self.photo = ImageTk.PhotoImage(shown)
         self.offset = ((width - shown.width) / 2, (height - shown.height) / 2)
-        self.canvas.create_image(*self.offset, image=self.photo, anchor="nw")
+        self.image_item = self.canvas.create_image(
+            *self.offset, image=self.photo, anchor="nw"
+        )
+        bbox = self.canvas.bbox(self.image_item)
+        if bbox is not None:
+            left, top, right, bottom = bbox
+            self.offset = (float(left), float(top))
+            self.scale = min(
+                (right - left) / self.image.width,
+                (bottom - top) / self.image.height,
+            )
 
     def _point(self, event: tk.Event) -> tuple[float, float] | None:
         if self.image is None:
@@ -122,20 +147,15 @@ class QuickImageCanvas(ttk.Frame):
         )
         if current_size != self.render_canvas_size:
             self._render()
-        x_fraction, y_fraction, _source, _dimensions = pointer_client_fraction(
-            self.canvas, event.x, event.y
+        point, _provenance = image_item_to_source(
+            self.canvas,
+            self.image_item,
+            self.image.size,
+            event.x,
+            event.y,
+            render_generation=self.render_generation,
         )
-        canvas_x = x_fraction * self.render_canvas_size[0]
-        canvas_y = y_fraction * self.render_canvas_size[1]
-        point = (
-            (canvas_x - self.offset[0]) / self.scale,
-            (canvas_y - self.offset[1]) / self.scale,
-        )
-        return (
-            point
-            if 0 <= point[0] < self.image.width and 0 <= point[1] < self.image.height
-            else None
-        )
+        return point
 
     def _press(self, event: tk.Event) -> None:
         point = self._point(event)

@@ -4,9 +4,16 @@
 
 ## Current decision
 
-Tk 8.6.13 is not treated as a Per-Monitor-v2 UI. Windows is allowed to scale the complete legacy Tk window uniformly. Pointer positions are converted to fractions of the live native canvas client rectangle, then those fractions are applied to the current Tk canvas geometry and rendered-image transform. This bridges device and logical coordinate domains without guessing a DPI multiplier.
+The earlier normalized Win32-client route described below is historical and was
+retired after contradictory real-user calibration evidence. The active route
+keeps both pointer and image bounds in Tk canvas coordinates, reads the actual
+rendered image item's `canvas.bbox(item_id)`, and maps that fractional position
+directly to source pixels. It does not use screen/client coordinates or a DPI
+ratio.
 
-The same normalized mapping is used by the project and Quick Figures canvases. Exact numeric crop sizes remain available, and accepted orientation/crop state remains resumable.
+The same image-item mapping is used by the project and Quick Figures canvases.
+Exact numeric crop sizes remain available, and accepted orientation/crop state
+remains resumable.
 
 ## Official and mature evidence
 

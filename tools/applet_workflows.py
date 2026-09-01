@@ -4,6 +4,7 @@ import copy
 import hashlib
 import json
 import re
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -36,7 +37,7 @@ from tools.applets.plate_orientation import (
     capture_plate_orientation,
 )
 from tools.applets.project_setup import prepare_working_copy
-from tools.applets.v10_adapter import load_v10
+from tools.applets.v10_adapter import derive_plate_layout, load_v10
 from tools.applets.v10_csv_snapshots import (
     compare_csv_snapshot,
     write_csv_snapshot,
@@ -60,6 +61,7 @@ from tools.project_lifecycle import (
     mark_working_complete as mark_working_complete_state,
 )
 from tools.project_paths import (
+    canonical_path,
     locate_state,
     preferred_project_path,
     resolve_recorded_path,
@@ -483,6 +485,7 @@ class ProjectWorkflow:
         line: tuple[float, float, float, float] | None,
         *,
         skip: bool = False,
+        coordinate_provenance: dict[str, Any] | None = None,
     ) -> tuple[dict[str, Any], Any]:
         source = self.orientation_source_for(image_uid)
         with Image.open(source) as image:
@@ -494,6 +497,7 @@ class ProjectWorkflow:
                 "image_uid": image_uid,
                 "skip": skip,
                 "source_path": str(source),
+                "coordinate_provenance": coordinate_provenance,
             },
         )
         preview = apply_plate_orientation(source, result)
@@ -560,6 +564,7 @@ class ProjectWorkflow:
         margin_unit: str = "pixels",
         source_dimensions: tuple[int, int] | None = None,
         rounding_tolerance_pixels: float = 0.0,
+        coordinate_provenance: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         calibration = calibrate_crop_size(
             left,
@@ -575,6 +580,7 @@ class ProjectWorkflow:
             margin_unit=margin_unit,
             source_dimensions=source_dimensions,
             rounding_tolerance_pixels=rounding_tolerance_pixels,
+            coordinate_provenance=coordinate_provenance,
         )
         record_crop_calibration(self.state, calibration)
         self.save()
@@ -604,6 +610,7 @@ class ProjectWorkflow:
         top_anchor: tuple[float, float],
         *,
         skip: bool = False,
+        coordinate_provenance: dict[str, Any] | None = None,
     ) -> tuple[dict[str, Any], Any]:
         try:
             calibration = self.state["crop_calibrations"][calibration_id]
@@ -617,7 +624,12 @@ class ProjectWorkflow:
             left_anchor,
             top_anchor,
             {"width": dimensions[0], "height": dimensions[1], "image_uid": image_uid},
-            options={"image_uid": image_uid, "skip": skip, "source_path": str(source)},
+            options={
+                "image_uid": image_uid,
+                "skip": skip,
+                "source_path": str(source),
+                "coordinate_provenance": coordinate_provenance,
+            },
         )
         result["source_path"] = str(source)
         preview = apply_plate_crop(source, result)
@@ -691,6 +703,21 @@ class ProjectWorkflow:
         validate_grid_coordinate_asset(asset)
         if asset.get("image_uid") not in {None, "", image_uid}:
             raise ValueError("Grid asset belongs to a different Image UID.")
+        destination_root = canonical_path(self.project_root, "grid_coordinates")
+        asset_name = _safe_stem(str(asset.get("asset_id") or "grid"))
+        destination = destination_root / (
+            f"{_safe_stem(image_uid)}__{asset_name}.grid.json"
+        )
+        if not path.is_relative_to(destination_root.resolve()):
+            destination_root.mkdir(parents=True, exist_ok=True)
+            if destination.exists():
+                if _hash_file(destination) != _hash_file(path):
+                    raise FileExistsError(
+                        f"Canonical grid asset already exists with different content: {destination}"
+                    )
+            else:
+                shutil.copy2(path, destination)
+            path = destination.resolve()
         record_grid_asset(self.state, image_uid, asset, path)
         self.save()
         return asset
@@ -822,11 +849,9 @@ class ProjectWorkflow:
         raise ValueError(f"Unknown Image UID: {image_uid}")
 
     def _plate_layout(self, image_uid: str) -> dict[str, Any]:
-        record = self.image_record(image_uid)
-        layout_id = record.get("layout_id")
         try:
-            return self.project_model["layouts"][layout_id]
-        except KeyError as exc:
+            return derive_plate_layout(self.project_model, image_uid)
+        except (KeyError, ValueError) as exc:
             raise ValueError(
                 f"Image UID {image_uid} has no usable embedded PlateLayout."
             ) from exc

@@ -15,15 +15,26 @@
           "session_uid": {"type": "string", "minLength": 1},
           "exp": {"type": "string", "minLength": 1},
           "date": {"type": "string", "minLength": 1},
+          "date_display": {"type": ["string", "null"]},
           "time": {"type": ["string", "null"]},
           "name": {"type": ["string", "null"]},
+          "name_display": {"type": ["string", "null"]},
           "arrangement": {"type": ["string", "null"]},
-          "annotation_set": {"type": ["string", "null"]}
-          ,"id": {"type": ["string", "null"]}
-          ,"sample_description": {"type": ["string", "null"]}
-          ,"date": {"type": ["string", "null"]}
-          ,"figure_description_label": {"type": ["string", "null"]}
-          ,"filename_status": {"type": ["string", "null"]}
+          "arrangement_display": {"type": ["string", "null"]},
+          "annotation_set": {"type": ["string", "null"]},
+          "annotation_set_display": {"type": ["string", "null"]},
+          "replicate_label": {"type": ["string", "null"]},
+          "replicate_label_display": {"type": ["string", "null"]},
+          "description_text": {"type": ["string", "null"]},
+          "description_text_display": {"type": ["string", "null"]},
+          "extension": {"type": ["string", "null"]},
+          "extension_display": {"type": ["string", "null"]},
+          "include": {"type": ["boolean", "null"]},
+          "images_expected": {"type": ["integer", "null"], "minimum": 1},
+          "registration_start": {"type": ["integer", "null"], "minimum": 1},
+          "registration_end": {"type": ["integer", "null"], "minimum": 1},
+          "status": {"type": ["string", "null"]},
+          "id": {"type": ["string", "null"]}
         },
         "additionalProperties": false
       }
@@ -45,10 +56,69 @@
           "condition": {"type": ["string", "null"]},
           "rep": {"type": ["integer", "string", "null"]},
           "arrangement": {"type": ["string", "null"]},
-          "annotation_set": {"type": ["string", "null"]}
+          "annotation_set": {"type": ["string", "null"]},
+          "id": {"type": ["string", "null"]},
+          "sample_description": {"type": ["string", "null"]},
+          "date": {"type": ["string", "null"]},
+          "date_display": {"type": ["string", "null"]},
+          "time": {"type": ["string", "null"]},
+          "figure_description_label": {"type": ["string", "null"]},
+          "filename_status": {"type": ["string", "null"]},
+          "base_filename": {"type": ["string", "null"]},
+          "base_count": {"type": ["integer", "null"], "minimum": 1},
+          "set_filename": {"type": ["string", "null"]},
+          "set_filename_count": {"type": ["integer", "null"], "minimum": 1}
         },
         "additionalProperties": false
       }
+    },
+    "arrangements": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["arrangement", "image_number"],
+        "properties": {
+          "date_display": {"type": ["string", "null"]},
+          "arrangement": {"type": "string", "minLength": 1},
+          "arrangement_display": {"type": ["string", "null"]},
+          "image_number": {"type": "integer", "minimum": 1},
+          "sample_description": {"type": ["string", "null"]},
+          "set": {"type": ["string", "null"]},
+          "media": {"type": ["string", "null"]},
+          "condition": {"type": ["string", "null"]},
+          "condition_machine": {"type": ["string", "null"]},
+          "rep": {"type": ["integer", "null"], "minimum": 1},
+          "group_key": {"type": ["string", "null"]},
+          "check": {"type": ["string", "null"]}
+        },
+        "additionalProperties": false
+      }
+    },
+    "annotation_assignments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["annotation_set", "type", "profile"],
+        "properties": {
+          "date_display": {"type": ["string", "null"]},
+          "annotation_set": {"type": "string", "minLength": 1},
+          "type": {"enum": ["strain", "vertical", "other"]},
+          "profile": {"type": "string", "minLength": 1},
+          "order": {"type": ["integer", "null"], "minimum": 1},
+          "check": {"type": ["string", "null"]}
+        },
+        "additionalProperties": false
+      }
+    },
+    "annotation_profiles": {
+      "type": "object",
+      "required": ["strain", "vertical", "other"],
+      "properties": {
+        "strain": {"$ref": "#/$defs/profileRows"},
+        "vertical": {"$ref": "#/$defs/profileRows"},
+        "other": {"$ref": "#/$defs/profileRows"}
+      },
+      "additionalProperties": false
     },
     "layouts": {
       "type": "object",
@@ -63,6 +133,24 @@
           "code": {"type": "string", "minLength": 1},
           "annotation_set": {"type": "string"},
           "message": {"type": "string", "minLength": 1}
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "$defs": {
+    "profileRows": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["profile", "label", "pos"],
+        "properties": {
+          "profile": {"type": "string", "minLength": 1},
+          "set": {"type": ["string", "null"]},
+          "label": {"type": "string"},
+          "pos": {"type": "integer", "minimum": 1},
+          "key": {"type": ["string", "null"]},
+          "check": {"type": ["string", "null"]}
         },
         "additionalProperties": false
       }

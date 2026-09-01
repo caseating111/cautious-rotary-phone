@@ -11,11 +11,12 @@ from pathlib import Path
 from typing import Any
 
 from tools.applets.v10_adapter import (
+    derive_plate_layout,
     project_to_legacy_grid_rows,
     project_to_legacy_images_rows,
 )
 from tools.project_dates import working_filename_for
-from tools.project_paths import preferred_project_path
+from tools.project_paths import canonical_path
 
 CSV_NAMES = (
     "grid.csv",
@@ -89,8 +90,10 @@ def _master_registry_rows(
                 ),
                 "Arrangement": image.get("arrangement", ""),
                 "annotationSet": image.get("annotation_set", ""),
-                "Date": image.get("date", session.get("date", "")),
-                "Date*": session.get("date", image.get("date", "")),
+                "Date": image.get(
+                    "date_display", session.get("date_display", "")
+                ),
+                "Date*": image.get("date", session.get("date", "")),
                 "Time": image.get("time", session.get("time", "")),
                 "figureDescriptionLabel": image.get(
                     "figure_description_label", ""
@@ -103,28 +106,65 @@ def _master_registry_rows(
 
 def _plate_layout_rows(model: dict[str, Any]) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
-    for layout_id, layout in sorted(model.get("layouts", {}).items()):
+    for layout_id, raw_layout in sorted(model.get("layouts", {}).items()):
         vertical = {
             int(label["pos"]): str(label["label"])
-            for label in layout.get("vertical_labels", [])
+            for label in raw_layout.get("vertical_labels", [])
         }
-        for item in project_to_legacy_grid_rows(layout):
-            rows.append(
-                {
-                    "annotationSet": layout_id,
-                    "GridRows": layout.get("grid_rows", ""),
-                    "GridCols": item["GridCols"],
-                    "BandOrder": item["BandOrder"],
-                    "RowStart": item["RowStart"],
-                    "RowEnd": item["RowEnd"],
-                    "Column": item["Column"],
-                    "Strain": item["Strain"],
-                    "VerticalLabels": " | ".join(
-                        f"{position}:{label}"
-                        for position, label in sorted(vertical.items())
-                    ),
-                }
+        variant_names = list(
+            dict.fromkeys(
+                str(name)
+                for band in raw_layout.get("strain_bands", [])
+                for name in (band.get("label_sets") or {})
             )
+        ) or [""]
+        for variant_name in variant_names:
+            selected_bands: list[
+                tuple[dict[str, Any], list[dict[str, Any]], str]
+            ] = []
+            for band in raw_layout.get("strain_bands", []):
+                label_sets = band.get("label_sets") or {}
+                matching = next(
+                    (
+                        name
+                        for name in label_sets
+                        if str(name).casefold() == variant_name.casefold()
+                    ),
+                    None,
+                )
+                if matching is None and len(label_sets) == 1:
+                    matching = next(iter(label_sets))
+                labels = (
+                    label_sets[matching]
+                    if matching is not None
+                    else band.get("labels", [])
+                )
+                selected_bands.append((band, labels, str(matching or "")))
+            grid_cols = max(
+                int(label["pos"])
+                for _band, labels, _selected in selected_bands
+                for label in labels
+            )
+            for band, labels, selected_name in selected_bands:
+                for label in labels:
+                    rows.append(
+                        {
+                            "annotationSet": layout_id,
+                            "Set": selected_name or variant_name,
+                            "GridRows": raw_layout.get("grid_rows", ""),
+                            "GridCols": grid_cols,
+                            "BandOrder": band.get("order", ""),
+                            "Profile": band.get("profile", ""),
+                            "RowStart": band.get("row_start", ""),
+                            "RowEnd": band.get("row_end", ""),
+                            "Column": label.get("pos", ""),
+                            "Strain": label.get("label", ""),
+                            "VerticalLabels": " | ".join(
+                                f"{position}:{text}"
+                                for position, text in sorted(vertical.items())
+                            ),
+                        }
+                    )
     return rows
 
 
@@ -153,15 +193,11 @@ def _layout_columns(layout: dict[str, Any]) -> list[tuple[int, str]]:
 
 
 def _grid_rows(model: dict[str, Any]) -> list[dict[str, Any]]:
-    layouts = model.get("layouts", {})
     rows: list[dict[str, Any]] = []
     seen: set[tuple[str, str, str]] = set()
     for image in model.get("images", []):
         layout_id = str(image.get("annotation_set") or "")
-        try:
-            layout = layouts[layout_id]
-        except KeyError as exc:
-            raise ValueError(f"No embedded PlateLayout is available for {layout_id!r}.") from exc
+        layout = derive_plate_layout(model, str(image["image_uid"]))
         exp, set_name = str(image.get("exp") or ""), str(image.get("set") or "")
         identity = (exp.casefold(), set_name.casefold(), layout_id.casefold())
         if identity in seen:
@@ -217,8 +253,9 @@ def build_csv_payload(
         ),
         "v10_plate_layout.csv": _csv_text(
             [
-                "annotationSet", "GridRows", "GridCols", "BandOrder", "RowStart",
-                "RowEnd", "Column", "Strain", "VerticalLabels",
+                "annotationSet", "Set", "GridRows", "GridCols", "BandOrder",
+                "Profile", "RowStart", "RowEnd", "Column", "Strain",
+                "VerticalLabels",
             ],
             plate_layout,
         ),
@@ -257,7 +294,7 @@ def compare_csv_snapshot(
     *,
     filename_date_style: str = "v10",
 ) -> dict[str, Any]:
-    metadata = preferred_project_path(project_root, "metadata")
+    metadata = canonical_path(project_root, "metadata")
     payload = build_csv_payload(model, filename_date_style=filename_date_style)
     digest = _payload_hash(payload)
     current = _read_current(metadata)
@@ -278,7 +315,7 @@ def write_csv_snapshot(
     pinned: bool = False,
 ) -> dict[str, Any]:
     root = Path(project_root).resolve()
-    metadata = preferred_project_path(root, "metadata")
+    metadata = canonical_path(root, "metadata")
     snapshots = metadata / "CSV Snapshots"
     current = _read_current(metadata)
     if pinned and current:

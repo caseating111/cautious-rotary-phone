@@ -118,6 +118,7 @@ def capture_plate_orientation(
                 "line": None,
                 "observed_angle_degrees": 0.0,
                 "convention": "pil_counter_clockwise_positive",
+                "coordinate_provenance": options.get("coordinate_provenance"),
             },
         }
 
@@ -155,6 +156,7 @@ def capture_plate_orientation(
             "correction_angle_degrees": round(correction, 4),
             "edge_used": options.get("edge_used", "top_or_bottom"),
             "convention": "pil_counter_clockwise_positive",
+            "coordinate_provenance": options.get("coordinate_provenance"),
         },
     }
 

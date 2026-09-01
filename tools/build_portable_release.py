@@ -19,6 +19,7 @@ ROOT_RUNTIME_FILES = {
     "start_controller.cmd",
     "start_controller_miniforge.cmd",
     "start_custom_matrix.cmd",
+    "start_v10_independent.cmd",
 }
 LEGACY_RUNTIME_FILES = {
     "existing scripts clean/allstrain matrix.py",
@@ -57,6 +58,7 @@ PORTABLE_PYTHON_ENTRYPOINTS = {
     "tools/validate_project_csvs.py",
     "tools/workflow_applets_gui.py",
     "tools/windows_dpi.py",
+    "tools/v10_independent/controller.py",
     "tools/workflow_controller.py",
     "tools/workflow_controller_extended.py",
 }
@@ -65,11 +67,14 @@ REQUIRED_ARCHIVE_FILES = {
     "setup_environment.cmd",
     "start_controller.cmd",
     "start_controller_miniforge.cmd",
+    "start_v10_independent.cmd",
     "tools/workflow_controller_extended.py",
     "tools/run_four_point_batch_from_config.py",
     "tools/grid_coordinates.py",
     "tools/finalize_grid_handoff.py",
     "tools/workflow_applets_gui.py",
+    "tools/v10_independent/controller.py",
+    "tools/v10_independent/image_canvas_coordinates.py",
     "tools/applet_workflows.py",
     "tools/project_dates.py",
     "tools/project_paths.py",

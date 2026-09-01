@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from tools.project_dates import working_filename_for
-from tools.project_paths import preferred_project_path
+from tools.project_paths import canonical_path, preferred_project_path
 
 from .v10_adapter import reconcile_image_files
 
@@ -412,7 +412,7 @@ def prepare_working_copy(
         for plan in plans
     ]
     conversion_text = generate_conversion_map_text(project_model, clean_plans, root)
-    conversion_path = preferred_project_path(root, "metadata") / "image_name_conversions.txt"
+    conversion_path = canonical_path(root, "metadata") / "image_name_conversions.txt"
     if write_conversion_map and not preview_only:
         _write_conversion_map(conversion_path, conversion_text)
 

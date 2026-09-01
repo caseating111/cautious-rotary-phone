@@ -39,10 +39,9 @@ def test_pointer_fraction_has_a_safe_tk_fallback(monkeypatch) -> None:
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows client-fraction contract")
-def test_synthetic_canvas_pointer_round_trip_uses_original_image_pixels() -> None:
+def test_synthetic_canvas_image_item_round_trip_uses_original_image_pixels() -> None:
     code = """
-import ctypes, json, tkinter as tk
-from ctypes import wintypes
+import json, tkinter as tk
 from PIL import Image
 from tools.workflow_applets_gui import ImageCanvas
 
@@ -53,31 +52,14 @@ viewer = ImageCanvas(root)
 viewer.pack(fill='both', expand=True)
 viewer.show(Image.new('L', (2047, 2047), 0))
 root.update()
-user32 = ctypes.windll.user32
-old = wintypes.POINT()
-user32.GetCursorPos(ctypes.byref(old))
-client_rect = wintypes.RECT()
-user32.GetClientRect(viewer.canvas.winfo_id(), ctypes.byref(client_rect))
-client_width = client_rect.right - client_rect.left
-client_height = client_rect.bottom - client_rect.top
 mapped = []
-try:
-    for target_x, target_y in ((150.0, 300.0), (1850.0, 1700.0)):
-        tk_x = viewer.offset[0] + target_x * viewer.scale_x
-        tk_y = viewer.offset[1] + target_y * viewer.scale_y
-        client = wintypes.POINT(
-            round(tk_x / viewer.canvas.winfo_width() * client_width),
-            round(tk_y / viewer.canvas.winfo_height() * client_height),
-        )
-        user32.ClientToScreen(viewer.canvas.winfo_id(), ctypes.byref(client))
-        user32.SetCursorPos(client.x, client.y)
-        root.update()
-        mapped.append(viewer.canvas_to_image(1.0, 1.0))
-finally:
-    user32.SetCursorPos(old.x, old.y)
-    source = viewer.coordinate_source
-    root.destroy()
-print(json.dumps({'mapped': mapped, 'source': source}))
+for target_x, target_y in ((150.0, 300.0), (1850.0, 1700.0)):
+    tk_x, tk_y = viewer.image_to_canvas(target_x, target_y)
+    mapped.append(viewer.canvas_to_image(tk_x, tk_y))
+source = viewer.coordinate_source
+provenance = viewer.current_coordinate_provenance()
+root.destroy()
+print(json.dumps({'mapped': mapped, 'source': source, 'provenance': provenance}))
 """
     result = subprocess.run(
         [sys.executable, "-c", code],
@@ -86,7 +68,8 @@ print(json.dumps({'mapped': mapped, 'source': source}))
         text=True,
     )
     data = json.loads(result.stdout.strip())
-    assert data["source"] == "normalized_win32_client"
+    assert data["source"] == "tk_canvas_image_item_to_source_pixels"
+    assert data["provenance"]["source_dimensions"] == [2047, 2047]
     for actual, expected in zip(
         data["mapped"], ((150.0, 300.0), (1850.0, 1700.0)), strict=True
     ):

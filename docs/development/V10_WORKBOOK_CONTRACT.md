@@ -135,7 +135,8 @@ It may reference:
 
 - **one or more strain profiles**;
 - **one current vertical profile**;
-- optional `other` label/profile data, currently ignored.
+- optional `other` label/profile data, preserved in the canonical model even
+  where a current image applet does not consume it.
 
 ### Vertical profile
 
@@ -175,6 +176,19 @@ When more than one strain profile is assigned to an annotationSet, `Order` defin
 `Order` is not the same as `Pos` and does not define strain-column order.
 
 Overall `GridCols` is the width of the **widest assigned strain profile**. Do not add widths together when profiles occupy different row bands.
+
+### Strain-profile `Set` variants
+
+`Set`/`Set*` rows inside one strain profile are alternate label variants, not
+extra physical row bands. Ordered strain-profile assignments define bands.
+When a profile has more than one Set variant, an image resolves the variant
+matching its Master Registry `Set`. A profile with only one variant is
+unambiguous and may be reused by images with other Set values.
+
+If an image Set has no match in a profile with several variants, preserve the
+image and allow non-grid processing, but fail grid-dependent annotation/export
+for that image with an actionable metadata diagnostic. Never silently select a
+biological label variant.
 
 Example:
 

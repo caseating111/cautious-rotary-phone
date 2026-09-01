@@ -380,5 +380,9 @@ def test_source_selection_and_grid_auto_discovery_are_explicit(tmp_path: Path) -
     legacy = tmp_path / "GridCoordinates"
     legacy.mkdir()
     shutil.copy2(asset_path, legacy / asset_path.name)
-    ambiguous = workflow.auto_attach_grids()
-    assert "Image 1" in ambiguous["ambiguous"]
+    resumed = workflow.auto_attach_grids()
+    assert resumed["attached"]["Image 1"] == str(asset_path)
+    assert not resumed["ambiguous"]
+    assert workflow.image_record("Image 1")["grid"]["path"].startswith(
+        "z. Metadata/State/GridCoordinates/"
+    )

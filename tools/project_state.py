@@ -12,6 +12,7 @@ from tools.project_paths import (
     canonical_path,
     locate_state,
     project_root_from_state_file,
+    relative_project_path,
     rebase_state_paths,
 )
 
@@ -330,7 +331,7 @@ def record_grid_asset(
         "status": "ACCEPTED",
         "asset_id": asset.get("asset_id"),
         "coordinate_space": copy.deepcopy(asset.get("coordinate_space")),
-        "path": str(Path(asset_path).resolve()),
+        "path": relative_project_path(asset_path, state["project_root"]),
     }
     changed = not isinstance(prior, dict) or any(
         prior.get(key) != value for key, value in current.items()

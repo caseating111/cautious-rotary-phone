@@ -41,7 +41,10 @@ from tools.project_lifecycle import (
 )
 from tools.project_paths import preferred_project_path
 from tools.quick_figure_gui import QuickFigurePanel
-from tools.windows_dpi import pointer_client_fraction
+from tools.v10_independent.image_canvas_coordinates import (
+    image_item_to_source,
+    source_to_image_item,
+)
 
 
 def next_image_uid(image_uids: list[str], current_uid: str) -> str | None:
@@ -142,6 +145,8 @@ class ImageCanvas(ttk.Frame):
         self.canvas.pack(fill="both", expand=True)
         self.image: Image.Image | None = None
         self.photo: ImageTk.PhotoImage | None = None
+        self.image_item: int | None = None
+        self.render_generation = 0
         self.scale = 1.0
         self.scale_x = 1.0
         self.scale_y = 1.0
@@ -149,6 +154,7 @@ class ImageCanvas(ttk.Frame):
         self.render_canvas_size = (0, 0)
         self.coordinate_source = "not_sampled"
         self.coordinate_client_dimensions = (0, 0)
+        self.coordinate_provenance: dict[str, Any] = {}
         self.click_handler: Callable[[tuple[float, float]], None] | None = None
         self.drag_handler: (
             Callable[[tuple[float, float], tuple[float, float]], None] | None
@@ -184,23 +190,34 @@ class ImageCanvas(ttk.Frame):
         )
         if current_size != self.render_canvas_size:
             self._render()
-        x_fraction, y_fraction, self.coordinate_source, dimensions = (
-            pointer_client_fraction(self.canvas, x, y)
+        point, provenance = image_item_to_source(
+            self.canvas,
+            self.image_item,
+            self.image.size,
+            x,
+            y,
+            render_generation=self.render_generation,
         )
-        self.coordinate_client_dimensions = dimensions
-        canvas_x = x_fraction * self.render_canvas_size[0]
-        canvas_y = y_fraction * self.render_canvas_size[1]
-        px = (canvas_x - self.offset[0]) / self.scale_x
-        py = (canvas_y - self.offset[1]) / self.scale_y
-        if 0 <= px < self.image.width and 0 <= py < self.image.height:
-            return px, py
-        return None
+        self.coordinate_provenance = provenance
+        self.coordinate_source = provenance["coordinate_system"]
+        displayed = provenance["rendered_image_dimensions"]
+        self.coordinate_client_dimensions = (round(displayed[0]), round(displayed[1]))
+        return point
+
+    def image_to_canvas(self, x: float, y: float) -> tuple[float, float]:
+        if self.image is None:
+            raise ValueError("No source image is loaded.")
+        return source_to_image_item(
+            self.canvas, self.image_item, self.image.size, x, y
+        )
+
+    def current_coordinate_provenance(self) -> dict[str, Any]:
+        return dict(self.coordinate_provenance)
 
     def draw_points(self, points: list[tuple[float, float]]) -> None:
         self.clear_overlays()
         for index, (x, y) in enumerate(points, start=1):
-            cx = self.offset[0] + x * self.scale_x
-            cy = self.offset[1] + y * self.scale_y
+            cx, cy = self.image_to_canvas(x, y)
             radius = 5
             self.canvas.create_oval(
                 cx - radius,
@@ -222,21 +239,18 @@ class ImageCanvas(ttk.Frame):
 
     def draw_line(self, start: tuple[float, float], end: tuple[float, float]) -> None:
         self.clear_overlays()
-        coords = [
-            self.offset[0] + start[0] * self.scale_x,
-            self.offset[1] + start[1] * self.scale_y,
-            self.offset[0] + end[0] * self.scale_x,
-            self.offset[1] + end[1] * self.scale_y,
-        ]
+        coords = [*self.image_to_canvas(*start), *self.image_to_canvas(*end)]
         self.canvas.create_line(*coords, fill="#00ffff", width=3, tags="overlay")
 
     def draw_box(self, box: dict[str, Any]) -> None:
         self.clear_overlays()
+        left, top = self.image_to_canvas(box["left"], box["top"])
+        right, bottom = self.image_to_canvas(box["right"], box["bottom"])
         self.canvas.create_rectangle(
-            self.offset[0] + box["left"] * self.scale_x,
-            self.offset[1] + box["top"] * self.scale_y,
-            self.offset[0] + box["right"] * self.scale_x,
-            self.offset[1] + box["bottom"] * self.scale_y,
+            left,
+            top,
+            right,
+            bottom,
             outline="#00ffff",
             width=3,
             tags="overlay",
@@ -244,6 +258,11 @@ class ImageCanvas(ttk.Frame):
 
     def _render(self) -> None:
         self.canvas.delete("all")
+        self.image_item = None
+        self.coordinate_provenance = {}
+        self.coordinate_source = "not_sampled"
+        self.coordinate_client_dimensions = (0, 0)
+        self.render_generation += 1
         if self.image is None:
             self.canvas.create_text(
                 410,
@@ -265,7 +284,16 @@ class ImageCanvas(ttk.Frame):
             Image.Resampling.LANCZOS,
         )
         self.photo = ImageTk.PhotoImage(shown)
-        self.canvas.create_image(*self.offset, image=self.photo, anchor="nw")
+        self.image_item = self.canvas.create_image(
+            *self.offset, image=self.photo, anchor="nw"
+        )
+        bbox = self.canvas.bbox(self.image_item)
+        if bbox is not None:
+            left, top, right, bottom = bbox
+            self.offset = (float(left), float(top))
+            self.scale_x = (right - left) / self.image.width
+            self.scale_y = (bottom - top) / self.image.height
+            self.scale = min(self.scale_x, self.scale_y)
 
     def _press(self, event: tk.Event) -> None:
         point = self.canvas_to_image(event.x, event.y)
@@ -301,9 +329,12 @@ class WorkflowApp(tk.Tk):
             value=bool(orientation_settings.get("auto_preview", True))
         )
         self.orientation_points: list[tuple[float, float]] = []
+        self.orientation_coordinate_samples: list[dict[str, Any]] = []
         self.calibration_points: list[tuple[float, float]] = []
+        self.calibration_coordinate_samples: list[dict[str, Any]] = []
         self.calibration_proposal: dict[str, Any] | None = None
         self.crop_points: list[tuple[float, float]] = []
+        self.crop_coordinate_samples: list[dict[str, Any]] = []
         self.crop_proposal: dict[str, Any] | None = None
         self.crop_previewed = False
         self.calibration_source_dimensions: tuple[int, int] | None = None
@@ -1338,6 +1369,17 @@ class WorkflowApp(tk.Tk):
 
     def _activate(self, workflow: ProjectWorkflow) -> None:
         self.workflow = workflow
+        self.viewer.set_handlers()
+        self.orientation_proposal = None
+        self.orientation_points = []
+        self.orientation_coordinate_samples = []
+        self.calibration_points = []
+        self.calibration_coordinate_samples = []
+        self.calibration_proposal = None
+        self.crop_points = []
+        self.crop_coordinate_samples = []
+        self.crop_proposal = None
+        self.crop_previewed = False
         project_settings = workflow.state.get("settings", {})
         if isinstance(project_settings, dict) and project_settings:
             self.enable_rename.set(bool(project_settings.get("enable_rename", self.enable_rename.get())))
@@ -1608,6 +1650,7 @@ class WorkflowApp(tk.Tk):
                 self.viewer.show(image)
             self.orientation_proposal = None
             self.orientation_points = []
+            self.orientation_coordinate_samples = []
             settings = {
                 "input_mode": self.orientation_input_mode.get(),
                 "auto_preview": self.orientation_auto_preview.get(),
@@ -1629,10 +1672,16 @@ class WorkflowApp(tk.Tk):
     def _orientation_dragged(
         self, start: tuple[float, float], end: tuple[float, float]
     ) -> None:
+        self.orientation_coordinate_samples = [
+            self.viewer.current_coordinate_provenance()
+        ]
         self._propose_orientation_points(start, end)
 
     def _orientation_point_clicked(self, point: tuple[float, float]) -> None:
         self.orientation_points.append(point)
+        self.orientation_coordinate_samples.append(
+            self.viewer.current_coordinate_provenance()
+        )
         self.viewer.draw_points(self.orientation_points)
         if len(self.orientation_points) == 1:
             self.status.set("First alignment point recorded; click the second point.")
@@ -1646,7 +1695,14 @@ class WorkflowApp(tk.Tk):
         self, start: tuple[float, float], end: tuple[float, float]
     ) -> None:
         workflow, uid = self._selected()
-        result = self._run(lambda: workflow.propose_orientation(uid, (*start, *end)))
+        provenance = self._coordinate_provenance(
+            self.orientation_coordinate_samples
+        )
+        result = self._run(
+            lambda: workflow.propose_orientation(
+                uid, (*start, *end), coordinate_provenance=provenance
+            )
+        )
         if result:
             self.orientation_proposal, _preview = result
             line = self.orientation_proposal["diagnostics"]["line"]
@@ -1672,6 +1728,9 @@ class WorkflowApp(tk.Tk):
                     self.orientation_proposal["diagnostics"]["line"][key]
                     for key in ("x1", "y1", "x2", "y2")
                 ),
+                coordinate_provenance=self.orientation_proposal[
+                    "diagnostics"
+                ].get("coordinate_provenance"),
             )
         )
         if result:
@@ -1716,6 +1775,7 @@ class WorkflowApp(tk.Tk):
                 self.viewer.show(image)
                 self.calibration_source_dimensions = image.size
             self.calibration_points = []
+            self.calibration_coordinate_samples = []
             self.calibration_proposal = None
             self.viewer.set_handlers(click=self._calibration_clicked)
             self.status.set(
@@ -1727,6 +1787,9 @@ class WorkflowApp(tk.Tk):
 
     def _calibration_clicked(self, point: tuple[float, float]) -> None:
         self.calibration_points.append(point)
+        self.calibration_coordinate_samples.append(
+            self.viewer.current_coordinate_provenance()
+        )
         self.viewer.draw_points(self.calibration_points)
         labels = ("left", "right", "top", "bottom")
         if len(self.calibration_points) < 4:
@@ -1741,19 +1804,22 @@ class WorkflowApp(tk.Tk):
                 *self.calibration_points,
                 **options,
                 source_dimensions=self.calibration_source_dimensions,
+                coordinate_provenance=self._coordinate_provenance(
+                    self.calibration_coordinate_samples
+                ),
             )
         )
         if self.calibration_proposal:
             side = self.calibration_proposal["side_pixels"]
             measured = self.calibration_proposal["measured_extents"]
             source = self.calibration_source_dimensions or ("?", "?")
-            client = self.viewer.coordinate_client_dimensions
+            rendered = self.viewer.coordinate_client_dimensions
             self.calibration_label.configure(
                 text=(
                     f"Source {source[0]}×{source[1]} px; measured "
                     f"{measured['measured_width']:.0f}×{measured['measured_height']:.0f}; "
-                    f"proposed {side}×{side} px; {self.viewer.coordinate_source} "
-                    f"{client[0]}×{client[1]}"
+                    f"proposed {side}×{side} px; Tk image item "
+                    f"{rendered[0]}×{rendered[1]}"
                 )
             )
             self.status.set(
@@ -1779,6 +1845,9 @@ class WorkflowApp(tk.Tk):
                 calibration_id=calibration_id,
                 **options,
                 source_dimensions=self.calibration_source_dimensions,
+                coordinate_provenance=self._coordinate_provenance(
+                    self.calibration_coordinate_samples
+                ),
             )
         )
         if result:
@@ -1869,6 +1938,18 @@ class WorkflowApp(tk.Tk):
             "rounding_tolerance_pixels": display_pixel_tolerance,
         }
 
+    def _coordinate_provenance(
+        self, samples: list[dict[str, Any]]
+    ) -> dict[str, Any] | None:
+        valid = [dict(sample) for sample in samples if sample]
+        if not valid:
+            return None
+        return {
+            "coordinate_system": "tk_canvas_image_item_to_source_pixels",
+            "source_dimensions": valid[-1].get("source_dimensions"),
+            "samples": valid,
+        }
+
     def _current_calibration_id(self) -> str:
         workflow, _uid = self._selected()
         calibrations = workflow.state["crop_calibrations"]
@@ -1944,6 +2025,7 @@ class WorkflowApp(tk.Tk):
             with Image.open(source) as image:
                 self.viewer.show(image)
             self.crop_points = []
+            self.crop_coordinate_samples = []
             self.crop_proposal = None
             self.crop_previewed = False
             self.viewer.set_handlers(click=self._crop_clicked)
@@ -1953,6 +2035,9 @@ class WorkflowApp(tk.Tk):
 
     def _crop_clicked(self, point: tuple[float, float]) -> None:
         self.crop_points.append(point)
+        self.crop_coordinate_samples.append(
+            self.viewer.current_coordinate_provenance()
+        )
         self.viewer.draw_points(self.crop_points)
         if len(self.crop_points) == 1:
             self.status.set("Left edge recorded; click the top edge.")
@@ -1962,7 +2047,13 @@ class WorkflowApp(tk.Tk):
         calibration_id = self._current_calibration_id()
         result = self._run(
             lambda: workflow.propose_crop(
-                uid, calibration_id, self.crop_points[0], self.crop_points[1]
+                uid,
+                calibration_id,
+                self.crop_points[0],
+                self.crop_points[1],
+                coordinate_provenance=self._coordinate_provenance(
+                    self.crop_coordinate_samples
+                ),
             )
         )
         if result:
@@ -1985,6 +2076,9 @@ class WorkflowApp(tk.Tk):
                 self.crop_proposal["calibration_id"],
                 self.crop_points[0],
                 self.crop_points[1],
+                coordinate_provenance=self.crop_proposal.get(
+                    "coordinate_provenance"
+                ),
             )
         )
         if result:

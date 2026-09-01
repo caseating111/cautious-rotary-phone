@@ -1,8 +1,22 @@
+import copy
 import math
 import os
 import re
 from typing import Any, Dict, List, Optional, Tuple, Union
 import pandas as pd
+
+
+def _text(value: Any) -> Optional[str]:
+    if value is None or pd.isna(value):
+        return None
+    return str(value).split(" ")[0].strip() if isinstance(value, pd.Timestamp) else str(value).strip()
+
+
+def _integer(value: Any) -> Optional[int]:
+    if value is None or pd.isna(value):
+        return None
+    number = float(value)
+    return int(number) if number.is_integer() else None
 
 
 def load_v10(excel_path: str) -> Dict[str, Any]:
@@ -13,6 +27,8 @@ def load_v10(excel_path: str) -> Dict[str, Any]:
     """
     xls = pd.ExcelFile(excel_path, engine="openpyxl")
     df_overview = pd.read_excel(xls, "Overview", header=1)
+    df_arrangements = pd.read_excel(xls, "Arrangements", header=1)
+    df_annotations = pd.read_excel(xls, "Annotations", header=1)
     df_master = pd.read_excel(xls, "Master Registry", header=1)
 
     # 1. Parse Sessions
@@ -54,10 +70,38 @@ def load_v10(excel_path: str) -> Dict[str, Any]:
                 "session_uid": suid,
                 "exp": exp_str,
                 "date": date_str,
+                "date_display": _text(row.get("Date")),
                 "time": time_str,
                 "name": name_str,
+                "name_display": _text(row.get("Name")),
                 "arrangement": arr_str,
-                "annotation_set": ann_str
+                "arrangement_display": _text(row.get("Arrangement")),
+                "annotation_set": ann_str,
+                "annotation_set_display": _text(row.get("annotationSet")),
+                "replicate_label": _text(
+                    row.get("Replicate label*")
+                    if pd.notnull(row.get("Replicate label*"))
+                    else row.get("Replicate label")
+                ),
+                "replicate_label_display": _text(row.get("Replicate label")),
+                "description_text": _text(
+                    row.get("Description text*")
+                    if pd.notnull(row.get("Description text*"))
+                    else row.get("Description text")
+                ),
+                "description_text_display": _text(row.get("Description text")),
+                "extension": _text(
+                    row.get("Ext*") if pd.notnull(row.get("Ext*")) else row.get("Ext")
+                ),
+                "extension_display": _text(row.get("Ext")),
+                "include": bool(row.get("Include"))
+                if pd.notnull(row.get("Include"))
+                else None,
+                "images_expected": _integer(row.get("Images")),
+                "registration_start": _integer(row.get("Reg start")),
+                "registration_end": _integer(row.get("Reg end")),
+                "status": _text(row.get("Status")),
+                "id": _text(row.get("ID")),
             })
     else:
         # Fallback to distinct session records in Master Registry
@@ -86,7 +130,7 @@ def load_v10(excel_path: str) -> Dict[str, Any]:
                 "time": time_str,
                 "name": None,
                 "arrangement": arr_str,
-                "annotation_set": ann_str
+                "annotation_set": ann_str,
             })
 
     # Deduplicate sessions by session_uid preserving order
@@ -146,6 +190,8 @@ def load_v10(excel_path: str) -> Dict[str, Any]:
         sample_str = str(sample_val).strip() if pd.notnull(sample_val) else None
         date_val = row.get("Date*") if pd.notnull(row.get("Date*")) else row.get("Date")
         image_date = str(date_val).split(" ")[0].strip() if pd.notnull(date_val) else None
+        image_date_display = _text(row.get("Date"))
+        image_time = _text(row.get("Time"))
         figure_val = row.get("figureDescriptionLabel")
         figure_str = str(figure_val).strip() if pd.notnull(figure_val) else None
         status_val = row.get("Filename status")
@@ -167,15 +213,112 @@ def load_v10(excel_path: str) -> Dict[str, Any]:
             ,"id": id_str
             ,"sample_description": sample_str
             ,"date": image_date
+            ,"date_display": image_date_display
+            ,"time": image_time
             ,"figure_description_label": figure_str
             ,"filename_status": filename_status
+            ,"base_filename": _text(row.get("Base filename*"))
+            ,"base_count": _integer(row.get("Base count*"))
+            ,"set_filename": _text(row.get("Set filename*"))
+            ,"set_filename_count": _integer(row.get("Set filename count*"))
         }
         images.append(img_entry)
+
+    arrangements: List[Dict[str, Any]] = []
+    for _, row in df_arrangements.iterrows():
+        arrangement = _text(
+            row.get("Arrangement*")
+            if pd.notnull(row.get("Arrangement*"))
+            else row.get("Arrangement")
+        )
+        image_number = _integer(row.get("Image #"))
+        if arrangement is None or image_number is None:
+            continue
+        arrangements.append(
+            {
+                "date_display": _text(row.get("Date")),
+                "arrangement": arrangement,
+                "arrangement_display": _text(row.get("Arrangement")),
+                "image_number": image_number,
+                "sample_description": _text(row.get("Sample description")),
+                "set": _text(row.get("Set")),
+                "media": _text(row.get("Media")),
+                "condition": _text(row.get("Condition")),
+                "condition_machine": _text(row.get("Condition*")),
+                "rep": _integer(row.get("Rep #")),
+                "group_key": _text(row.get("Group key*")),
+                "check": _text(row.get("Check*")),
+            }
+        )
+
+    annotation_assignments: List[Dict[str, Any]] = []
+    for _, row in df_annotations.iterrows():
+        annotation_set = _text(row.get("annotationSet"))
+        profile = _text(row.get("Profile"))
+        type_name = _text(row.get("Type"))
+        if not annotation_set or not profile or not type_name:
+            continue
+        annotation_assignments.append(
+            {
+                "date_display": _text(row.get("Date")),
+                "annotation_set": annotation_set,
+                "type": type_name.casefold(),
+                "profile": profile,
+                "order": _integer(row.get("Order")),
+                "check": _text(row.get("Check")),
+            }
+        )
+
+    annotation_profiles: Dict[str, List[Dict[str, Any]]] = {
+        "strain": [],
+        "vertical": [],
+        "other": [],
+    }
+    profile_columns = {
+        "strain": ("Profile*", "Set*", "labels_strain", "Pos", "Key*", "Check*"),
+        "vertical": (
+            "Profile*.1",
+            "Set*.1",
+            "labels_vertical",
+            "Pos.1",
+            "Key*.1",
+            "Check*.1",
+        ),
+        "other": (
+            "Profile*.2",
+            "Set*.2",
+            "labels_other",
+            "Pos.2",
+            "Key*.2",
+            "Check*.2",
+        ),
+    }
+    for profile_type, columns in profile_columns.items():
+        profile_col, set_col, label_col, pos_col, key_col, check_col = columns
+        for _, row in df_annotations.iterrows():
+            profile = _text(row.get(profile_col))
+            position = _integer(row.get(pos_col))
+            label = _text(row.get(label_col))
+            if not profile or position is None or label is None:
+                continue
+            annotation_profiles[profile_type].append(
+                {
+                    "profile": profile,
+                    "set": _text(row.get(set_col)),
+                    "label": label,
+                    "pos": position,
+                    "key": _text(row.get(key_col)),
+                    "check": _text(row.get(check_col)),
+                }
+            )
 
     return {
         "contract_version": 1,
         "sessions": sessions,
-        "images": images
+        "images": images,
+        "arrangements": arrangements,
+        "annotation_assignments": annotation_assignments,
+        "annotation_profiles": annotation_profiles,
     }
 
 
@@ -391,7 +534,34 @@ def derive_plate_layout(
     if not ann_set or ann_set not in layouts:
         raise ValueError(f"Annotation set '{ann_set}' for Image UID '{image_uid}' is not present in extracted layouts.")
 
-    return layouts[ann_set]
+    layout = copy.deepcopy(layouts[ann_set])
+    image_set = str(img_entry.get("set") or "").strip()
+    for band in layout.get("strain_bands", []):
+        label_sets = band.get("label_sets") or {}
+        if not label_sets:
+            continue
+        matching_key = next(
+            (key for key in label_sets if str(key).casefold() == image_set.casefold()),
+            None,
+        )
+        if matching_key is None and len(label_sets) == 1:
+            matching_key = next(iter(label_sets))
+        if matching_key is None:
+            available = ", ".join(str(key) for key in label_sets)
+            raise ValueError(
+                f"Image UID {image_uid!r} uses Set {image_set!r}, but strain profile "
+                f"{band.get('profile')!r} has multiple variants and none match "
+                f"({available})."
+            )
+        labels = copy.deepcopy(label_sets[matching_key])
+        band["labels"] = labels
+        band["local_grid_cols"] = max(int(label["pos"]) for label in labels)
+        band["resolved_label_set"] = str(matching_key)
+    layout["grid_cols"] = max(
+        int(band["local_grid_cols"]) for band in layout["strain_bands"]
+    )
+    layout["resolved_image_set"] = image_set
+    return layout
 
 
 def reconcile_image_files(

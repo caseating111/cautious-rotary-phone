@@ -9,6 +9,7 @@
     "layout_id": {"type": "string", "minLength": 1},
     "grid_rows": {"type": "integer", "minimum": 1},
     "grid_cols": {"type": "integer", "minimum": 1},
+    "resolved_image_set": {"type": "string"},
     "vertical_labels": {
       "type": "array",
       "items": {
@@ -40,6 +41,23 @@
               "explicit_override",
               "legacy_set_blocks_even_split"
             ]
+          },
+          "resolved_label_set": {"type": "string"},
+          "label_sets": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "required": ["pos", "label"],
+                "properties": {
+                  "pos": {"type": "integer", "minimum": 1},
+                  "label": {"type": "string"}
+                },
+                "additionalProperties": false
+              }
+            }
           },
           "labels": {
             "type": "array",
