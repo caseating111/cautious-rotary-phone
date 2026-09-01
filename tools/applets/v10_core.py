@@ -72,6 +72,145 @@ def validate_project_records(project: dict[str, Any]) -> None:
             if not clean(image.get(field)):
                 raise ValueError(f"Image UID {uid} has a missing {label} value.")
 
+    for section in ("arrangements", "annotation_assignments"):
+        for index, record in enumerate(project.get(section, []), start=1):
+            check = clean(record.get("check"))
+            if check is not None and check.casefold() != "ok":
+                raise ValueError(
+                    f"V10 {section} row {index} reports Check={check!r}."
+                )
+    for profile_type, rows in project.get("annotation_profiles", {}).items():
+        keys: set[str] = set()
+        profile_positions: dict[tuple[str, str], set[int]] = {}
+        for index, record in enumerate(rows, start=1):
+            check = clean(record.get("check"))
+            if check is not None and check.casefold() != "ok":
+                raise ValueError(
+                    f"V10 {profile_type} profile row {index} reports Check={check!r}."
+                )
+            key = clean(record.get("key"))
+            if key and key.casefold() in keys:
+                raise ValueError(
+                    f"Duplicate V10 {profile_type} profile machine Key*: {key}."
+                )
+            if key:
+                keys.add(key.casefold())
+            profile = clean(record.get("profile"))
+            label = clean(record.get("label"))
+            if not profile or label is None:
+                raise ValueError(
+                    f"V10 {profile_type} profile row {index} has a missing Profile or label."
+                )
+            position = positive_integer(
+                record.get("pos"), f"Pos in {profile_type} profile {profile}"
+            )
+            identity = (
+                profile.casefold(),
+                (clean(record.get("set")) or "").casefold(),
+            )
+            positions_for_profile = profile_positions.setdefault(identity, set())
+            if position in positions_for_profile:
+                raise ValueError(
+                    f"V10 {profile_type} profile {profile!r} Set "
+                    f"{record.get('set')!r} has duplicate Pos {position}."
+                )
+            positions_for_profile.add(position)
+        for (profile, set_value), positions_for_profile in profile_positions.items():
+            expected = set(range(1, max(positions_for_profile) + 1))
+            if positions_for_profile != expected:
+                suffix = f" Set {set_value!r}" if set_value else ""
+                raise ValueError(
+                    f"V10 {profile_type} profile {profile!r}{suffix} Pos values "
+                    f"must be contiguous 1..{max(positions_for_profile)}."
+                )
+
+    profile_names = {
+        profile_type: {
+            str(record["profile"]).casefold()
+            for record in rows
+            if clean(record.get("profile"))
+        }
+        for profile_type, rows in project.get("annotation_profiles", {}).items()
+    }
+    assignment_identities: set[tuple[str, str, int]] = set()
+    for record in project.get("annotation_assignments", []):
+        annotation_set = clean(record.get("annotation_set"))
+        profile_type = (clean(record.get("type")) or "").casefold()
+        profile = clean(record.get("profile"))
+        if (
+            not annotation_set
+            or profile_type not in {"strain", "vertical", "other"}
+            or not profile
+        ):
+            raise ValueError("V10 annotation assignment has missing or unknown metadata.")
+        order = positive_integer(
+            record.get("order"),
+            f"Order for annotation set {annotation_set} {profile_type} profile {profile}",
+        )
+        identity = (annotation_set.casefold(), profile_type, order)
+        if identity in assignment_identities:
+            raise ValueError(
+                f"V10 {profile_type} Order values must be unique in annotation set "
+                f"{annotation_set!r}; duplicate Order {order}."
+            )
+        assignment_identities.add(identity)
+        if profile.casefold() not in profile_names.get(profile_type, set()):
+            raise ValueError(
+                f"Annotation set {annotation_set!r} assigns missing {profile_type} "
+                f"profile {profile!r}."
+            )
+
+    arrangements = project.get("arrangements", [])
+    if arrangements:
+        arrangement_map: dict[tuple[str, int], dict[str, Any]] = {}
+        for record in arrangements:
+            identity = (
+                str(record["arrangement"]).casefold(),
+                int(record["image_number"]),
+            )
+            if identity in arrangement_map:
+                raise ValueError(
+                    "Duplicate Arrangements identity: "
+                    f"{record['arrangement']} Image # {record['image_number']}."
+                )
+            arrangement_map[identity] = record
+        for image in project.get("images", []):
+            identity = (
+                str(image.get("arrangement") or "").casefold(),
+                int(image["image_number"]),
+            )
+            arrangement = arrangement_map.get(identity)
+            if arrangement is None:
+                raise ValueError(
+                    f"Image UID {image['image_uid']} has no matching Arrangements row."
+                )
+            for field in ("sample_description", "set", "media", "condition", "rep"):
+                if image.get(field) != arrangement.get(field):
+                    raise ValueError(
+                        f"Image UID {image['image_uid']} disagrees with Arrangements "
+                        f"for {field}: {image.get(field)!r} versus "
+                        f"{arrangement.get(field)!r}."
+                    )
+
+    sessions_by_uid = {
+        str(session["session_uid"]): session for session in project.get("sessions", [])
+    }
+    for image in project.get("images", []):
+        session = sessions_by_uid[str(image["session_uid"])]
+        for field in ("exp", "date", "time", "arrangement", "annotation_set", "id"):
+            session_value = session.get(field)
+            image_value = image.get(field)
+            if (
+                session_value is not None
+                and image_value is not None
+                and image_value != session_value
+            ):
+                raise ValueError(
+                    f"Image UID {image['image_uid']} disagrees with Overview session "
+                    f"{image['session_uid']} for {field}: {image_value!r} versus "
+                    f"{session_value!r}."
+                )
+
 
 def profile_labels(
     rows: pd.DataFrame,
@@ -293,7 +432,7 @@ def extract_layouts(
             label_sets = spec.get("label_sets", {})
             local_cols = max(
                 labels[-1]["pos"]
-                for labels in ([spec["labels"]] + list(label_sets.values()))
+                for labels in [spec["labels"], *list(label_sets.values())]
             )
             band = {
                 "order": index,

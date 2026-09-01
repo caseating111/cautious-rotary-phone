@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import shutil
 import tempfile
 from pathlib import Path
@@ -64,10 +65,42 @@ def test_create_from_sanitized_v10_persists_openable_state(tmp_path: Path) -> No
     workflow = ProjectWorkflow.create_from_v10(workbook, tmp_path)
     assert workflow.project_model["images"]
     assert workflow.project_model["layouts"]
+    first_uid = workflow.project_model["images"][0]["image_uid"]
+    labels = workflow.default_annotation_request(first_uid)["labels"]
+    assert labels["date"] == "14.08.26"
+    assert labels["figure_description"]
+    assert labels["media"] == "YPDA"
     assert (tmp_path / "z. Metadata" / "State" / "workflow_project.json").is_file()
     assert ProjectWorkflow.open(tmp_path).project_model == workflow.project_model
     with pytest.raises(FileExistsError):
         ProjectWorkflow.create_from_v10(workbook, tmp_path)
+
+
+def test_v10_full_matrix_config_is_project_local_and_tier_specific(
+    tmp_path: Path,
+) -> None:
+    workflow = ProjectWorkflow(new_project_state(tmp_path, _model()))
+    config_path = workflow.prepare_full_matrix_config(
+        tier="Processed", crop_width=131, crop_height=547
+    )
+    assert config_path == (
+        tmp_path
+        / "z. Metadata"
+        / "State"
+        / "RuntimeConfigs"
+        / "full_matrix_processed.json"
+    )
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    assert config["crop_output"] == str(
+        tmp_path / "5. Individual Crops" / "Processed"
+    )
+    assert config["matrix_output"] == str(
+        tmp_path / "6. Matrices" / "Full Builder" / "Processed"
+    )
+    assert (config["crop_width"], config["crop_height"]) == (131, 547)
+    assert workflow.state["runtime_configs"]["full_matrix"]["Processed"].startswith(
+        "z. Metadata/State/RuntimeConfigs/"
+    )
 
 
 def test_stateful_orientation_crop_grid_chain_is_non_destructive() -> None:
@@ -128,22 +161,24 @@ def test_stateful_orientation_crop_grid_chain_is_non_destructive() -> None:
         assert source.read_bytes() == original
         assert workflow.source_for("Image 1") == crop_path
 
-        asset = build_grid_coordinate_asset(
-            image_ref=str(crop_path),
-            image_width=100,
-            image_height=100,
-            grid_rows=5,
-            grid_cols=3,
-            image_uid="Image 1",
-            reference_points={
-                "r1c1": {"x": 10, "y": 10},
-                "r1clast": {"x": 90, "y": 10},
-                "r5c1": {"x": 10, "y": 90},
-                "r5clast": {"x": 90, "y": 90},
+        asset = workflow.propose_grid_registration(
+            "Image 1",
+            [(10, 10), (90, 10), (10, 90), (90, 90)],
+            coordinate_provenance={
+                "coordinate_system": "tk_canvas_image_item_to_source_pixels"
             },
         )
-        asset_path = save_grid_coordinate_asset(asset, root / "GridCoordinates")
-        workflow.attach_grid_asset("Image 1", asset_path)
+        assert len(asset["spots"]) == 15
+        assert (
+            asset["provenance"]["coordinate_capture"]["coordinate_system"]
+            == "tk_canvas_image_item_to_source_pixels"
+        )
+        _accepted_grid, asset_path = workflow.accept_grid_registration(
+            "Image 1", asset
+        )
+        assert asset_path.is_relative_to(
+            root / "z. Metadata" / "State" / "GridCoordinates"
+        )
         assert workflow.grid_asset("Image 1")["spots"]["r1c1"] == {
             "row": 1,
             "column": 1,

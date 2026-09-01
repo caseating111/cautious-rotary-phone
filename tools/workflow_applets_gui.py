@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import subprocess
 import sys
 import tkinter as tk
 from collections.abc import Callable
@@ -237,6 +239,20 @@ class ImageCanvas(ttk.Frame):
                 tags="overlay",
             )
 
+    def draw_grid_spots(self, points: list[tuple[float, float]]) -> None:
+        self.clear_overlays()
+        for x, y in points:
+            cx, cy = self.image_to_canvas(x, y)
+            self.canvas.create_oval(
+                cx - 2,
+                cy - 2,
+                cx + 2,
+                cy + 2,
+                fill="#00ffff",
+                outline="#001a1a",
+                tags="overlay",
+            )
+
     def draw_line(self, start: tuple[float, float], end: tuple[float, float]) -> None:
         self.clear_overlays()
         coords = [*self.image_to_canvas(*start), *self.image_to_canvas(*end)]
@@ -337,6 +353,9 @@ class WorkflowApp(tk.Tk):
         self.crop_coordinate_samples: list[dict[str, Any]] = []
         self.crop_proposal: dict[str, Any] | None = None
         self.crop_previewed = False
+        self.grid_points: list[tuple[float, float]] = []
+        self.grid_coordinate_samples: list[dict[str, Any]] = []
+        self.grid_proposal: dict[str, Any] | None = None
         self.calibration_source_dimensions: tuple[int, int] | None = None
         self.raw_root_var = tk.StringVar()
         setup_settings = load_last("project_setup", {}) or {}
@@ -391,6 +410,9 @@ class WorkflowApp(tk.Tk):
         self.matrix_candidates: dict[str, dict[str, Any]] = {}
         matrix_settings = load_last("mixed_matrix", {}) or {}
         self.matrix_layout_mode = tk.StringVar(value=str(matrix_settings.get("layout_mode", "Selected crops (one column)")))
+        self.full_matrix_tier = tk.StringVar(
+            value=str(matrix_settings.get("full_matrix_tier", "Unprocessed"))
+        )
         self.matrix_tile_width = tk.StringVar(value=str(matrix_settings.get("tile_width", "")))
         self.matrix_tile_height = tk.StringVar(value=str(matrix_settings.get("tile_height", "")))
         self.matrix_plan: dict[str, Any] | None = None
@@ -456,7 +478,8 @@ class WorkflowApp(tk.Tk):
             text=(
                 "Common stage keys: X start/retry · V preview · Z accept/export · C skip/next. "
                 "Orientation: A line/two-point. Plate crop: A recalibrate · S accept measured size · D accept exact size. "
-                "Grid: X find+attach · V preview matches · Z attach one. Culture: X/V preview · Z export. "
+                "Grid: X register/retry · V preview grid · Z accept · C skip. "
+                "Attach existing remains available. Culture: X/V preview · Z export. "
                 "Visibility: A flag. Annotation: A styles. Matrix: X refresh.\n"
                 "Quick Figures: X align · V preview annotation · Z save annotation · C export wells · "
                 "A accept QC · F flag QC · Q whole crop · W grid · E/R rotate. "
@@ -721,18 +744,34 @@ class WorkflowApp(tk.Tk):
         ttk.Label(
             grid,
             text=(
-                "Attach the accepted GridCoordinateAsset written by the proven "
-                "four-point route. Later applets reuse it without new clicks."
+                "Register the V10 grid directly in source pixels: click r1c1, "
+                "r1c-last, r5c1 and r5c-last. Later applets reuse every rNcN spot."
             ),
             wraplength=245,
         ).pack(anchor="w", padx=8, pady=8)
-        ttk.Button(grid, text="Attach grid asset… (Z)", command=self.attach_grid).pack(
+        ttk.Button(
+            grid,
+            text="Register / retry grid (X)",
+            command=self.start_grid_registration,
+        ).pack(fill="x", padx=8, pady=3)
+        ttk.Button(
+            grid,
+            text="Preview full grid (V)",
+            command=self.preview_grid_registration,
+        ).pack(fill="x", padx=8, pady=3)
+        ttk.Button(
+            grid,
+            text="Accept grid (Z)",
+            command=self.accept_grid_registration,
+        ).pack(fill="x", padx=8, pady=3)
+        ttk.Separator(grid).pack(fill="x", padx=8, pady=6)
+        ttk.Button(grid, text="Attach existing grid asset…", command=self.attach_grid).pack(
             fill="x", padx=8, pady=3
         )
-        ttk.Button(grid, text="Find and attach project grids (X)", command=self.auto_attach_grids).pack(
+        ttk.Button(grid, text="Find and attach project grids", command=self.auto_attach_grids).pack(
             fill="x", padx=8, pady=3
         )
-        ttk.Button(grid, text="Preview grid matches (V)", command=self.preview_grid_discovery).pack(
+        ttk.Button(grid, text="Preview existing-grid matches", command=self.preview_grid_discovery).pack(
             fill="x", padx=8, pady=3
         )
         ttk.Button(grid, text="Skip to next image (C)", command=self.skip_current_grid).pack(
@@ -915,6 +954,33 @@ class WorkflowApp(tk.Tk):
             annotation, text="Return to source", command=self.load_selected_source
         ).pack(fill="x", padx=8, pady=3)
 
+        full_builder = ttk.LabelFrame(
+            mixed_matrix, text="Full matrix and labelled-crop outputs"
+        )
+        full_builder.pack(fill="x", padx=8, pady=(8, 2))
+        ttk.Label(
+            full_builder,
+            text=(
+                "Proven per-experiment, all-strain, deduplicated-WT and "
+                "individually labelled outputs."
+            ),
+            wraplength=340,
+        ).pack(anchor="w", padx=6, pady=(5, 2))
+        full_tier_row = ttk.Frame(full_builder)
+        full_tier_row.pack(fill="x", padx=6, pady=2)
+        for label in ("Unprocessed", "Processed"):
+            ttk.Radiobutton(
+                full_tier_row,
+                text=label,
+                value=label,
+                variable=self.full_matrix_tier,
+            ).pack(side="left")
+        ttk.Button(
+            full_builder,
+            text="Open full output builder",
+            command=self.open_full_matrix_builder,
+        ).pack(fill="x", padx=6, pady=(2, 6))
+
         ttk.Label(
             mixed_matrix,
             text=(
@@ -1083,9 +1149,9 @@ class WorkflowApp(tk.Tk):
                 "d": self.accept_exact_calibration,
             },
             "Grid asset": {
-                "x": self.auto_attach_grids,
-                "v": self.preview_grid_discovery,
-                "z": self.attach_grid,
+                "x": self.start_grid_registration,
+                "v": self.preview_grid_registration,
+                "z": self.accept_grid_registration,
                 "c": self.skip_current_grid,
             },
             "Culture crops": {
@@ -1380,6 +1446,9 @@ class WorkflowApp(tk.Tk):
         self.crop_coordinate_samples = []
         self.crop_proposal = None
         self.crop_previewed = False
+        self.grid_points = []
+        self.grid_coordinate_samples = []
+        self.grid_proposal = None
         project_settings = workflow.state.get("settings", {})
         if isinstance(project_settings, dict) and project_settings:
             self.enable_rename.set(bool(project_settings.get("enable_rename", self.enable_rename.get())))
@@ -2113,6 +2182,88 @@ class WorkflowApp(tk.Tk):
             )
             self._advance_after_stage(uid, "crop")
 
+    def start_grid_registration(self) -> None:
+        def action() -> None:
+            workflow, uid = self._selected()
+            source = workflow.source_for(uid)
+            with Image.open(source) as image:
+                self.viewer.show(image)
+            self.grid_points = []
+            self.grid_coordinate_samples = []
+            self.grid_proposal = None
+            self.viewer.set_handlers(click=self._grid_clicked)
+            self.status.set(
+                "Click r1c1, then r1c-last, r5c1 and r5c-last."
+            )
+
+        self._run(action)
+
+    def _grid_clicked(self, point: tuple[float, float]) -> None:
+        self.grid_points.append(point)
+        self.grid_coordinate_samples.append(
+            self.viewer.current_coordinate_provenance()
+        )
+        self.viewer.draw_points(self.grid_points)
+        labels = ("r1c1", "r1c-last", "r5c1", "r5c-last")
+        if len(self.grid_points) < 4:
+            self.status.set(
+                f"Recorded {labels[len(self.grid_points) - 1]}; "
+                f"click {labels[len(self.grid_points)]}."
+            )
+            return
+        self.viewer.set_handlers()
+        workflow, uid = self._selected()
+        proposal = self._run(
+            lambda: workflow.propose_grid_registration(
+                uid,
+                self.grid_points,
+                coordinate_provenance=self._coordinate_provenance(
+                    self.grid_coordinate_samples
+                ),
+            )
+        )
+        if proposal:
+            self.grid_proposal = proposal
+            self.preview_grid_registration()
+
+    def preview_grid_registration(self) -> None:
+        if self.grid_proposal is None:
+            messagebox.showerror(
+                "Grid registration", "Collect four reference points first."
+            )
+            return
+        ordered = sorted(
+            self.grid_proposal["spots"].values(),
+            key=lambda item: (int(item["row"]), int(item["column"])),
+        )
+        self.viewer.draw_grid_spots(
+            [(float(item["x"]), float(item["y"])) for item in ordered]
+        )
+        grid = self.grid_proposal["grid"]
+        self.status.set(
+            f"Previewing {grid['rows']}×{grid['columns']} grid "
+            f"({len(ordered)} reusable spots); no state written."
+        )
+
+    def accept_grid_registration(self) -> None:
+        if self.grid_proposal is None:
+            messagebox.showerror(
+                "Grid registration", "Preview a four-point grid first."
+            )
+            return
+        workflow, uid = self._selected()
+        result = self._run(
+            lambda: workflow.accept_grid_registration(uid, self.grid_proposal)
+        )
+        if result:
+            asset, path = result
+            self.grid_proposal = None
+            self._refresh_asset_labels()
+            self.status.set(
+                f"Accepted {len(asset['spots'])} grid spots: {path}"
+            )
+            self._advance_after_stage(uid, "grid")
+
     def attach_grid(self) -> None:
         path = filedialog.askopenfilename(
             title="Select accepted grid coordinate asset",
@@ -2700,6 +2851,45 @@ class WorkflowApp(tk.Tk):
         if result:
             self.refresh_batch_images()
             self.status.set(f"Attached grids for {len(result['image_uids'])} images.")
+
+    def open_full_matrix_builder(self) -> None:
+        selected = self._run(self._selected)
+        if not selected:
+            return
+        workflow, _uid = selected
+        tier = self.full_matrix_tier.get()
+        try:
+            crop_width = int(self.crop_export_width.get())
+            crop_height = int(self.crop_export_height.get())
+        except ValueError:
+            messagebox.showerror(
+                "Full output builder",
+                "Culture crop width and height must be positive integers.",
+            )
+            return
+        config_path = self._run(
+            lambda: workflow.prepare_full_matrix_config(
+                tier=tier,
+                crop_width=crop_width,
+                crop_height=crop_height,
+            )
+        )
+        if config_path is None:
+            return
+        matrix_settings = load_last("mixed_matrix", {}) or {}
+        matrix_settings["full_matrix_tier"] = tier
+        save_last("mixed_matrix", matrix_settings)
+        environment = os.environ.copy()
+        environment["WORKFLOW_CONFIG_FILE"] = str(config_path)
+        script = Path(__file__).resolve().parent / "custom_matrix_gui_recorded.py"
+        subprocess.Popen(
+            [sys.executable, str(script)],
+            cwd=str(Path(__file__).resolve().parents[1]),
+            env=environment,
+        )
+        self.status.set(
+            f"Opened full {tier} matrix/labelled-crop builder for this V10 project."
+        )
 
     def refresh_mixed_matrix_candidates(self) -> None:
         workflow, _uid = self._selected()

@@ -19,7 +19,9 @@ except ModuleNotFoundError:
     from preflight_batch import build_report as build_batch_report
 
 APP_DIR = Path.home() / ".cautious-rotary-phone"
-CONFIG_FILE = APP_DIR / "config.json"
+CONFIG_FILE = Path(
+    os.environ.get("WORKFLOW_CONFIG_FILE", str(APP_DIR / "config.json"))
+).resolve()
 LAST_OUTPUT_FILE = APP_DIR / "last_pillow_output.txt"
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT_DIR = REPO_ROOT / "existing scripts clean"

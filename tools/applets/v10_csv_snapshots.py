@@ -12,7 +12,6 @@ from typing import Any
 
 from tools.applets.v10_adapter import (
     derive_plate_layout,
-    project_to_legacy_grid_rows,
     project_to_legacy_images_rows,
 )
 from tools.project_dates import working_filename_for
@@ -99,6 +98,10 @@ def _master_registry_rows(
                     "figure_description_label", ""
                 ),
                 "Filename status": image.get("filename_status", ""),
+                "Base filename*": image.get("base_filename", ""),
+                "Base count*": image.get("base_count", ""),
+                "Set filename*": image.get("set_filename", ""),
+                "Set filename count*": image.get("set_filename_count", ""),
             }
         )
     return rows
@@ -197,7 +200,13 @@ def _grid_rows(model: dict[str, Any]) -> list[dict[str, Any]]:
     seen: set[tuple[str, str, str]] = set()
     for image in model.get("images", []):
         layout_id = str(image.get("annotation_set") or "")
-        layout = derive_plate_layout(model, str(image["image_uid"]))
+        try:
+            layout = derive_plate_layout(model, str(image["image_uid"]))
+        except ValueError:
+            # Preserve the full V10 model/snapshots while omitting only image
+            # groups that cannot be represented by the five-column legacy
+            # grid projection.
+            continue
         exp, set_name = str(image.get("exp") or ""), str(image.get("set") or "")
         identity = (exp.casefold(), set_name.casefold(), layout_id.casefold())
         if identity in seen:
@@ -214,6 +223,10 @@ def _grid_rows(model: dict[str, Any]) -> list[dict[str, Any]]:
                     "Strain": label,
                 }
             )
+    if not rows:
+        raise ValueError(
+            "No V10 image group can be represented safely as legacy grid.csv."
+        )
     return rows
 
 
@@ -248,6 +261,8 @@ def build_csv_payload(
                 "Set", "Media", "Condition", "Rep #", "Original", "Image UID",
                 "Working filename", "Arrangement", "annotationSet", "Date", "Date*",
                 "Time", "figureDescriptionLabel", "Filename status",
+                "Base filename*", "Base count*", "Set filename*",
+                "Set filename count*",
             ],
             master,
         ),

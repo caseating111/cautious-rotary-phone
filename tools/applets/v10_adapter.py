@@ -1,8 +1,8 @@
 import copy
-import math
 import os
 import re
 from typing import Any, Dict, List, Optional, Tuple, Union
+
 import pandas as pd
 
 
@@ -10,6 +10,15 @@ def _text(value: Any) -> Optional[str]:
     if value is None or pd.isna(value):
         return None
     return str(value).split(" ")[0].strip() if isinstance(value, pd.Timestamp) else str(value).strip()
+
+
+def _label_text(value: Any) -> Optional[str]:
+    """Preserve label text while avoiding pandas' synthetic integer decimals."""
+    if value is None or pd.isna(value):
+        return None
+    if isinstance(value, (int, float)) and float(value).is_integer():
+        return str(int(value))
+    return str(value).strip()
 
 
 def _integer(value: Any) -> Optional[int]:
@@ -133,12 +142,9 @@ def load_v10(excel_path: str) -> Dict[str, Any]:
                 "annotation_set": ann_str,
             })
 
-    # Deduplicate sessions by session_uid preserving order
-    seen_sessions = set()
-    for s in session_rows:
-        if s["session_uid"] not in seen_sessions:
-            seen_sessions.add(s["session_uid"])
-            sessions.append(s)
+    # Preserve every source row. Canonical validation must report duplicate
+    # sessionUID values instead of silently discarding later/conflicting rows.
+    sessions.extend(session_rows)
 
     # 2. Parse Expected Images from Master Registry
     images: List[Dict[str, Any]] = []
@@ -151,11 +157,10 @@ def load_v10(excel_path: str) -> Dict[str, Any]:
         suid_val = row.get("sessionUID*") if pd.notnull(row.get("sessionUID*")) else ""
         session_uid = str(suid_val).strip()
 
-        img_num_val = row.get("Image #")
-        img_num = int(img_num_val) if pd.notnull(img_num_val) else 1
+        img_num = _integer(row.get("Image #"))
 
         orig_val = row.get("Original")
-        orig_str = str(orig_val).strip() if pd.notnull(orig_val) else f"image{img_num}.jpg"
+        orig_str = str(orig_val).strip() if pd.notnull(orig_val) else None
 
         working_fn_val = row.get("Working filename")
         working_fn = str(working_fn_val).strip() if pd.notnull(working_fn_val) else None
@@ -298,7 +303,7 @@ def load_v10(excel_path: str) -> Dict[str, Any]:
         for _, row in df_annotations.iterrows():
             profile = _text(row.get(profile_col))
             position = _integer(row.get(pos_col))
-            label = _text(row.get(label_col))
+            label = _label_text(row.get(label_col))
             if not profile or position is None or label is None:
                 continue
             annotation_profiles[profile_type].append(

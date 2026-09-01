@@ -269,7 +269,15 @@ Legacy CSV-shaped handoffs may be generated from the canonical V10 model where e
 
 The user should not maintain them manually when running through V10.
 
-The active implementation snapshots `v10_master_registry.csv` and lossless `v10_plate_layout.csv` on setup, together with compatible `images.csv` and `condition_order.csv`. It emits the five-column legacy `grid.csv` only when all row bands share the same column labels; otherwise emitting it would silently discard V10 label meaning. Snapshots are immutable and may be pinned, compared, or explicitly regenerated from the linked workbook.
+The active implementation snapshots `v10_master_registry.csv` (including the
+generated filename audit fields) and lossless `v10_plate_layout.csv` on setup,
+together with compatible `images.csv` and `condition_order.csv`. It emits the
+five-column legacy `grid.csv` only when all row bands share the same column
+labels; otherwise emitting it would silently discard V10 label meaning.
+Snapshots are immutable and may be pinned, compared, or explicitly regenerated
+from the linked workbook. The complete canonical model, including Overview,
+Arrangements, annotation assignments, and strain/vertical/other profile rows,
+is retained in project state even when a compatibility CSV does not consume it.
 
 ## Provenance
 

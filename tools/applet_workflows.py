@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import os
 import re
 import shutil
 from pathlib import Path
@@ -47,7 +48,12 @@ from tools.applets.visibility import (
     apply_visibility_adjustment,
     write_visibility_result,
 )
-from tools.grid_coordinates import validate_grid_coordinate_asset
+from tools.grid_coordinates import (
+    REFERENCE_NAMES,
+    build_grid_coordinate_asset,
+    save_grid_coordinate_asset,
+    validate_grid_coordinate_asset,
+)
 from tools.project_lifecycle import (
     apply_layout_migration,
     apply_loose_image_import,
@@ -64,6 +70,7 @@ from tools.project_paths import (
     canonical_path,
     locate_state,
     preferred_project_path,
+    relative_project_path,
     resolve_recorded_path,
 )
 from tools.project_state import (
@@ -265,6 +272,66 @@ class ProjectWorkflow:
             self.project_root,
             filename_date_style=filename_date_style,
         )
+
+    def prepare_full_matrix_config(
+        self,
+        *,
+        tier: str,
+        crop_width: int = 130,
+        crop_height: int = 546,
+    ) -> Path:
+        if tier not in {"Unprocessed", "Processed"}:
+            raise ValueError("Full matrix crop tier must be Unprocessed or Processed.")
+        if crop_width < 1 or crop_height < 1:
+            raise ValueError("Full matrix crop dimensions must be positive.")
+        metadata = canonical_path(self.project_root, "metadata")
+        required_csvs = {
+            "grid_csv": metadata / "grid.csv",
+            "images_csv": metadata / "images.csv",
+            "condition_order_csv": metadata / "condition_order.csv",
+        }
+        if not all(path.is_file() for path in required_csvs.values()):
+            write_csv_snapshot(self.project_model, self.project_root)
+        missing = [
+            name for name, path in required_csvs.items() if not path.is_file()
+        ]
+        if missing:
+            raise ValueError(
+                "The full legacy-compatible output families are unavailable for "
+                "this V10 selection because its row-band labels cannot be flattened "
+                "safely to grid.csv. Mixed Tier remains available. Missing: "
+                + ", ".join(missing)
+            )
+        crop_root = canonical_path(
+            self.project_root,
+            "crops_processed" if tier == "Processed" else "crops_unprocessed",
+        )
+        matrix_root = (
+            canonical_path(self.project_root, "matrices")
+            / "Full Builder"
+            / tier
+        )
+        config = {
+            "crop_output": str(crop_root),
+            "matrix_output": str(matrix_root),
+            **{name: str(path) for name, path in required_csvs.items()},
+            "crop_width": int(crop_width),
+            "crop_height": int(crop_height),
+        }
+        config_root = canonical_path(self.project_root, "state") / "RuntimeConfigs"
+        config_root.mkdir(parents=True, exist_ok=True)
+        destination = config_root / f"full_matrix_{tier.casefold()}.json"
+        temporary = destination.with_name(destination.name + ".tmp")
+        temporary.write_text(
+            json.dumps(config, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        os.replace(temporary, destination)
+        self.state.setdefault("runtime_configs", {}).setdefault(
+            "full_matrix", {}
+        )[tier] = relative_project_path(destination, self.project_root)
+        self.save()
+        return destination
 
     def _current_v10_model(self) -> dict[str, Any]:
         workbook = self.state.get("v10_workbook")
@@ -722,6 +789,68 @@ class ProjectWorkflow:
         self.save()
         return asset
 
+    def propose_grid_registration(
+        self,
+        image_uid: str,
+        points: list[tuple[float, float]] | tuple[tuple[float, float], ...],
+        *,
+        coordinate_provenance: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        if len(points) != 4:
+            raise ValueError(
+                "Grid registration requires r1c1, r1clast, r5c1 and r5clast."
+            )
+        source = self.source_for(image_uid)
+        layout = self._plate_layout(image_uid)
+        grid_rows = int(layout["grid_rows"])
+        grid_cols = int(layout["grid_cols"])
+        if grid_rows < 5:
+            raise ValueError(
+                "The production four-point grid route requires at least five rows."
+            )
+        with Image.open(source) as image:
+            width, height = image.size
+        model_image = self._model_image(image_uid)
+        references = {
+            name: {"x": float(point[0]), "y": float(point[1])}
+            for name, point in zip(REFERENCE_NAMES, points, strict=True)
+        }
+        asset = build_grid_coordinate_asset(
+            image_ref=relative_project_path(source, self.project_root),
+            image_width=width,
+            image_height=height,
+            grid_rows=grid_rows,
+            grid_cols=grid_cols,
+            reference_points=references,
+            experiment=str(model_image.get("exp") or ""),
+            set_name=str(model_image.get("set") or ""),
+            type_name=str(
+                model_image.get("condition") or model_image.get("media") or ""
+            ),
+            image_uid=image_uid,
+            run_label="v10_independent_direct",
+        )
+        asset["provenance"]["accepted_after"] = (
+            "direct_v10_four_point_registration"
+        )
+        asset["provenance"]["coordinate_capture"] = coordinate_provenance
+        validate_grid_coordinate_asset(asset)
+        return asset
+
+    def accept_grid_registration(
+        self, image_uid: str, asset: dict[str, Any]
+    ) -> tuple[dict[str, Any], Path]:
+        validate_grid_coordinate_asset(asset)
+        if asset.get("image_uid") != image_uid:
+            raise ValueError("Grid proposal belongs to a different Image UID.")
+        source = resolve_recorded_path(asset["image_ref"], self.project_root)
+        self._assert_grid_matches_source(image_uid, asset, source)
+        path = save_grid_coordinate_asset(
+            asset, canonical_path(self.project_root, "grid_coordinates")
+        )
+        self.attach_grid_asset(image_uid, path)
+        return asset, path
+
     def skip_grid(self, image_uid: str) -> dict[str, Any]:
         record_grid_skip(self.state, image_uid)
         self.save()
@@ -1054,10 +1183,15 @@ class ProjectWorkflow:
             {},
         )
         labels = {
-            "date": session.get("date"),
+            "date": image.get("date_display")
+            or session.get("date_display")
+            or session.get("date"),
+            "figure_description": image.get("figure_description_label")
+            or session.get("description_text"),
             "plate": str(image.get("image_number") or image_uid),
             "condition": image.get("condition"),
             "session": session_uid or None,
+            "media": image.get("media"),
         }
         return {
             "contract_version": 1,

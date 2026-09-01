@@ -3,7 +3,9 @@ from __future__ import annotations
 import copy
 from pathlib import Path
 
+from tools.applets.v10_adapter import load_v10
 from tools.applets.v10_csv_snapshots import (
+    build_csv_payload,
     compare_csv_snapshot,
     write_csv_snapshot,
 )
@@ -107,3 +109,21 @@ def test_rich_row_bands_export_losslessly_without_unsafe_legacy_grid(
     layout_text = (metadata / "v10_plate_layout.csv").read_text(encoding="utf-8")
     assert "culture1" in layout_text
     assert "strain1" in layout_text
+
+
+def test_sanitized_snapshot_keeps_safe_grid_groups_despite_unmapped_set() -> None:
+    workbook = (
+        Path(__file__).resolve().parents[1]
+        / "fixtures"
+        / "v10"
+        / "v10_sample_synthetic_sanitized.xlsx"
+    )
+    payload = build_csv_payload(load_v10(str(workbook)))
+    assert "grid.csv" in payload
+    assert "Strain" in payload["grid.csv"]
+    assert ",c," not in payload["grid.csv"].casefold()
+    master_header = payload["v10_master_registry.csv"].splitlines()[0]
+    assert "Base filename*" in master_header
+    assert "Base count*" in master_header
+    assert "Set filename*" in master_header
+    assert "Set filename count*" in master_header
