@@ -112,6 +112,32 @@ def test_asset_and_index_are_written_atomically_and_replaced_by_identity(
     assert not list(tmp_path.glob("*.tmp"))
 
 
+def test_changed_geometry_creates_new_version_and_preserves_previous(
+    tmp_path: Path,
+) -> None:
+    first_value = asset()
+    first = save_grid_coordinate_asset(first_value, tmp_path)
+    changed_refs = references()
+    changed_refs["r1c1"] = {"x": 11.0, "y": 20.0}
+    changed_value = build_grid_coordinate_asset(
+        image_ref="session/image1.jpg",
+        image_width=200,
+        image_height=160,
+        grid_rows=8,
+        grid_cols=10,
+        reference_points=changed_refs,
+        accepted_at="2026-08-24T13:00:00+00:00",
+    )
+    second = save_grid_coordinate_asset(changed_value, tmp_path)
+    assert first != second
+    assert first.is_file() and second.is_file()
+    assert first_value["geometry_sha256"] != changed_value["geometry_sha256"]
+    index = json.loads((tmp_path / "index.json").read_text(encoding="utf-8"))
+    current = index["assets"]["session/image1.jpg"]
+    assert current["path"] == second.name
+    assert current["geometry_sha256"] == changed_value["geometry_sha256"]
+
+
 def test_fiji_handoff_is_converted_and_removed(tmp_path: Path) -> None:
     handoff = tmp_path / "grid.tsv"
     fields = [

@@ -101,6 +101,12 @@ def test_v10_full_matrix_config_is_project_local_and_tier_specific(
     assert workflow.state["runtime_configs"]["full_matrix"]["Processed"].startswith(
         "z. Metadata/State/RuntimeConfigs/"
     )
+    schema = json.loads(
+        (Path(__file__).resolve().parents[1] / "contracts" / "workflow_project_state.schema.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert "runtime_configs" in schema["properties"]
 
 
 def test_stateful_orientation_crop_grid_chain_is_non_destructive() -> None:

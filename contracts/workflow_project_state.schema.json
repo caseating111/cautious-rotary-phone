@@ -23,7 +23,14 @@
     "working_completion": {"type": "object", "additionalProperties": true},
     "folder_history": {"type": "array", "items": {"type": "object", "additionalProperties": true}},
     "settings": {"type": "object", "additionalProperties": true},
-    "csv_snapshot": {"type": "object", "additionalProperties": true}
+    "csv_snapshot": {"type": "object", "additionalProperties": true},
+    "runtime_configs": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": {"type": "string", "minLength": 1}
+      }
+    }
     ,"retired_images": {"type": "object", "additionalProperties": {"type": "object", "additionalProperties": true}}
   },
   "$defs": {

@@ -16,6 +16,7 @@ if __package__ in {None, ""}:
 
 from tools.annotation_settings_gui import AnnotationSettingsDialog
 from tools.applet_presets import (
+    delete_preset,
     list_presets,
     load_last,
     load_preset,
@@ -33,6 +34,7 @@ from tools.applets.culture_crop_export import culture_crop_signature
 from tools.applets.plate_crop import calibrate_crop_size
 from tools.applets.quick_figure import calculate_box_from_roi
 from tools.applets.v10_adapter import load_v10
+from tools.applets.visibility import DEFAULT_PRESETS
 from tools.project_lifecycle import (
     discover_experiment_folders,
     loose_image_files,
@@ -162,6 +164,9 @@ class ImageCanvas(ttk.Frame):
             Callable[[tuple[float, float], tuple[float, float]], None] | None
         ) = None
         self.drag_start: tuple[float, float] | None = None
+        self.drag_render_generation: int | None = None
+        self.interaction_started = False
+        self.invalidation_handler: Callable[[], None] | None = None
         self.canvas.bind("<Configure>", lambda _event: self._render())
         self.canvas.bind("<ButtonPress-1>", self._press)
         self.canvas.bind("<ButtonRelease-1>", self._release)
@@ -182,6 +187,11 @@ class ImageCanvas(ttk.Frame):
         self.click_handler = click
         self.drag_handler = drag
         self.drag_start = None
+        self.drag_render_generation = None
+        self.interaction_started = False
+
+    def set_invalidation_handler(self, handler: Callable[[], None]) -> None:
+        self.invalidation_handler = handler
 
     def canvas_to_image(self, x: float, y: float) -> tuple[float, float] | None:
         if self.image is None:
@@ -273,6 +283,15 @@ class ImageCanvas(ttk.Frame):
         )
 
     def _render(self) -> None:
+        invalidate_interaction = self.interaction_started and (
+            self.click_handler is not None or self.drag_handler is not None
+        )
+        if invalidate_interaction:
+            self.click_handler = None
+            self.drag_handler = None
+            self.drag_start = None
+            self.drag_render_generation = None
+            self.interaction_started = False
         self.canvas.delete("all")
         self.image_item = None
         self.coordinate_provenance = {}
@@ -286,6 +305,8 @@ class ImageCanvas(ttk.Frame):
                 text="Open a project and select an image",
                 fill="#dddddd",
             )
+            if invalidate_interaction and self.invalidation_handler is not None:
+                self.invalidation_handler()
             return
         width = max(self.canvas.winfo_width(), 100)
         height = max(self.canvas.winfo_height(), 100)
@@ -310,13 +331,18 @@ class ImageCanvas(ttk.Frame):
             self.scale_x = (right - left) / self.image.width
             self.scale_y = (bottom - top) / self.image.height
             self.scale = min(self.scale_x, self.scale_y)
+        if invalidate_interaction and self.invalidation_handler is not None:
+            self.invalidation_handler()
 
     def _press(self, event: tk.Event) -> None:
         point = self.canvas_to_image(event.x, event.y)
         if self.drag_handler and point is not None:
             self.drag_start = point
+            self.drag_render_generation = self.render_generation
+            self.interaction_started = True
             return
         if self.click_handler and point is not None:
+            self.interaction_started = True
             self.click_handler(point)
 
     def _release(self, event: tk.Event) -> None:
@@ -324,6 +350,15 @@ class ImageCanvas(ttk.Frame):
             return
         end = self.canvas_to_image(event.x, event.y)
         start, self.drag_start = self.drag_start, None
+        start_generation, self.drag_render_generation = (
+            self.drag_render_generation,
+            None,
+        )
+        if start_generation != self.render_generation:
+            self.set_handlers()
+            if self.invalidation_handler is not None:
+                self.invalidation_handler()
+            return
         if end is not None and end != start:
             self.drag_handler(start, end)
 
@@ -418,7 +453,23 @@ class WorkflowApp(tk.Tk):
         self.matrix_plan: dict[str, Any] | None = None
         self.matrix_signature: tuple[Any, ...] | None = None
         visibility_settings = load_last("visibility", {}) or {}
-        self.visibility_preset = tk.StringVar(value=str(visibility_settings.get("preset", "background_aware_linear")))
+        visibility_name = str(
+            visibility_settings.get("preset", "background_aware_linear")
+        )
+        self.visibility_preset = tk.StringVar(value=visibility_name)
+        self.visibility_black_point = tk.StringVar(
+            value=str(visibility_settings.get("black_point", ""))
+        )
+        self.visibility_white_point = tk.StringVar(
+            value=str(visibility_settings.get("white_point", ""))
+        )
+        self.visibility_gamma = tk.StringVar(
+            value=str(
+                visibility_settings.get(
+                    "gamma", DEFAULT_PRESETS.get(visibility_name, {}).get("gamma", 1.0)
+                )
+            )
+        )
         self.visibility_proposal: dict[str, Any] | None = None
         self.annotation_proposal: dict[str, Any] | None = None
         self.annotation_labels = {
@@ -504,6 +555,7 @@ class WorkflowApp(tk.Tk):
         controls = ttk.Frame(body, width=390)
         body.add(controls, weight=0)
         self.viewer = ImageCanvas(body)
+        self.viewer.set_invalidation_handler(self._coordinate_interaction_invalidated)
         body.add(self.viewer, weight=1)
 
         notebook = ttk.Notebook(controls)
@@ -881,12 +933,49 @@ class WorkflowApp(tk.Tk):
             ),
             wraplength=360,
         ).pack(anchor="w", padx=8, pady=8)
-        ttk.Combobox(
+        self.visibility_preset_box = ttk.Combobox(
             visibility,
             textvariable=self.visibility_preset,
             state="readonly",
-            values=("background_aware_linear", "gamma_boost"),
-        ).pack(fill="x", padx=8, pady=3)
+            values=self._visibility_preset_names(),
+        )
+        self.visibility_preset_box.pack(fill="x", padx=8, pady=3)
+        self.visibility_preset_box.bind(
+            "<<ComboboxSelected>>", self.load_visibility_preset
+        )
+        visibility_values = ttk.Frame(visibility)
+        visibility_values.pack(fill="x", padx=8, pady=3)
+        for label, variable in (
+            ("Black", self.visibility_black_point),
+            ("White", self.visibility_white_point),
+            ("Gamma", self.visibility_gamma),
+        ):
+            ttk.Label(visibility_values, text=label).pack(side="left")
+            ttk.Entry(visibility_values, textvariable=variable, width=7).pack(
+                side="left", padx=(3, 8)
+            )
+        ttk.Label(
+            visibility,
+            text="Leave Black and White blank for grid-derived automatic values.",
+            wraplength=360,
+        ).pack(anchor="w", padx=8)
+        visibility_presets = ttk.Frame(visibility)
+        visibility_presets.pack(fill="x", padx=8, pady=3)
+        ttk.Button(
+            visibility_presets,
+            text="Load preset",
+            command=self.load_visibility_preset,
+        ).pack(side="left", fill="x", expand=True)
+        ttk.Button(
+            visibility_presets,
+            text="Save preset…",
+            command=self.save_visibility_preset,
+        ).pack(side="left", fill="x", expand=True, padx=(4, 0))
+        ttk.Button(
+            visibility_presets,
+            text="Delete",
+            command=self.delete_visibility_preset,
+        ).pack(side="left", padx=(4, 0))
         ttk.Button(
             visibility, text="Start / retry preview (X or V)", command=self.preview_visibility
         ).pack(fill="x", padx=8, pady=3)
@@ -1479,6 +1568,7 @@ class WorkflowApp(tk.Tk):
     def _activate(self, workflow: ProjectWorkflow) -> None:
         self.workflow = workflow
         self.viewer.set_handlers()
+        self._clear_staged_actions(preserve_batch=False)
         self.orientation_proposal = None
         self.orientation_points = []
         self.orientation_coordinate_samples = []
@@ -1536,11 +1626,12 @@ class WorkflowApp(tk.Tk):
             raise ValueError("Select an Image UID.")
         return self.workflow, uid
 
-    def load_selected_source(self, _event: object | None = None) -> None:
+    def load_selected_source(
+        self, _event: object | None = None, *, preserve_batch: bool = False
+    ) -> None:
         def action() -> None:
             workflow, uid = self._selected()
-            self.crop_export_plan = None
-            self.crop_export_signature = None
+            self._clear_staged_actions(preserve_batch=preserve_batch)
             source = workflow.source_for(uid)
             with Image.open(source) as image:
                 self.viewer.show(image)
@@ -1784,6 +1875,7 @@ class WorkflowApp(tk.Tk):
     def _orientation_dragged(
         self, start: tuple[float, float], end: tuple[float, float]
     ) -> None:
+        self.viewer.set_handlers()
         self.orientation_coordinate_samples = [
             self.viewer.current_coordinate_provenance()
         ]
@@ -2056,6 +2148,14 @@ class WorkflowApp(tk.Tk):
         valid = [dict(sample) for sample in samples if sample]
         if not valid:
             return None
+        generations = {sample.get("render_generation") for sample in valid}
+        dimensions = {
+            tuple(sample.get("source_dimensions") or ()) for sample in valid
+        }
+        if len(generations) != 1 or len(dimensions) != 1:
+            raise ValueError(
+                "The image display changed between coordinate samples. Press X and collect the points again."
+            )
         return {
             "coordinate_system": "tk_canvas_image_item_to_source_pixels",
             "source_dimensions": valid[-1].get("source_dimensions"),
@@ -2240,6 +2340,42 @@ class WorkflowApp(tk.Tk):
             )
 
         self._run(action)
+
+    def _clear_staged_actions(self, *, preserve_batch: bool) -> None:
+        self.orientation_proposal = None
+        self.calibration_proposal = None
+        self.crop_proposal = None
+        self.crop_previewed = False
+        self.grid_proposal = None
+        self.visibility_proposal = None
+        self.annotation_proposal = None
+        self.crop_export_plan = None
+        self.crop_export_signature = None
+        self.matrix_plan = None
+        self.matrix_signature = None
+        self.batch_plan = None
+        if not preserve_batch:
+            self.batch_queue = []
+            self.batch_queue_stage = None
+            self.batch_queue_index = 0
+
+    def _coordinate_interaction_invalidated(self) -> None:
+        self.orientation_points = []
+        self.orientation_coordinate_samples = []
+        self.calibration_points = []
+        self.calibration_coordinate_samples = []
+        self.crop_points = []
+        self.crop_coordinate_samples = []
+        self.grid_points = []
+        self.grid_coordinate_samples = []
+        self.orientation_proposal = None
+        self.calibration_proposal = None
+        self.crop_proposal = None
+        self.crop_previewed = False
+        self.grid_proposal = None
+        self.status.set(
+            "Image display changed; partial coordinates were cleared. Press X to restart this stage."
+        )
 
     def _grid_clicked(self, point: tuple[float, float]) -> None:
         self.grid_points.append(point)
@@ -2550,11 +2686,126 @@ class WorkflowApp(tk.Tk):
             uid, "culture", stage_signature=status_signature
         )
 
+    def _visibility_preset_names(self) -> tuple[str, ...]:
+        return tuple(dict.fromkeys([*DEFAULT_PRESETS, *list_presets("visibility")]))
+
+    def _visibility_preset_value(self) -> dict[str, Any]:
+        name = self.visibility_preset.get().strip() or "background_aware_linear"
+        if name in DEFAULT_PRESETS:
+            config = dict(DEFAULT_PRESETS[name])
+        else:
+            config = load_preset("visibility", name)
+        config["name"] = name
+        black_text = self.visibility_black_point.get().strip()
+        white_text = self.visibility_white_point.get().strip()
+        if bool(black_text) != bool(white_text):
+            raise ValueError("Enter both visibility Black and White, or leave both blank.")
+        if black_text:
+            black_point = float(black_text)
+            white_point = float(white_text)
+            if not 0 <= black_point < white_point <= 255:
+                raise ValueError(
+                    "Visibility values must satisfy 0 <= Black < White <= 255."
+                )
+            config["black_point"] = black_point
+            config["white_point"] = white_point
+        else:
+            config.pop("black_point", None)
+            config.pop("white_point", None)
+        gamma = float(self.visibility_gamma.get().strip())
+        if gamma <= 0:
+            raise ValueError("Visibility Gamma must be greater than zero.")
+        config["gamma"] = gamma
+        save_last(
+            "visibility",
+            {
+                "preset": name,
+                "black_point": black_text,
+                "white_point": white_text,
+                "gamma": gamma,
+            },
+        )
+        return config
+
+    def load_visibility_preset(self, _event: object | None = None) -> None:
+        name = self.visibility_preset.get().strip()
+        if not name:
+            return
+        config = (
+            dict(DEFAULT_PRESETS[name])
+            if name in DEFAULT_PRESETS
+            else self._run(lambda: load_preset("visibility", name))
+        )
+        if not isinstance(config, dict):
+            return
+        self.visibility_black_point.set(str(config.get("black_point", "")))
+        self.visibility_white_point.set(str(config.get("white_point", "")))
+        self.visibility_gamma.set(str(config.get("gamma", 1.0)))
+        save_last(
+            "visibility",
+            {
+                "preset": name,
+                "black_point": self.visibility_black_point.get(),
+                "white_point": self.visibility_white_point.get(),
+                "gamma": self.visibility_gamma.get(),
+            },
+        )
+        self.status.set(f"Loaded visibility preset: {name}.")
+
+    def save_visibility_preset(self) -> None:
+        name = simpledialog.askstring(
+            "Visibility preset", "Preset name:", parent=self
+        )
+        if not name:
+            return
+        name = name.strip()
+        if name in DEFAULT_PRESETS:
+            messagebox.showerror(
+                "Visibility preset",
+                "Choose a different name; built-in presets cannot be overwritten.",
+                parent=self,
+            )
+            return
+        config = self._run(self._visibility_preset_value)
+        if not isinstance(config, dict):
+            return
+        config["name"] = name
+        self._run(lambda: save_preset("visibility", name, config))
+        self.visibility_preset.set(name)
+        self.visibility_preset_box.configure(values=self._visibility_preset_names())
+        save_last(
+            "visibility",
+            {
+                "preset": name,
+                "black_point": self.visibility_black_point.get(),
+                "white_point": self.visibility_white_point.get(),
+                "gamma": self.visibility_gamma.get(),
+            },
+        )
+        self.status.set(f"Saved visibility preset: {name}.")
+
+    def delete_visibility_preset(self) -> None:
+        name = self.visibility_preset.get().strip()
+        if not name or name in DEFAULT_PRESETS:
+            messagebox.showerror(
+                "Visibility preset",
+                "Select a saved custom preset to delete.",
+                parent=self,
+            )
+            return
+        self._run(lambda: delete_preset("visibility", name))
+        self.visibility_preset.set("background_aware_linear")
+        self.visibility_preset_box.configure(values=self._visibility_preset_names())
+        self.load_visibility_preset()
+        self.status.set(f"Deleted visibility preset: {name}.")
+
     def preview_visibility(self) -> None:
         workflow, uid = self._selected()
-        save_last("visibility", {"preset": self.visibility_preset.get()})
+        preset = self._run(self._visibility_preset_value)
+        if preset is None:
+            return
         result = self._run(
-            lambda: workflow.propose_visibility(uid, self.visibility_preset.get())
+            lambda: workflow.propose_visibility(uid, preset)
         )
         if result:
             self.visibility_proposal, preview = result
@@ -2772,7 +3023,7 @@ class WorkflowApp(tk.Tk):
     def _load_manual_batch_current(self) -> None:
         uid = self.batch_queue[self.batch_queue_index]
         self.image_uid.set(uid)
-        self.load_selected_source()
+        self.load_selected_source(preserve_batch=True)
         tab_by_stage = {
             "orientation": "Orientation",
             "crop": "Plate crop",
@@ -2869,7 +3120,10 @@ class WorkflowApp(tk.Tk):
             _uid, tier, source_kind, states, columns, width, height = signature
             options = {"tier": tier, "source_kind": source_kind, "states": states, "columns": columns, "crop_width": width, "crop_height": height}
         elif stage == "visibility":
-            options = {"preset": self.visibility_preset.get()}
+            preset = self._run(self._visibility_preset_value)
+            if preset is None:
+                return
+            options = {"preset": preset}
         elif stage == "annotation":
             overrides = {key: value.get().strip() for key, value in self.annotation_labels.items() if value.get().strip()}
             preset = self._run(self._annotation_preset)

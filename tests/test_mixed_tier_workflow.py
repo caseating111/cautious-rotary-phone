@@ -106,6 +106,31 @@ def test_workflow_previews_accepts_and_persists_mixed_tier_matrix(
     assert result["request_id"] in reopened.state["matrix_exports"]
 
 
+def test_distinct_matrix_requests_publish_sequential_runs_and_reuse_identical(
+    tmp_path: Path,
+) -> None:
+    workflow = _workflow(tmp_path)
+    selections, _ids = _selection(workflow)
+    first_plan, _preview = workflow.propose_mixed_tier_matrix(
+        selections,
+        rows=["WT", "MUT"],
+        columns=["Plate"],
+    )
+    first = workflow.accept_mixed_tier_matrix(first_plan)
+    assert Path(first["output_directory"]).name == "Run 001"
+    repeated = workflow.accept_mixed_tier_matrix(first_plan)
+    assert repeated["output_directory"] == first["output_directory"]
+
+    second_plan, _preview = workflow.propose_mixed_tier_matrix(
+        selections,
+        rows=["MUT", "WT"],
+        columns=["Plate"],
+    )
+    second = workflow.accept_mixed_tier_matrix(second_plan)
+    assert second["request_id"] != first["request_id"]
+    assert Path(second["output_directory"]).name == "Run 002"
+
+
 def test_workflow_rejects_stale_candidate_and_cross_project_root(
     tmp_path: Path,
 ) -> None:

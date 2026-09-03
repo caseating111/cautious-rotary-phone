@@ -9,6 +9,7 @@ from typing import Any
 
 from PIL import Image, ImageTk
 
+from tools.annotation_settings_gui import AnnotationSettingsDialog
 from tools.applet_presets import (
     list_presets,
     load_last,
@@ -54,6 +55,9 @@ class QuickImageCanvas(ttk.Frame):
             Callable[[tuple[float, float], tuple[float, float]], None] | None
         ) = None
         self.drag_start: tuple[float, float] | None = None
+        self.drag_render_generation: int | None = None
+        self.interaction_started = False
+        self.invalidation_handler: Callable[[], None] | None = None
         self.canvas.bind("<Configure>", lambda _event: self._render())
         self.canvas.bind("<ButtonPress-1>", self._press)
         self.canvas.bind("<ButtonRelease-1>", self._release)
@@ -66,6 +70,11 @@ class QuickImageCanvas(ttk.Frame):
         self.click_handler = click
         self.drag_handler = drag
         self.drag_start = None
+        self.drag_render_generation = None
+        self.interaction_started = False
+
+    def set_invalidation_handler(self, handler: Callable[[], None]) -> None:
+        self.invalidation_handler = handler
 
     def draw_points(self, points: list[tuple[float, float]]) -> None:
         self.canvas.delete("overlay")
@@ -105,11 +114,22 @@ class QuickImageCanvas(ttk.Frame):
         )
 
     def _render(self) -> None:
+        invalidate_interaction = self.interaction_started and (
+            self.click_handler is not None or self.drag_handler is not None
+        )
+        if invalidate_interaction:
+            self.click_handler = None
+            self.drag_handler = None
+            self.drag_start = None
+            self.drag_render_generation = None
+            self.interaction_started = False
         self.canvas.delete("all")
         self.image_item = None
         self.render_generation += 1
         if self.image is None:
             self.canvas.create_text(300, 220, text="Choose an image", fill="#dddddd")
+            if invalidate_interaction and self.invalidation_handler is not None:
+                self.invalidation_handler()
             return
         width, height = (
             max(self.canvas.winfo_width(), 100),
@@ -137,6 +157,8 @@ class QuickImageCanvas(ttk.Frame):
                 (right - left) / self.image.width,
                 (bottom - top) / self.image.height,
             )
+        if invalidate_interaction and self.invalidation_handler is not None:
+            self.invalidation_handler()
 
     def _point(self, event: tk.Event) -> tuple[float, float] | None:
         if self.image is None:
@@ -163,7 +185,10 @@ class QuickImageCanvas(ttk.Frame):
             return
         if self.drag_handler:
             self.drag_start = point
+            self.drag_render_generation = self.render_generation
+            self.interaction_started = True
         elif self.click_handler:
+            self.interaction_started = True
             self.click_handler(point)
 
     def _release(self, event: tk.Event) -> None:
@@ -171,6 +196,15 @@ class QuickImageCanvas(ttk.Frame):
             return
         end = self._point(event)
         start, self.drag_start = self.drag_start, None
+        start_generation, self.drag_render_generation = (
+            self.drag_render_generation,
+            None,
+        )
+        if start_generation != self.render_generation:
+            self.set_handlers()
+            if self.invalidation_handler is not None:
+                self.invalidation_handler()
+            return
         if end is not None and end != start:
             self.drag_handler(start, end)
 
@@ -197,7 +231,14 @@ class QuickFigurePanel(ttk.Frame):
         self.grid: dict[str, Any] | None = None
         self.grid_clicks: list[tuple[float, float]] = []
         self.crop_clicks: list[tuple[float, float]] = []
+        if hasattr(self.viewer, "set_invalidation_handler"):
+            self.viewer.set_invalidation_handler(
+                self._coordinate_interaction_invalidated
+            )
         saved = load_last(self.CATEGORY, {}) or {}
+        self.annotation_preset = dict(
+            saved.get("annotation_preset") or load_last("annotation", {}) or {}
+        )
         self.description = tk.StringVar(value=saved.get("figure_description", ""))
         self.date = tk.StringVar(value=saved.get("date", ""))
         self.width = tk.StringVar(value=str(saved.get("crop_width", 130)))
@@ -290,6 +331,11 @@ class QuickFigurePanel(ttk.Frame):
         ).pack(fill="x")
         actions = ttk.LabelFrame(self, text="Preview / outputs")
         actions.pack(fill="x", padx=8, pady=5)
+        ttk.Button(
+            actions,
+            text="Annotation styles and presets…",
+            command=self.open_annotation_settings,
+        ).pack(fill="x")
         ttk.Button(
             actions, text="Preview annotation", command=self.preview_annotation
         ).pack(fill="x")
@@ -407,6 +453,7 @@ class QuickFigurePanel(ttk.Frame):
             "crop_width": int(self.width.get()),
             "crop_height": int(self.height.get()),
             "qc_required": self.qc_required.get(),
+            "annotation_preset": dict(self.annotation_preset),
         }
 
     def save_last_settings(self) -> None:
@@ -463,6 +510,7 @@ class QuickFigurePanel(ttk.Frame):
         if self.image is None:
             messagebox.showerror("Quick Figures", "Choose an image first.")
             return
+        self._show_source_for_interaction()
         self.viewer.set_handlers(drag=self._alignment_dragged)
         self.status.set("Drag left-to-right along a top or bottom figure edge.")
 
@@ -482,6 +530,7 @@ class QuickFigurePanel(ttk.Frame):
             messagebox.showerror("Quick Figures", "Choose an image first.")
             return
         self.crop_clicks = []
+        self._show_source_for_interaction()
         self.viewer.set_handlers(click=self._crop_click)
         self.status.set("Click whole-figure crop top-left, then bottom-right.")
 
@@ -514,6 +563,7 @@ class QuickFigurePanel(ttk.Frame):
             messagebox.showerror("Quick grid", "Choose an image and CSV first.")
             return
         self.grid_clicks = []
+        self._show_source_for_interaction()
         self.viewer.set_handlers(click=self._grid_click)
         self.status.set("Click centre of first well, then centre of last well.")
 
@@ -542,6 +592,18 @@ class QuickFigurePanel(ttk.Frame):
             self.status.set(
                 f"Registered {len(self.grid['spots'])} reusable well centres; QC optional."
             )
+
+    def _show_source_for_interaction(self) -> None:
+        if self.image is None:
+            raise ValueError("Choose an image first.")
+        self.viewer.show(self.image)
+
+    def _coordinate_interaction_invalidated(self) -> None:
+        self.grid_clicks = []
+        self.crop_clicks = []
+        self.status.set(
+            "Image display changed; partial coordinates were cleared. Restart the interaction."
+        )
 
     def set_qc(self, accepted: bool) -> None:
         if self.grid is None:
@@ -586,11 +648,29 @@ class QuickFigurePanel(ttk.Frame):
             "date": self.date.get().strip(),
         }
 
+    def _apply_annotation_settings(self, settings: dict[str, Any]) -> None:
+        self.annotation_preset = dict(settings)
+        self.save_last_settings()
+        self.status.set(
+            "Quick Figure annotation style applied; preview to verify placement."
+        )
+
+    def open_annotation_settings(self) -> None:
+        AnnotationSettingsDialog(
+            self,
+            self.annotation_preset,
+            self._apply_annotation_settings,
+        )
+
     def preview_annotation(self) -> None:
         if not self._ready():
             return
         result = annotate_quick(
-            self.image, self.csv_data, self.grid, labels_override=self._labels()
+            self.image,
+            self.csv_data,
+            self.grid,
+            preset=self.annotation_preset,
+            labels_override=self._labels(),
         )
         self.viewer.show(result["preview_image"])
         self.save_last_settings()
@@ -609,6 +689,7 @@ class QuickFigurePanel(ttk.Frame):
                 self.image,
                 self.csv_data,
                 self.grid,
+                preset=self.annotation_preset,
                 labels_override=self._labels(),
                 output_path=selected,
             )
@@ -655,6 +736,9 @@ class QuickFigurePanel(ttk.Frame):
         self.width.set(str(settings.get("crop_width", 130)))
         self.height.set(str(settings.get("crop_height", 546)))
         self.qc_required.set(bool(settings.get("qc_required", False)))
+        self.annotation_preset = dict(
+            settings.get("annotation_preset") or self.annotation_preset
+        )
         self.save_last_settings()
 
     def detach(self) -> tk.Toplevel:

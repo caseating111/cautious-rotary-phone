@@ -56,6 +56,35 @@ def _interpolate(
     }
 
 
+GEOMETRY_FIELDS = (
+    "coordinate_space",
+    "grid",
+    "reference_points",
+    "basis_vectors",
+    "row_coordinates",
+    "column_coordinates",
+    "spots",
+    "transform",
+)
+
+
+def grid_geometry_sha256(asset: dict[str, Any]) -> str:
+    """Return a stable digest of source identity and reusable geometry only."""
+    payload = {
+        "image_ref": str(asset.get("image_ref") or "")
+        .strip()
+        .replace("\\", "/")
+        .casefold(),
+        "image_uid": asset.get("image_uid"),
+        "method": (asset.get("provenance") or {}).get("method"),
+        **{field: asset.get(field) for field in GEOMETRY_FIELDS},
+    }
+    encoded = json.dumps(
+        payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
 def build_grid_coordinate_asset(
     *,
     image_ref: str,
@@ -146,7 +175,6 @@ def build_grid_coordinate_asset(
     asset = {
         "contract_version": CONTRACT_VERSION,
         "asset_type": "GridCoordinateAsset",
-        "asset_id": f"grid-{identity_digest}-{METHOD}",
         "status": "accepted",
         "image_ref": image_ref,
         "image_uid": image_uid,
@@ -182,6 +210,10 @@ def build_grid_coordinate_asset(
             "run_label": run_label,
         },
     }
+    asset["geometry_sha256"] = grid_geometry_sha256(asset)
+    asset["asset_id"] = (
+        f"grid-{identity_digest}-{METHOD}-{asset['geometry_sha256'][:12]}"
+    )
     validate_grid_coordinate_asset(asset)
     return asset
 
@@ -226,6 +258,14 @@ def validate_grid_coordinate_asset(asset: dict[str, Any]) -> None:
         raise ValueError(
             "Row/column coordinate summaries do not match grid dimensions."
         )
+    recorded_digest = asset.get("geometry_sha256")
+    if recorded_digest is not None:
+        if not isinstance(recorded_digest, str) or not re.fullmatch(
+            r"[0-9a-f]{64}", recorded_digest
+        ):
+            raise ValueError("Grid geometry_sha256 must be a lowercase SHA-256 digest.")
+        if recorded_digest != grid_geometry_sha256(asset):
+            raise ValueError("Grid geometry_sha256 does not match the stored geometry.")
 
 
 def spot_mapping(asset: dict[str, Any]) -> dict[tuple[int, int], tuple[float, float]]:
@@ -246,11 +286,11 @@ def spot_list(asset: dict[str, Any]) -> list[tuple[float, float]]:
     ]
 
 
-def _safe_asset_name(image_ref: str) -> str:
+def _safe_asset_name(image_ref: str, geometry_sha256: str) -> str:
     stem = Path(image_ref).stem.casefold()
     slug = re.sub(r"[^A-Za-z0-9._-]+", "-", stem).strip(".-") or "image"
     digest = hashlib.sha256(image_ref.casefold().encode("utf-8")).hexdigest()[:12]
-    return f"{slug}-{digest}.grid.json"
+    return f"{slug}-{digest}-{geometry_sha256[:12]}.grid.json"
 
 
 def _write_json_atomic(path: Path, value: Any) -> None:
@@ -266,8 +306,13 @@ def save_grid_coordinate_asset(
     asset: dict[str, Any], asset_directory: str | Path
 ) -> Path:
     validate_grid_coordinate_asset(asset)
+    geometry_digest = grid_geometry_sha256(asset)
+    recorded_digest = asset.get("geometry_sha256")
+    if recorded_digest is not None and recorded_digest != geometry_digest:
+        raise ValueError("Grid geometry digest changed before persistence.")
+    asset["geometry_sha256"] = geometry_digest
     directory = Path(asset_directory)
-    output = directory / _safe_asset_name(asset["image_ref"])
+    output = directory / _safe_asset_name(asset["image_ref"], geometry_digest)
     _write_json_atomic(output, asset)
     index_path = directory / "index.json"
     if index_path.is_file():
@@ -283,6 +328,7 @@ def save_grid_coordinate_asset(
         raise ValueError("Unsupported grid asset index.")
     index["assets"][asset["image_ref"].casefold()] = {
         "asset_id": asset["asset_id"],
+        "geometry_sha256": geometry_digest,
         "path": output.name,
         "accepted_at": asset["provenance"]["accepted_at"],
     }

@@ -353,7 +353,7 @@ def publish_mixed_tier_matrix(plan: dict[str, Any]) -> dict[str, Any]:
         existing = _existing_result(run, plan["request_id"])
         if existing is not None:
             return existing
-        match = re.fullmatch(r"Run (d+)", run.name)
+        match = re.fullmatch(r"Run (\d+)", run.name)
         if match:
             run_number = max(run_number, int(match.group(1)) + 1)
     output = root / f"Run {run_number:03d}"

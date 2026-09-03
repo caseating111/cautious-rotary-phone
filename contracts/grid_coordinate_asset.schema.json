@@ -23,6 +23,7 @@
     "contract_version": {"const": 1},
     "asset_type": {"const": "GridCoordinateAsset"},
     "asset_id": {"type": "string", "minLength": 1},
+    "geometry_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
     "status": {"const": "accepted"},
     "image_ref": {"type": "string", "minLength": 1},
     "image_uid": {"type": ["string", "null"]},

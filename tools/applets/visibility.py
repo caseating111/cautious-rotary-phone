@@ -55,6 +55,25 @@ def _preset_config(preset: Optional[Union[str, Dict[str, Any]]]) -> tuple[str, D
         method = config.get("method", "background_aware_linear")
         if method != "background_aware_linear":
             raise ValueError(f"Unsupported visibility method: {method}")
+        gamma = float(config.get("gamma", 1.0))
+        if gamma <= 0:
+            raise ValueError("Visibility gamma must be greater than zero.")
+        config["gamma"] = gamma
+        has_black = config.get("black_point") not in {None, ""}
+        has_white = config.get("white_point") not in {None, ""}
+        if has_black != has_white:
+            raise ValueError(
+                "Custom visibility presets must provide both black_point and white_point."
+            )
+        if has_black:
+            black_point = float(config["black_point"])
+            white_point = float(config["white_point"])
+            if not 0 <= black_point < white_point <= 255:
+                raise ValueError(
+                    "Visibility black/white points must satisfy 0 <= black < white <= 255."
+                )
+            config["black_point"] = black_point
+            config["white_point"] = white_point
         return name, config
     raise TypeError("preset must be a known name, mapping, or None")
 
@@ -230,8 +249,12 @@ def adjust_plate_visibility(
     fg_p = preset_dict.get("fg_percentile", 99.0)
     gamma = preset_dict.get("gamma", 1.0)
 
-    black_point = stats["bg_p10"] if bg_p <= 10.0 else stats["bg_median"]
-    white_point = stats["fg_p99"] if fg_p >= 99.0 else stats["fg_p98"]
+    if "black_point" in preset_dict:
+        black_point = preset_dict["black_point"]
+        white_point = preset_dict["white_point"]
+    else:
+        black_point = stats["bg_p10"] if bg_p <= 10.0 else stats["bg_median"]
+        white_point = stats["fg_p99"] if fg_p >= 99.0 else stats["fg_p98"]
 
     return {
         "contract_version": 1,

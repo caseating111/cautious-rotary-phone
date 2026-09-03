@@ -74,6 +74,38 @@ def test_unknown_visibility_preset_fails_closed():
         adjust_plate_visibility(Image.new("L", (140, 100)), asset(), "not-a-preset")
 
 
+def test_custom_visibility_black_white_and_gamma_are_applied() -> None:
+    result = adjust_plate_visibility(
+        Image.new("L", (140, 100), 100),
+        asset(),
+        {
+            "name": "manual-range",
+            "method": "background_aware_linear",
+            "black_point": 25,
+            "white_point": 225,
+            "gamma": 0.9,
+        },
+    )
+    assert result["preset_name"] == "manual-range"
+    assert result["parameters"] == {
+        "black_point": 25.0,
+        "white_point": 225.0,
+        "gamma": 0.9,
+    }
+
+
+def test_custom_visibility_rejects_partial_or_invalid_ranges() -> None:
+    image = Image.new("L", (140, 100), 100)
+    with pytest.raises(ValueError, match="both black_point and white_point"):
+        adjust_plate_visibility(image, asset(), {"black_point": 25, "gamma": 1})
+    with pytest.raises(ValueError, match="black < white"):
+        adjust_plate_visibility(
+            image,
+            asset(),
+            {"black_point": 225, "white_point": 25, "gamma": 1},
+        )
+
+
 @pytest.mark.skipif(np is None, reason="numpy unavailable outside workflow-c")
 def test_visibility_output_and_sidecar_support_bare_filename(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)

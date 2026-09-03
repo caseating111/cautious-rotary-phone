@@ -7,7 +7,7 @@ import pytest
 
 from tools.applets.culture_crop_export import culture_crop_signature
 from tools.applets.plate_crop import calibrate_crop_size, place_plate_crop
-from tools.quick_figure_gui import QuickImageCanvas
+from tools.quick_figure_gui import QuickFigurePanel, QuickImageCanvas
 from tools.workflow_applets_gui import (
     ImageCanvas,
     WorkflowApp,
@@ -231,7 +231,7 @@ def test_manual_grid_queue_selects_grid_tab_and_starts_registration() -> None:
         batch_queue_stage="grid",
         image_uid=Variable(),
         status=Variable(),
-        load_selected_source=lambda: actions.append("load"),
+        load_selected_source=lambda **_kwargs: actions.append("load"),
         start_orientation=lambda: actions.append("orientation"),
         start_crop_placement=lambda: actions.append("crop"),
         start_grid_registration=lambda: actions.append("grid"),
@@ -241,6 +241,41 @@ def test_manual_grid_queue_selects_grid_tab_and_starts_registration() -> None:
     assert app.image_uid.get() == "i2"
     assert actions == ["load", "tab:Grid asset", "grid"]
     assert app.status.get() == "Grid batch 1/1: i2."
+
+
+def test_coordinate_provenance_rejects_mixed_render_generations() -> None:
+    samples = [
+        {"render_generation": 3, "source_dimensions": [2047, 2047]},
+        {"render_generation": 4, "source_dimensions": [2047, 2047]},
+    ]
+    with pytest.raises(ValueError, match="display changed"):
+        WorkflowApp._coordinate_provenance(SimpleNamespace(), samples)
+
+
+def test_dragged_orientation_disarms_before_preview_replaces_image() -> None:
+    calls = []
+    viewer = SimpleNamespace(
+        set_handlers=lambda: calls.append("disarm"),
+        current_coordinate_provenance=lambda: {"render_generation": 3},
+    )
+    app = SimpleNamespace(
+        viewer=viewer,
+        orientation_coordinate_samples=[],
+        _propose_orientation_points=lambda start, end: calls.append((start, end)),
+    )
+    WorkflowApp._orientation_dragged(app, (1.0, 2.0), (3.0, 4.0))
+    assert calls == ["disarm", ((1.0, 2.0), (3.0, 4.0))]
+
+
+def test_quick_interaction_restores_original_image_after_annotation_preview() -> None:
+    shown = []
+    source = object()
+    panel = SimpleNamespace(
+        image=source,
+        viewer=SimpleNamespace(show=shown.append),
+    )
+    QuickFigurePanel._show_source_for_interaction(panel)
+    assert shown == [source]
 
 
 def test_culture_terminal_state_requires_matching_saved_settings() -> None:
@@ -408,6 +443,34 @@ def test_crop_calibration_presets_are_functionally_selectable(monkeypatch) -> No
     assert app.crop_rounding_increment.get() == "25"
     assert app.crop_margin_value.get() == "10"
     assert selected == ["plate-1750"]
+
+
+def test_visibility_custom_controls_build_reusable_processing_preset(
+    monkeypatch,
+) -> None:
+    class Variable:
+        def __init__(self, value=""):
+            self.value = value
+
+        def get(self):
+            return self.value
+
+    saved = []
+    monkeypatch.setattr(
+        "tools.workflow_applets_gui.save_last",
+        lambda category, value: saved.append((category, value)),
+    )
+    app = SimpleNamespace(
+        visibility_preset=Variable("background_aware_linear"),
+        visibility_black_point=Variable("20"),
+        visibility_white_point=Variable("230"),
+        visibility_gamma=Variable("0.85"),
+    )
+    preset = WorkflowApp._visibility_preset_value(app)
+    assert preset["black_point"] == 20
+    assert preset["white_point"] == 230
+    assert preset["gamma"] == 0.85
+    assert saved[-1][0] == "visibility"
 
 
 def test_repeated_stage_hotkeys_and_help_are_wired() -> None:

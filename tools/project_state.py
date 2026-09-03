@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from tools.grid_coordinates import grid_geometry_sha256
 from tools.project_paths import (
     canonical_path,
     locate_state,
@@ -134,7 +135,7 @@ def validate_project_state(state: dict[str, Any]) -> None:
             not isinstance(request_id, str)
             or not request_id
             or not isinstance(result, dict)
-            or result.get("status") != "ACCEPTED"
+            or result.get("status") not in {"ACCEPTED", "STALE"}
             or result.get("request_id") != request_id
         ):
             raise ValueError("Invalid accepted matrix export record.")
@@ -221,7 +222,9 @@ def _record(state: dict[str, Any], image_uid: str) -> dict[str, Any]:
         ) from exc
 
 
-def _mark_stale(record: dict[str, Any], changed_asset: str) -> None:
+def _mark_stale(
+    state: dict[str, Any], record: dict[str, Any], changed_asset: str
+) -> None:
     for dependent in DOWNSTREAM.get(changed_asset, ()):
         value = record.get(dependent)
         if dependent == "crop_exports" and isinstance(value, dict):
@@ -262,6 +265,20 @@ def _mark_stale(record: dict[str, Any], changed_asset: str) -> None:
             culture["status"] = "STALE"
             culture["stale_reason"] = "visibility changed"
             culture["stale_at"] = _timestamp()
+
+    image_uid = str(record.get("image_uid") or "")
+    for result in state.get("matrix_exports", {}).values():
+        if not isinstance(result, dict) or result.get("status") == "STALE":
+            continue
+        items = result.get("items")
+        uses_image = not isinstance(items, list) or any(
+            isinstance(item, dict) and str(item.get("image_uid") or "") == image_uid
+            for item in items
+        )
+        if uses_image:
+            result["status"] = "STALE"
+            result["stale_reason"] = f"{changed_asset} changed for {image_uid}"
+            result["stale_at"] = _timestamp()
 
 
 def record_setup_result(state: dict[str, Any], result: dict[str, Any]) -> None:
@@ -304,7 +321,7 @@ def record_orientation(
     prior = record.get("orientation")
     record["orientation"] = copy.deepcopy(result)
     if prior != record["orientation"]:
-        _mark_stale(record, "orientation")
+        _mark_stale(state, record, "orientation")
 
 
 def record_crop(state: dict[str, Any], image_uid: str, result: dict[str, Any]) -> None:
@@ -314,7 +331,7 @@ def record_crop(state: dict[str, Any], image_uid: str, result: dict[str, Any]) -
     prior = record.get("crop")
     record["crop"] = copy.deepcopy(result)
     if prior != record["crop"]:
-        _mark_stale(record, "crop")
+        _mark_stale(state, record, "crop")
 
 
 def record_grid_asset(
@@ -327,19 +344,45 @@ def record_grid_asset(
         raise ValueError("Only accepted GridCoordinateAsset values may be recorded.")
     record = _record(state, image_uid)
     prior = record.get("grid")
+    geometry_digest = asset.get("geometry_sha256")
+    if geometry_digest is None and all(
+        key in asset
+        for key in (
+            "image_ref",
+            "coordinate_space",
+            "grid",
+            "reference_points",
+            "basis_vectors",
+            "row_coordinates",
+            "column_coordinates",
+            "spots",
+            "transform",
+            "provenance",
+        )
+    ):
+        geometry_digest = grid_geometry_sha256(asset)
     current = {
         "status": "ACCEPTED",
         "asset_id": asset.get("asset_id"),
+        "geometry_sha256": geometry_digest,
         "coordinate_space": copy.deepcopy(asset.get("coordinate_space")),
         "path": relative_project_path(asset_path, state["project_root"]),
     }
-    changed = not isinstance(prior, dict) or any(
-        prior.get(key) != value for key, value in current.items()
-    )
+    if isinstance(prior, dict) and prior.get("geometry_sha256") is not None:
+        changed = (
+            prior.get("status") != "ACCEPTED"
+            or prior.get("geometry_sha256") != geometry_digest
+            or prior.get("coordinate_space") != current["coordinate_space"]
+        )
+    else:
+        changed = not isinstance(prior, dict) or any(
+            prior.get(key) != current[key]
+            for key in ("status", "asset_id", "coordinate_space")
+        )
     current["recorded_at"] = _timestamp()
     record["grid"] = current
     if changed:
-        _mark_stale(record, "grid")
+        _mark_stale(state, record, "grid")
 
 
 def record_grid_skip(state: dict[str, Any], image_uid: str) -> None:
@@ -352,7 +395,7 @@ def record_grid_skip(state: dict[str, Any], image_uid: str) -> None:
     }
     record["grid"] = current
     if prior != current:
-        _mark_stale(record, "grid")
+        _mark_stale(state, record, "grid")
 
 
 def record_crop_export(
@@ -451,4 +494,4 @@ def record_derivative_transition(
     current = copy.deepcopy(result)
     record[kind] = current
     if prior != current:
-        _mark_stale(record, kind)
+        _mark_stale(state, record, kind)

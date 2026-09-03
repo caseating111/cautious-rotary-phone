@@ -11,6 +11,7 @@ from tools.project_state import (
     record_derivative,
     record_grid_asset,
     record_orientation,
+    record_matrix_export,
     record_setup_result,
     save_project_state,
     select_crop_calibration,
@@ -162,3 +163,32 @@ def test_geometry_changes_mark_only_true_downstream_assets_stale(
     assert image["visibility"]["status"] == "STALE"
     assert image["annotation"]["status"] == "STALE"
     assert image["crop"]["stale_reason"] == "orientation changed"
+
+
+def test_grid_geometry_digest_controls_staleness_and_matrix_dependencies(
+    tmp_path: Path,
+) -> None:
+    state = new_project_state(tmp_path, project_model())
+    first = grid()
+    first["geometry_sha256"] = "a" * 64
+    record_grid_asset(state, "I1", first, tmp_path / "first.grid.json")
+    record_derivative(state, "I1", "visibility", {"status": "ACCEPTED"})
+    record_matrix_export(
+        state,
+        {
+            "status": "ACCEPTED",
+            "request_id": "matrix-1",
+            "items": [{"image_uid": "I1"}],
+        },
+    )
+
+    identical = dict(first, asset_id="renamed-asset")
+    record_grid_asset(state, "I1", identical, tmp_path / "moved.grid.json")
+    assert state["images"]["I1"]["visibility"]["status"] == "ACCEPTED"
+    assert state["matrix_exports"]["matrix-1"]["status"] == "ACCEPTED"
+
+    changed = dict(first, geometry_sha256="b" * 64)
+    record_grid_asset(state, "I1", changed, tmp_path / "changed.grid.json")
+    assert state["images"]["I1"]["visibility"]["status"] == "STALE"
+    assert state["matrix_exports"]["matrix-1"]["status"] == "STALE"
+    assert "grid changed for I1" in state["matrix_exports"]["matrix-1"]["stale_reason"]
